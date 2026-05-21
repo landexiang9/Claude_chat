@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Chat</title>
+    <!-- Catppuccin Mocha themed css and Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Code Highlight Style -->
+    <link rel="stylesheet" href="libs/github-dark.min.css">
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Local Dependencies -->
+    <script src="libs/marked.min.js"></script>
+    <script src="libs/highlight.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <span class="brand-logo">🤖</span>
+                    <span class="brand-name">Claude Chat</span>
+                </div>
+                <button id="new-chat-btn" class="btn btn-primary btn-capsule">+ 新建对话</button>
+            </div>
+            
+            <div class="conv-list-container">
+                <div id="conv-list" class="conv-list">
+                    <!-- Conversations list generated via JS -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top Navigation Bar -->
+            <header class="top-bar">
+                <div class="top-bar-left">
+                    <div class="model-select-wrapper">
+                        <select id="model-select" class="select-menu">
+                            <option value="">正在加载模型...</option>
+                        </select>
+                        <span id="api-status-led" class="status-led" title="API 连接状态"></span>
+                    </div>
+                    <span id="token-label" class="token-label">Token: --</span>
+                </div>
+                
+                <div class="top-bar-right">
+                    <button id="proxy-btn" class="icon-btn" title="网络代理设置">🌐</button>
+                    <button id="settings-btn" class="icon-btn" title="参数配置">⚙️</button>
+                    <button id="clear-chat-btn" class="icon-btn" title="清空/删除当前对话">🗑️</button>
+                </div>
+            </header>
+
+            <!-- Chat Message Display Stream -->
+            <section id="chat-viewport" class="chat-viewport">
+                <div id="message-list" class="message-list">
+                    <!-- Messages will be rendered here -->
+                </div>
+                <div id="scroll-anchor"></div>
+            </section>
+
+            <!-- Floating Input Box Panel -->
+            <footer class="input-section">
+                <!-- Attachments list -->
+                <div id="attachments-area" class="attachments-area hidden">
+                    <!-- Files listed dynamically -->
+                </div>
+
+                <div class="input-capsule">
+                    <button id="attach-btn" class="input-action-btn" title="添加附件 (支持文本/图片/PDF)">📎</button>
+                    <textarea id="input-box" class="input-box" placeholder="给 Claude 发送消息... (Ctrl+Enter 发送)" rows="1"></textarea>
+                    <button id="send-btn" class="send-btn" title="发送 (Ctrl+Enter)">
+                        <span class="send-icon">↑</span>
+                    </button>
+                </div>
+                <div id="status-label" class="status-label">就绪</div>
+            </footer>
+        </main>
+    </div>
+
+    <!-- Settings Dialog Modal -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>⚙️ 对话参数配置</h2>
+                <button class="close-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="api-key-input">Anthropic API Key:</label>
+                    <div class="input-row">
+                        <input type="password" id="api-key-input" placeholder="输入您的 sk-ant-api03-... 密钥">
+                        <button id="toggle-key-visibility" class="btn btn-secondary">👁</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="temp-slider" id="temp-label-title">Temperature: 0.70</label>
+                    <input type="range" id="temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
+                </div>
+
+                <div class="form-group">
+                    <label for="max-tokens-input">Max Tokens:</label>
+                    <input type="number" id="max-tokens-input" value="4096">
+                </div>
+
+                <div class="form-group">
+                    <label>Extended Thinking (深度思考):</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="thinking-mode" value="disabled" checked> Disabled
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="thinking-mode" value="adaptive"> Adaptive
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="thinking-mode" value="enabled"> Enabled
+                        </label>
+                    </div>
+                </div>
+
+                <div id="budget-group" class="form-group hidden">
+                    <label for="budget-tokens-input">Budget Tokens:</label>
+                    <input type="number" id="budget-tokens-input" value="16000">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="save-settings-btn" class="btn btn-primary">保存设置</button>
+                <button class="btn btn-secondary cancel-modal-btn">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Proxy Dialog Modal -->
+    <div id="proxy-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>🌐 网络代理配置</h2>
+                <button class="close-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>代理模式:</label>
+                    <div class="radio-column">
+                        <label class="radio-label">
+                            <input type="radio" name="proxy-mode" value="none"> 不使用代理
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="proxy-mode" value="system" checked> 使用系统代理 (环境变量)
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="proxy-mode" value="custom"> 自定义代理 URL
+                        </label>
+                    </div>
+                </div>
+
+                <div id="custom-proxy-group" class="form-group hidden">
+                    <label for="proxy-url-input">代理 URL:</label>
+                    <input type="text" id="proxy-url-input" placeholder="http://127.0.0.1:10808">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="save-proxy-btn" class="btn btn-primary">保存代理</button>
+                <button class="btn btn-secondary cancel-modal-btn">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" class="modal-overlay hidden">
+        <div class="modal-card delete-card">
+            <div class="modal-header">
+                <h2>⚠️ 确认删除</h2>
+                <button class="close-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>您确定要彻底删除该对话吗？删除后将无法恢复。</p>
+            </div>
+            <div class="modal-footer">
+                <button id="confirm-delete-btn" class="btn btn-danger">确认删除</button>
+                <button class="btn btn-secondary cancel-modal-btn">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Context Menu -->
+    <div id="custom-context-menu" class="context-menu hidden">
+        <button id="menu-copy" class="context-menu-item">📋 复制选中文字 (Copy Selection)</button>
+        <button id="menu-copy-msg" class="context-menu-item">💬 复制整条消息 (Copy Message)</button>
+        <button id="menu-cut" class="context-menu-item">✂️ 剪切 (Cut)</button>
+        <button id="menu-paste" class="context-menu-item">📋 粘贴 (Paste)</button>
+        <button id="menu-selectall" class="context-menu-item">🔍 全选 (Select All)</button>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
