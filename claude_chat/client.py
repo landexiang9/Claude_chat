@@ -72,7 +72,7 @@ def extract_api_message(msg):
     return {"role": role, "content": api_content_list}
 
 
-def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue):
+def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None):
     """
     Initiates Anthropic stream in background thread and pushes events into streaming_queue.
     """
@@ -88,9 +88,17 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
         }
         if thinking_config:
             kwargs["thinking"] = thinking_config
+        if system and system.strip():
+            kwargs["system"] = system.strip()
 
         with client.messages.stream(**kwargs) as stream:
+            if on_stream_created:
+                on_stream_created(stream)
+                
             for event in stream:
+                if abort_event and abort_event.is_set():
+                    streaming_queue.put(("aborted", {}))
+                    return
                 etype = event.type if hasattr(event, 'type') else ''
                 if etype == 'thinking':
                     t = getattr(event, 'thinking', '')
@@ -110,13 +118,25 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
         streaming_queue.put(("done", {"input_tokens": input_tokens, "output_tokens": output_tokens}))
         
     except BadRequestError as e:
-        streaming_queue.put(("error", f"请求错误: {e}"))
+        if abort_event and abort_event.is_set():
+            streaming_queue.put(("aborted", {}))
+        else:
+            streaming_queue.put(("error", f"请求错误: {e}"))
     except APITimeoutError:
-        streaming_queue.put(("error", "请求超时，请重试"))
+        if abort_event and abort_event.is_set():
+            streaming_queue.put(("aborted", {}))
+        else:
+            streaming_queue.put(("error", "请求超时，请重试"))
     except APIStatusError as e:
-        streaming_queue.put(("error", f"API 错误 [{e.status_code}]: {e}"))
+        if abort_event and abort_event.is_set():
+            streaming_queue.put(("aborted", {}))
+        else:
+            streaming_queue.put(("error", f"API 错误 [{e.status_code}]: {e}"))
     except Exception as e:
-        streaming_queue.put(("error", f"未知错误: {e}"))
+        if abort_event and abort_event.is_set():
+            streaming_queue.put(("aborted", {}))
+        else:
+            streaming_queue.put(("error", f"未知错误: {e}"))
 
 
 def fetch_available_models(api_key, proxy_mode, proxy_url):

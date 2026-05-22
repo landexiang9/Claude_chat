@@ -964,3 +964,311 @@ input[type="range"]::-webkit-slider-thumb:hover {
     background-color: transparent;
     color: var(--overlay0);
 }
+
+/* Stop Generating button and active state */
+.send-btn.stop-active {
+    background-color: var(--red) !important;
+    color: var(--crust) !important;
+}
+
+.send-btn.stop-active:hover {
+    background-color: #f7a0b9 !important;
+    transform: scale(1.05) !important;
+}
+
+/* Code Header Actions */
+.code-header-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.code-save-btn {
+    background: transparent;
+    border: none;
+    color: var(--subtext0);
+    cursor: pointer;
+    font-size: 10px;
+    transition: color 0.15s ease;
+}
+
+.code-save-btn:hover {
+    color: var(--text);
+}
+
+/* Drag and Drop Overlay */
+.drag-drop-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(24, 24, 37, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.drag-drop-overlay.active {
+    pointer-events: auto;
+    opacity: 1;
+}
+
+.drag-drop-overlay.hidden {
+    display: none;
+}
+
+.drag-drop-content {
+    background: var(--surface0);
+    border: 2px dashed var(--lavender);
+    border-radius: 16px;
+    padding: 40px;
+    text-align: center;
+    max-width: 400px;
+    width: 80%;
+    transform: scale(0.9);
+    transition: transform 0.25s ease;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+.drag-drop-overlay.active .drag-drop-content {
+    transform: scale(1);
+}
+
+.drag-drop-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+    display: block;
+    animation: bounce 2s infinite;
+}
+
+.drag-drop-sub {
+    font-size: 12px;
+    color: var(--subtext0);
+    margin-top: 8px;
+    display: block;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+/* Artifacts Side Panel */
+.artifacts-panel {
+    width: 480px;
+    height: 100vh;
+    background-color: var(--mantle);
+    border-left: 1px solid var(--surface0);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: width 0.3s ease;
+    z-index: 10;
+}
+
+.artifacts-panel.collapsed {
+    display: none;
+}
+
+.artifacts-panel.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+}
+
+.artifacts-header {
+    height: 50px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--surface0);
+    background-color: var(--crust);
+}
+
+.artifacts-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.artifacts-header-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.artifacts-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--surface0);
+    background-color: var(--crust);
+}
+
+.artifacts-tab-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--subtext0);
+    padding: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.artifacts-tab-btn:hover {
+    color: var(--text);
+    background-color: var(--surface0);
+}
+
+.artifacts-tab-btn.active {
+    color: var(--blue);
+    font-weight: 500;
+    border-bottom-color: var(--blue);
+}
+
+.artifacts-body {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    background-color: var(--base);
+}
+
+.artifacts-tab-content {
+    display: none;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+}
+
+.artifacts-tab-content.active {
+    display: block;
+}
+
+#artifacts-preview-container {
+    width: 100%;
+    height: 100%;
+    padding: 16px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    color: #333333;
+}
+
+#artifacts-preview-container.svg-mode,
+#artifacts-preview-container.mermaid-mode {
+    background: var(--base);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#artifacts-preview-container iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #ffffff;
+}
+
+#artifacts-code-view {
+    margin: 0;
+    padding: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    white-space: pre-wrap;
+}
+
+/* Show in chat action styling */
+.show-artifact-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    padding: 6px 12px;
+    background-color: var(--surface0);
+    color: var(--lavender);
+    border: 1px solid var(--surface1);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.15s ease;
+}
+
+.show-artifact-btn:hover {
+    background-color: var(--surface1);
+    color: var(--text);
+}
+
+/* Presets management styles */
+.preset-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background-color: var(--surface0);
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+.preset-item:last-child {
+    margin-bottom: 0;
+}
+
+.preset-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-width: 70%;
+}
+
+.preset-name {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.preset-desc {
+    font-size: 10px;
+    color: var(--subtext0);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.preset-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.preset-actions button {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px;
+    opacity: 0.8;
+    transition: opacity 0.1s;
+}
+
+.preset-actions button:hover {
+    opacity: 1;
+}
+
+/* Dropdown styling updates */
+.system-prompt-wrapper {
+    margin-left: 8px;
+}

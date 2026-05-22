@@ -71,6 +71,9 @@ window.addEventListener("pywebviewready", async () => {
     config = await pywebview.api.get_config();
     updateLedStatus();
     
+    // Initialize system prompts dropdown
+    renderSystemPromptSelect();
+    
     // 2. Load and configure model dropdown
     const models = await pywebview.api.fetch_models();
     updateModelList(models);
@@ -292,10 +295,47 @@ function appendMessage(role, content, thinking, isStreamingPlaceholder = false) 
     highlightCodeBlocks(card);
 }
 
+// Helper for file extensions
+function getExtensionFromLang(lang) {
+    const langMap = {
+        'javascript': '.js', 'js': '.js',
+        'typescript': '.ts', 'ts': '.ts',
+        'python': '.py', 'py': '.py',
+        'html': '.html',
+        'css': '.css',
+        'json': '.json',
+        'xml': '.xml',
+        'yaml': '.yaml', 'yml': '.yaml',
+        'markdown': '.md', 'md': '.md',
+        'sql': '.sql',
+        'rust': '.rs', 'rs': '.rs',
+        'c': '.c',
+        'cpp': '.cpp', 'c++': '.cpp',
+        'go': '.go',
+        'shell': '.sh', 'sh': '.sh', 'bash': '.sh',
+        'powershell': '.ps1', 'ps1': '.ps1',
+        'java': '.java',
+        'php': '.php'
+    };
+    return langMap[lang.toLowerCase()] || '.txt';
+}
+
 // Highlight code blocks and inject custom header copy button
 function highlightCodeBlocks(container) {
     container.querySelectorAll('pre code').forEach((block) => {
         const pre = block.parentNode;
+        
+        // Smart highlight optimization: skip highlighting the very last streaming block if unclosed
+        const isStreamingBlock = isStreaming && (block.closest('#streaming-message-body') !== null);
+        if (isStreamingBlock) {
+            const backtickCount = (streamingText.match(/```/g) || []).length;
+            const isLastBlockOpen = (backtickCount % 2 === 1);
+            if (isLastBlockOpen) {
+                // Return early so we don't style or highlight it yet
+                return;
+            }
+        }
+        
         if (!pre.querySelector('.code-header')) {
             let lang = 'code';
             block.classList.forEach(cls => {
@@ -308,13 +348,39 @@ function highlightCodeBlocks(container) {
             header.className = 'code-header';
             header.innerHTML = `
                 <span>${lang.toUpperCase()}</span>
-                <button class="code-copy-btn">复制</button>
+                <div class="code-header-actions">
+                    <button class="code-save-btn">保存为文件</button>
+                    <button class="code-copy-btn">复制</button>
+                </div>
             `;
+            // Add save action
+            header.querySelector('.code-save-btn').onclick = async () => {
+                const content = block.innerText;
+                const extension = getExtensionFromLang(lang);
+                const suggestName = `code_${Date.now()}${extension}`;
+                const saved = await pywebview.api.save_code_block(content, suggestName);
+                if (saved) {
+                    statusLabel.textContent = "💾 文件保存成功";
+                    setTimeout(() => { statusLabel.textContent = "就绪"; }, 2000);
+                }
+            };
             // Add copy action
             header.querySelector('.code-copy-btn').onclick = () => {
                 copyText(block.innerText);
             };
             pre.insertBefore(header, block);
+            
+            // Phase 2 Artifact: If code is html, svg, xml, or mermaid, add a preview button below pre block
+            const normLang = lang.toLowerCase();
+            if (normLang === 'html' || normLang === 'svg' || normLang === 'mermaid' || normLang === 'xml') {
+                const showBtn = document.createElement('button');
+                showBtn.className = 'show-artifact-btn';
+                showBtn.innerHTML = '👁️ 预览 Artifact';
+                showBtn.onclick = () => {
+                    showArtifact(block.innerText, normLang);
+                };
+                pre.parentNode.insertBefore(showBtn, pre.nextSibling);
+            }
         }
         if (typeof hljs !== 'undefined') {
             hljs.highlightElement(block);
@@ -336,7 +402,11 @@ function copyText(text) {
 
 // Send Message action
 async function sendMessage() {
-    if (isStreaming) return;
+    if (isStreaming) {
+        statusLabel.textContent = "正在停止生成...";
+        await pywebview.api.abort_generation();
+        return;
+    }
     const text = inputBox.value.trim();
     if (!text && attachments.length === 0) return;
     
@@ -364,7 +434,13 @@ async function sendMessage() {
     isStreaming = true;
     streamingText = "";
     streamingThinking = "";
-    sendBtn.disabled = true;
+    
+    // Stop button active styling
+    sendBtn.classList.add("stop-active");
+    sendBtn.title = "停止生成";
+    const sendIcon = sendBtn.querySelector(".send-icon");
+    if (sendIcon) sendIcon.textContent = "■";
+
     statusLabel.textContent = "Claude 思考中...";
 
     // 3. Clear local attachments
@@ -416,7 +492,13 @@ window.onStreamMessage = (type, data) => {
     } else if (type === "done") {
         // Finalize streaming bubble
         isStreaming = false;
-        sendBtn.disabled = false;
+        
+        // Restore send button state
+        sendBtn.classList.remove("stop-active");
+        sendBtn.title = "发送 (Ctrl+Enter)";
+        const sendIcon = sendBtn.querySelector(".send-icon");
+        if (sendIcon) sendIcon.textContent = "↑";
+        
         statusLabel.textContent = "就绪";
         
         // Remove stream identifiers
@@ -431,9 +513,40 @@ window.onStreamMessage = (type, data) => {
         // Reload conversations to update title card
         loadConversations();
         
+    } else if (type === "aborted") {
+        isStreaming = false;
+        
+        // Restore send button state
+        sendBtn.classList.remove("stop-active");
+        sendBtn.title = "发送 (Ctrl+Enter)";
+        const sendIcon = sendBtn.querySelector(".send-icon");
+        if (sendIcon) sendIcon.textContent = "↑";
+        
+        statusLabel.textContent = "已中止生成";
+        setTimeout(() => { if (statusLabel.textContent === "已中止生成") statusLabel.textContent = "就绪"; }, 2000);
+        
+        const row = document.getElementById("streaming-msg-row");
+        if (row) row.removeAttribute("id");
+        
+        if (body) {
+            body.removeAttribute("id");
+            body.innerHTML += `<div class="aborted-badge" style="color: var(--peach); font-size: 11px; margin-top: 8px; font-style: italic; display: flex; align-items: center; gap: 4px;">🚫 已中止</div>`;
+        }
+        
+        const thinkContainer = document.getElementById("streaming-thinking-container");
+        if (thinkContainer) thinkContainer.removeAttribute("id");
+        
+        loadConversations();
+        
     } else if (type === "error") {
         isStreaming = false;
-        sendBtn.disabled = false;
+        
+        // Restore send button state
+        sendBtn.classList.remove("stop-active");
+        sendBtn.title = "发送 (Ctrl+Enter)";
+        const sendIcon = sendBtn.querySelector(".send-icon");
+        if (sendIcon) sendIcon.textContent = "↑";
+        
         statusLabel.textContent = `错误: ${data}`;
         
         if (body) {
@@ -512,6 +625,9 @@ function showSettings() {
     
     budgetTokensInput.value = config.thinking_budget;
     toggleBudgetGroup(mode);
+    
+    // Render custom system prompts presets inside Settings dialog
+    renderPresetsList();
     
     showModal(settingsModal);
 }
@@ -873,4 +989,347 @@ menuSelectAll.addEventListener("click", () => {
         }
     }
 });
+
+// ==========================================
+// Drag and Drop Global Overlay Integration
+// ==========================================
+const dragDropOverlay = document.getElementById("drag-drop-overlay");
+
+window.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.types.includes("Files")) {
+        dragDropOverlay.classList.remove("hidden");
+    }
+});
+
+window.addEventListener("dragover", (e) => {
+    e.preventDefault();
+});
+
+window.addEventListener("dragleave", (e) => {
+    if (e.relatedTarget === null || e.relatedTarget === document.documentElement) {
+        dragDropOverlay.classList.add("hidden");
+    }
+});
+
+window.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    dragDropOverlay.classList.add("hidden");
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        for (let i = 0; i < e.dataTransfer.files.length; i++) {
+            const file = e.dataTransfer.files[i];
+            await handleDroppedFile(file);
+        }
+    }
+});
+
+async function handleDroppedFile(file) {
+    statusLabel.textContent = `正在读取文件: ${file.name}...`;
+    
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        const base64Data = event.target.result;
+        const uploaded = await pywebview.api.upload_dropped_file(file.name, file.size, base64Data);
+        if (uploaded) {
+            attachments.push(uploaded);
+            renderAttachments();
+            statusLabel.textContent = `附件已添加: ${file.name}`;
+            setTimeout(() => { if (statusLabel.textContent.startsWith("附件已添加")) statusLabel.textContent = "就绪"; }, 2000);
+        } else {
+            statusLabel.textContent = `文件添加失败: ${file.name}`;
+        }
+    };
+    reader.onerror = () => {
+        statusLabel.textContent = `文件读取失败: ${file.name}`;
+    };
+    reader.readAsDataURL(file);
+}
+
+// ==========================================
+// System Prompts Presets Management
+// ==========================================
+const systemPromptSelect = document.getElementById("system-prompt-select");
+const presetsList = document.getElementById("presets-list");
+const presetModal = document.getElementById("preset-modal");
+const presetNameInput = document.getElementById("preset-name-input");
+const presetContentInput = document.getElementById("preset-content-input");
+const savePresetBtn = document.getElementById("save-preset-btn");
+const cancelPresetBtn = document.getElementById("cancel-preset-btn");
+const closePresetModalBtn = document.getElementById("close-preset-modal-btn");
+const presetModalTitle = document.getElementById("preset-modal-title");
+const addPresetBtn = document.getElementById("add-preset-btn");
+
+let editingPresetId = null;
+
+function renderSystemPromptSelect() {
+    if (!systemPromptSelect) return;
+    systemPromptSelect.innerHTML = '<option value="">无系统提示词 (默认)</option>';
+    const presets = config.system_prompts || [];
+    presets.forEach(p => {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name;
+        if (p.id === config.selected_system_prompt_id) {
+            opt.selected = true;
+        }
+        systemPromptSelect.appendChild(opt);
+    });
+}
+
+if (systemPromptSelect) {
+    systemPromptSelect.addEventListener("change", async (e) => {
+        config.selected_system_prompt_id = e.target.value;
+        await pywebview.api.save_config(config);
+        statusLabel.textContent = `系统提示词已更新`;
+        setTimeout(() => { if (statusLabel.textContent === "系统提示词已更新") statusLabel.textContent = "就绪"; }, 2000);
+    });
+}
+
+function renderPresetsList() {
+    if (!presetsList) return;
+    presetsList.innerHTML = "";
+    const presets = config.system_prompts || [];
+    if (presets.length === 0) {
+        presetsList.innerHTML = '<div style="color: var(--overlay0); text-align: center; padding: 12px; font-size: 12px;">暂无自定义系统提示词</div>';
+        return;
+    }
+    presets.forEach(p => {
+        const item = document.createElement("div");
+        item.style.display = "flex";
+        item.style.justifyContent = "space-between";
+        item.style.alignItems = "center";
+        item.style.padding = "6px 8px";
+        item.style.borderBottom = "1px solid var(--surface0)";
+        item.style.fontSize = "12px";
+        
+        const nameSpan = document.createElement("span");
+        nameSpan.textContent = p.name;
+        nameSpan.style.fontWeight = "500";
+        nameSpan.style.color = "var(--text)";
+        item.appendChild(nameSpan);
+        
+        const actionsDiv = document.createElement("div");
+        actionsDiv.style.display = "flex";
+        actionsDiv.style.gap = "6px";
+        
+        const editBtn = document.createElement("button");
+        editBtn.className = "btn btn-secondary btn-sm";
+        editBtn.textContent = "编辑";
+        editBtn.style.padding = "2px 6px";
+        editBtn.style.fontSize = "10px";
+        editBtn.onclick = (e) => {
+            e.preventDefault();
+            showPresetEditor(p.id);
+        };
+        
+        const delBtn = document.createElement("button");
+        delBtn.className = "btn btn-danger btn-sm";
+        delBtn.textContent = "删除";
+        delBtn.style.padding = "2px 6px";
+        delBtn.style.fontSize = "10px";
+        delBtn.onclick = (e) => {
+            e.preventDefault();
+            deletePreset(p.id);
+        };
+        
+        actionsDiv.appendChild(editBtn);
+        actionsDiv.appendChild(delBtn);
+        item.appendChild(actionsDiv);
+        presetsList.appendChild(item);
+    });
+}
+
+function showPresetEditor(id = null) {
+    editingPresetId = id;
+    if (id) {
+        presetModalTitle.textContent = "📝 编辑系统提示词预设";
+        const p = config.system_prompts.find(x => x.id === id);
+        presetNameInput.value = p ? p.name : "";
+        presetContentInput.value = p ? p.content : "";
+    } else {
+        presetModalTitle.textContent = "📝 添加系统提示词预设";
+        presetNameInput.value = "";
+        presetContentInput.value = "";
+    }
+    presetModal.classList.remove("hidden");
+}
+
+function hidePresetEditor() {
+    presetModal.classList.add("hidden");
+    editingPresetId = null;
+}
+
+if (addPresetBtn) addPresetBtn.onclick = () => showPresetEditor(null);
+if (cancelPresetBtn) cancelPresetBtn.onclick = hidePresetEditor;
+if (closePresetModalBtn) closePresetModalBtn.onclick = hidePresetEditor;
+
+if (savePresetBtn) {
+    savePresetBtn.onclick = async () => {
+        const name = presetNameInput.value.trim();
+        const content = presetContentInput.value.trim();
+        if (!name || !content) {
+            alert("名称和内容不能为空！");
+            return;
+        }
+        
+        if (!config.system_prompts) config.system_prompts = [];
+        
+        if (editingPresetId) {
+            const p = config.system_prompts.find(x => x.id === editingPresetId);
+            if (p) {
+                p.name = name;
+                p.content = content;
+            }
+        } else {
+            const newId = "preset_" + Date.now();
+            config.system_prompts.push({
+                id: newId,
+                name: name,
+                content: content
+            });
+        }
+        
+        await pywebview.api.save_config(config);
+        hidePresetEditor();
+        renderPresetsList();
+        renderSystemPromptSelect();
+    };
+}
+
+async function deletePreset(id) {
+    if (!confirm("确定要删除该预设吗？")) return;
+    config.system_prompts = (config.system_prompts || []).filter(x => x.id !== id);
+    if (config.selected_system_prompt_id === id) {
+        config.selected_system_prompt_id = "";
+    }
+    await pywebview.api.save_config(config);
+    renderPresetsList();
+    renderSystemPromptSelect();
+}
+
+// ==========================================
+// Artifacts Preview Sidebar Panel
+// ==========================================
+const artifactsPanel = document.getElementById("artifacts-panel");
+const closeArtifactsBtn = document.getElementById("close-artifacts-btn");
+const artifactsFullscreenBtn = document.getElementById("artifacts-fullscreen-btn");
+const artifactsTabBtns = document.querySelectorAll(".artifacts-tab-btn");
+const artifactsTabContents = document.querySelectorAll(".artifacts-tab-content");
+const artifactsPreviewContainer = document.getElementById("artifacts-preview-container");
+const artifactsCodeView = document.getElementById("artifacts-code-view");
+
+let currentArtifactContent = "";
+let currentArtifactType = "";
+
+if (closeArtifactsBtn) {
+    closeArtifactsBtn.onclick = () => {
+        artifactsPanel.classList.add("collapsed");
+    };
+}
+
+if (artifactsFullscreenBtn) {
+    artifactsFullscreenBtn.onclick = () => {
+        const isFullscreen = artifactsPanel.classList.toggle("fullscreen");
+        artifactsFullscreenBtn.textContent = isFullscreen ? "🗖" : "🖥️";
+        artifactsFullscreenBtn.title = isFullscreen ? "还原" : "全屏";
+    };
+}
+
+artifactsTabBtns.forEach(btn => {
+    btn.onclick = () => {
+        const tabName = btn.getAttribute("data-tab");
+        artifactsTabBtns.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        
+        artifactsTabContents.forEach(content => {
+            if (content.id === `artifacts-${tabName}-tab`) {
+                content.classList.add("active");
+            } else {
+                content.classList.remove("active");
+            }
+        });
+        
+        if (tabName === "code") {
+            if (typeof hljs !== 'undefined') {
+                hljs.highlightElement(artifactsCodeView);
+            }
+        }
+    };
+});
+
+function showArtifact(content, type) {
+    currentArtifactContent = content;
+    currentArtifactType = type;
+    
+    artifactsPanel.classList.remove("collapsed");
+    artifactsCodeView.textContent = content;
+    artifactsCodeView.className = "";
+    
+    if (type === "html" || type === "xml") {
+        artifactsCodeView.classList.add("language-xml");
+    } else if (type === "svg") {
+        artifactsCodeView.classList.add("language-xml");
+    } else if (type === "mermaid") {
+        artifactsCodeView.classList.add("language-mermaid");
+    }
+    
+    const previewTabBtn = Array.from(artifactsTabBtns).find(b => b.getAttribute("data-tab") === "preview");
+    if (previewTabBtn) previewTabBtn.click();
+    
+    renderArtifactPreview(content, type);
+}
+
+function renderArtifactPreview(content, type) {
+    artifactsPreviewContainer.innerHTML = "";
+    
+    if (type === "html" || type === "xml") {
+        const iframe = document.createElement("iframe");
+        iframe.style.width = "100%";
+        iframe.style.height = "100%";
+        iframe.style.border = "none";
+        iframe.style.backgroundColor = "#ffffff";
+        iframe.sandbox = "allow-scripts";
+        
+        artifactsPreviewContainer.appendChild(iframe);
+        
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(content);
+        doc.close();
+        
+    } else if (type === "svg") {
+        artifactsPreviewContainer.innerHTML = content;
+        const svgEl = artifactsPreviewContainer.querySelector("svg");
+        if (svgEl) {
+            svgEl.style.maxWidth = "100%";
+            svgEl.style.height = "auto";
+            svgEl.style.display = "block";
+            svgEl.style.margin = "0 auto";
+        }
+        
+    } else if (type === "mermaid") {
+        if (typeof mermaid !== 'undefined') {
+            const uniqueId = `mermaid-${Date.now()}`;
+            const div = document.createElement("div");
+            div.className = "mermaid";
+            div.id = uniqueId;
+            div.textContent = content;
+            artifactsPreviewContainer.appendChild(div);
+            
+            try {
+                mermaid.initialize({
+                    startOnLoad: false,
+                    theme: 'dark',
+                    securityLevel: 'loose'
+                });
+                mermaid.init(undefined, `#${uniqueId}`);
+            } catch (err) {
+                artifactsPreviewContainer.innerHTML = `<span style="color: var(--red);">Mermaid 渲染错误: ${err.message}</span>`;
+            }
+        } else {
+            artifactsPreviewContainer.innerHTML = '<span style="color: var(--yellow);">Mermaid 库未加载，无法预览图表</span>';
+        }
+    }
+}
 

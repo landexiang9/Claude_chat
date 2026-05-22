@@ -15,7 +15,8 @@ import webview
 from claude_chat.config import (
     FALLBACK_MODELS, IMAGE_EXTENSIONS, PDF_EXTENSIONS, TEXT_EXTENSIONS, ConfigManager
 )
-from claude_chat.conversation import ConversationManager, read_text_file
+from claude_chat.conversation import read_text_file
+from claude_chat.db import DatabaseManager
 from claude_chat.client import (
     extract_api_message, stream_claude_response, fetch_available_models
 )
@@ -41,12 +42,51 @@ def get_mime_type(file_path):
 class ClaudeChatApp:
     def __init__(self):
         self.config = ConfigManager()
-        self.conv_manager = ConversationManager()
+        self.conv_manager = DatabaseManager()
         self.current_conv = None
         self.available_models = list(FALLBACK_MODELS)
         self.streaming_queue = queue.Queue()
         self.is_streaming = False
+        self.abort_event = threading.Event()
+        self.active_stream = None
         self.window = None
+
+    def abort_generation(self):
+        self.abort_event.set()
+        if self.active_stream:
+            try:
+                self.active_stream.close()
+            except Exception:
+                pass
+            self.active_stream = None
+        self.is_streaming = False
+        return True
+
+    def save_code_block(self, content, suggest_name):
+        if not self.window:
+            return False
+        
+        file_path = self.window.create_file_dialog(
+            webview.SAVE_FILE_DIALOG,
+            directory=None,
+            save_filename=suggest_name
+        )
+        if not file_path:
+            return False
+            
+        if isinstance(file_path, (list, tuple)):
+            if file_path:
+                file_path = file_path[0]
+            else:
+                return False
+                
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            return True
+        except Exception as e:
+            print(f"Error saving code block: {e}")
+            return False
 
     def mainloop(self):
         # We start the webview window
@@ -133,6 +173,27 @@ class ClaudeChatApp:
                     self.is_streaming = False
                     break
                     
+                elif msg_type == "aborted":
+                    if self.current_conv:
+                        self.current_conv["messages"].append({
+                            "role": "assistant",
+                            "content": streaming_text,
+                            "thinking": streaming_thinking_text if streaming_thinking_text else None,
+                            "aborted": True
+                        })
+                        if len(self.current_conv["messages"]) == 2:
+                            title = streaming_text[:30].replace("\n", " ")
+                            self.current_conv["title"] = title or "新对话"
+                        self.current_conv["updated_at"] = datetime.now().isoformat()
+                        self.conv_manager.save_conversation(self.current_conv)
+                    
+                    if self.window:
+                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('aborted', {{}});"
+                        self.window.evaluate_js(js_code)
+                    
+                    self.is_streaming = False
+                    break
+
                 elif msg_type == "error":
                     if self.current_conv and streaming_text:
                         self.current_conv["messages"].append({
@@ -302,6 +363,8 @@ class WebAPI:
             return False
         
         self._app.is_streaming = True
+        self._app.abort_event.clear()
+        self._app.active_stream = None
         
         # Load conversation
         conv = self._app.conv_manager.load_conversation(conv_id)
@@ -345,6 +408,19 @@ class WebAPI:
                 
         self._app.streaming_queue = queue.Queue()
         
+        # Get active system prompt from config
+        system_prompt_val = None
+        selected_id = self._app.config.get("selected_system_prompt_id", "")
+        if selected_id:
+            presets = self._app.config.get("system_prompts", [])
+            for p in presets:
+                if p.get("id") == selected_id:
+                    system_prompt_val = p.get("content")
+                    break
+        
+        def on_stream_created(stream):
+            self._app.active_stream = stream
+
         # Launch background stream
         thread = threading.Thread(
             target=stream_claude_response,
@@ -357,8 +433,11 @@ class WebAPI:
                 self._app.config.get("max_tokens", 4096),
                 self._app.config.get("temperature", 0.7),
                 thinking_config,
-                self._app.streaming_queue
+                self._app.streaming_queue,
+                self._app.abort_event,
+                on_stream_created
             ),
+            kwargs={"system": system_prompt_val},
             daemon=True
         )
         thread.start()
@@ -370,3 +449,42 @@ class WebAPI:
         )
         reader_thread.start()
         return True
+
+    def abort_generation(self):
+        return self._app.abort_generation()
+
+    def save_code_block(self, content, suggest_name):
+        return self._app.save_code_block(content, suggest_name)
+
+    def upload_dropped_file(self, name, size, base64_data):
+        import base64
+        import tempfile
+        temp_dir = Path(tempfile.gettempdir()) / "claude_chat_uploads"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        if "," in base64_data:
+            _, encoded = base64_data.split(",", 1)
+        else:
+            encoded = base64_data
+            
+        try:
+            data = base64.b64decode(encoded)
+            stem = Path(name).stem
+            suffix = Path(name).suffix
+            dest_path = temp_dir / name
+            counter = 1
+            while dest_path.exists():
+                dest_path = temp_dir / f"{stem}_{counter}{suffix}"
+                counter += 1
+                
+            with open(dest_path, "wb") as f:
+                f.write(data)
+                
+            return {
+                "path": str(dest_path.resolve()),
+                "name": dest_path.name,
+                "size": size
+            }
+        except Exception as e:
+            print(f"Error saving dropped file: {e}")
+            return None

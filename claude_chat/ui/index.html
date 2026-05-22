@@ -16,6 +16,7 @@
     <!-- Local Dependencies -->
     <script src="libs/marked.min.js"></script>
     <script src="libs/highlight.min.js"></script>
+    <script src="libs/mermaid.min.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -46,6 +47,11 @@
                             <option value="">正在加载模型...</option>
                         </select>
                         <span id="api-status-led" class="status-led" title="API 连接状态"></span>
+                    </div>
+                    <div class="system-prompt-wrapper">
+                        <select id="system-prompt-select" class="select-menu" title="预设系统提示词">
+                            <option value="">无系统提示词 (默认)</option>
+                        </select>
                     </div>
                     <span id="token-label" class="token-label">Token: --</span>
                 </div>
@@ -82,6 +88,32 @@
                 <div id="status-label" class="status-label">就绪</div>
             </footer>
         </main>
+
+        <!-- Artifacts Sidebar Panel -->
+        <aside id="artifacts-panel" class="artifacts-panel collapsed">
+            <div class="artifacts-header">
+                <div class="artifacts-title">
+                    <span class="artifacts-icon">🎨</span>
+                    <span>Artifact 预览</span>
+                </div>
+                <div class="artifacts-header-actions">
+                    <button id="artifacts-fullscreen-btn" class="icon-btn" title="全屏">🖥️</button>
+                    <button id="close-artifacts-btn" class="icon-btn" title="关闭">&times;</button>
+                </div>
+            </div>
+            <div class="artifacts-tabs">
+                <button class="artifacts-tab-btn active" data-tab="preview">预览</button>
+                <button class="artifacts-tab-btn" data-tab="code">代码</button>
+            </div>
+            <div class="artifacts-body">
+                <div id="artifacts-preview-tab" class="artifacts-tab-content active">
+                    <div id="artifacts-preview-container"></div>
+                </div>
+                <div id="artifacts-code-tab" class="artifacts-tab-content">
+                    <pre><code id="artifacts-code-view" class="language-xml"></code></pre>
+                </div>
+            </div>
+        </aside>
     </div>
 
     <!-- Settings Dialog Modal -->
@@ -128,6 +160,15 @@
                 <div id="budget-group" class="form-group hidden">
                     <label for="budget-tokens-input">Budget Tokens:</label>
                     <input type="number" id="budget-tokens-input" value="16000">
+                </div>
+
+                <div class="divider" style="margin: 16px 0; border-top: 1px solid var(--surface0);"></div>
+                <div class="form-group">
+                    <label style="margin-bottom: 8px; display: block; font-weight: 600;">📝 系统提示词预设管理 (System Prompts)</label>
+                    <div id="presets-list" class="presets-list" style="max-height: 150px; overflow-y: auto; border: 1px solid var(--surface0); border-radius: 8px; padding: 8px; background-color: var(--crust);">
+                        <!-- Dynamic Presets list -->
+                    </div>
+                    <button id="add-preset-btn" class="btn btn-secondary btn-sm" style="margin-top: 8px; padding: 4px 10px; font-size: 11px;">+ 添加新预设</button>
                 </div>
             </div>
             <div class="modal-footer">
@@ -196,6 +237,39 @@
         <button id="menu-cut" class="context-menu-item">✂️ 剪切 (Cut)</button>
         <button id="menu-paste" class="context-menu-item">📋 粘贴 (Paste)</button>
         <button id="menu-selectall" class="context-menu-item">🔍 全选 (Select All)</button>
+    </div>
+
+    <!-- Drag and Drop Overlay -->
+    <div id="drag-drop-overlay" class="drag-drop-overlay hidden">
+        <div class="drag-drop-content">
+            <span class="drag-drop-icon">📥</span>
+            <p style="font-size: 16px; font-weight: 600; margin-bottom: 4px;">拖拽文件到此处以上传</p>
+            <span class="drag-drop-sub">支持文本、图片、PDF (自动识别并解析)</span>
+        </div>
+    </div>
+
+    <!-- Preset Edit Dialog Modal -->
+    <div id="preset-modal" class="modal-overlay hidden" style="z-index: 10001;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2 id="preset-modal-title">📝 编辑系统提示词预设</h2>
+                <button class="close-modal-btn" id="close-preset-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="preset-name-input">预设名称:</label>
+                    <input type="text" id="preset-name-input" placeholder="例如: 编程助手">
+                </div>
+                <div class="form-group">
+                    <label for="preset-content-input">提示词内容:</label>
+                    <textarea id="preset-content-input" placeholder="输入系统提示词内容..." rows="6" style="width: 100%; resize: vertical; border-radius: 8px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); padding: 8px; font-family: inherit; font-size: 13px;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="save-preset-btn" class="btn btn-primary">保存预设</button>
+                <button class="btn btn-secondary" id="cancel-preset-btn">取消</button>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>
