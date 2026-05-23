@@ -1,24 +1,28 @@
 # Claude Chat
 
-Desktop GUI client for Anthropic Claude API, built with **pywebview** and modern web technologies. Features a premium **Catppuccin Mocha** dark theme, real-time streaming, collapsible reasoning/thinking steps, offline-first assets, text selection with custom context menus, and proxy support.
+Desktop GUI client for Anthropic Claude API, built with **pywebview** and modern web technologies. Features a premium **Catppuccin Mocha** dark theme, real-time streaming, collapsible reasoning/thinking steps, offline-first assets, text selection with custom context menus, secure credential storage, SQLite database architecture, custom system prompts preset manager, artifacts side panel preview, and proxy support.
 
-## Features
+## Key Features
 
 - **Premium Dark UI** — Powered by a modern web layout using the HSL-based Catppuccin Mocha color palette, featuring glassmorphism elements, custom scrollbars, and micro-animations.
-- **Model Switching** — Auto-fetches available models via the API in the background. Initially loads from a cached local model list for a near-instant startup.
-- **Extended Thinking** — Configurable reasoning/thinking mode (adaptive / enabled / disabled) with budget token controls. Reasoning paths are visualised in an expandable toggle panel with estimated token sizes.
+- **Model Switching & Persistence** — Auto-fetches available models via the API in the background. Initially loads from a cached local model list for a near-instant startup. Switched model settings persist across application restarts.
+- **Extended Thinking** — Configurable reasoning/thinking mode (adaptive / enabled / disabled) with budget token controls. Reasoning paths are visualized in an expandable toggle panel with estimated token sizes.
+- **Stop Generating Button** — Interrupt active streaming with a visual control, terminating the connection and displaying an `🚫 已中止` (Aborted) badge while saving partial responses.
+- **Artifacts Side Panel** — A collapsible right-hand side panel that renders SVGs natively, runs HTML snippets in a sandboxed `<iframe>` container, and processes Markdown or structural graphs using local `mermaid.js`, providing rich, isolated previews.
+- **System Prompts Preset Manager** — Save, edit, and delete system prompt presets via the Settings (⚙️) modal. Easily switch active presets directly from the navigation bar dropdown.
+- **Secure Storage** — Encrypts and stores Anthropic API keys directly inside the Windows Credential Manager using `keyring`. Falls back to an obfuscated Base64 + XOR salt scheme when a keyring isn't available.
+- **SQLite Database Architecture** — Shifts the storage layer from individual files to a structured SQLite database (`claude_chat.db`). Legacy chat history JSON files inside `conversations/` are automatically migrated on boot and archived in `conversations_backup/`.
+- **System Log Viewer** — Logs system behavior directly to `claude_chat.log`. View, refresh, copy, and clear logs in real time from the Settings (⚙️) modal.
+- **Raw Packet Viewer** — An API payload inspector. Click the package icon (`📦`) next to any message to view the database record and the Anthropic API request/response JSON payload (with massive base64 content sanitized).
 - **Text Selection & Custom Context Menu** — Full mouse selection enabled natively. Right-clicking inside input fields brings up standard Cut/Copy/Paste/Select All options, while right-clicking inside message cards offers "Copy Selection", "Copy Message", and "Select All" actions.
-- **Windows Ctypes Clipboard Bridge** — Utilises a ctypes clipboard hook on Windows to bypass WebView2's clipboard restrictions, ensuring reliable paste functions.
-- **Offline-First Libraries** — Markdown (`marked.js`) and syntax highlighting (`highlight.js` with `github-dark` theme) are fully localized inside the project. The application does not rely on external CDN dependencies, preventing GFW blockages or slow loading times.
-- **File Upload** — Supports attaching text documents, images (base64 encoded), and PDFs directly.
-- **Conversation Management** — Easily create, delete, and switch between conversations. Conversations are automatically pruned (keeping the last 50 files) to save disk space.
-- **Token Counting** — Displays input and output token counts for each conversation interaction.
+- **Windows Ctypes Clipboard Bridge** — Utilizes a ctypes clipboard hook on Windows to bypass WebView2's clipboard restrictions, ensuring reliable copy/paste functions.
+- **Offline-First Libraries** — Markdown (`marked.js`), syntax highlighting (`highlight.js`), and graphing (`mermaid.js`) are fully localized. The application operates entirely without external CDN network requests.
 - **Proxy Support** — Choose between system proxy (environment variables), no proxy, or custom proxy URL configs directly via a graphical modal.
 
 ## Requirements
 
 - Python 3.10+
-- Anthropic API key (set inside the app settings)
+- Anthropic API key (configured inside the app settings)
 - Internet connection (for API calls)
 
 ## Quick Start
@@ -27,7 +31,7 @@ Desktop GUI client for Anthropic Claude API, built with **pywebview** and modern
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Run
+# 2. Run the application
 python claude_chat.py
 ```
 
@@ -35,11 +39,12 @@ On first launch, click the settings gear icon (⚙️) to configure your Anthrop
 
 ## Dependencies
 
-| Package | Version |
-|---------|---------|
-| pywebview | >=5.0 |
-| anthropic | >=0.103.0 |
-| Pillow | >=10.0.0 |
+| Package | Version | Description |
+|---------|---------|-------------|
+| pywebview | >=5.0 | Desktop GUI container |
+| anthropic | >=0.103.0 | Anthropic SDK |
+| Pillow | >=10.0.0 | Image processing |
+| keyring | >=24.0.0 | Secure OS credential storage |
 
 ## Project Structure
 
@@ -51,15 +56,18 @@ Claude_chat/
 │   ├── __init__.py     # Module initialization
 │   ├── app.py          # PyWebView GUI & JS bridge API
 │   ├── client.py       # Anthropic Client wrapper
-│   ├── config.py       # Configuration manager
-│   ├── conversation.py # Conversation JSON manager
+│   ├── config.py       # Configuration manager & Secure Storage
+│   ├── conversation.py # Conversation JSON manager (Legacy)
+│   ├── db.py           # SQLite database layer & JSON migrator
 │   └── ui/             # Web interface files
 │       ├── index.html  # Application HTML layout
 │       ├── style.css   # HSL Catppuccin Mocha styles
 │       ├── app.js      # Frontend interaction logic & stream callbacks
-│       └── libs/       # Offline-first localized libraries (marked, highlight)
+│       └── libs/       # Localized libraries (marked, highlight, mermaid)
 ├── config.json         # Runtime configuration file (git-ignored)
-└── conversations/      # Chat history directory (git-ignored)
+├── claude_chat.db      # SQLite database file (git-ignored)
+├── conversations/      # Legacy chat history directory (git-ignored)
+└── conversations_backup/# Legacy chat history archives after migration (git-ignored)
 ```
 
 ### config.json
@@ -67,11 +75,11 @@ Claude_chat/
 ```json
 {
   "api_key": "sk-ant-...",
-  "model": "claude-sonnet-4-20250514",
-  "temperature": 0.7,
+  "model": "claude-3-7-sonnet-20250219",
+  "temperature": 1.0,
   "max_tokens": 4096,
-  "thinking_enabled": false,
-  "thinking_type": "adaptive",
+  "thinking_enabled": true,
+  "thinking_type": "enabled",
   "thinking_budget": 16000,
   "proxy_mode": "system",
   "proxy_url": ""

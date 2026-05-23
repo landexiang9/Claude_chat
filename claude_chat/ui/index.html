@@ -172,6 +172,7 @@
                 </div>
             </div>
             <div class="modal-footer">
+                <button id="view-logs-btn" class="btn btn-secondary" style="margin-right: auto;">📋 查看日志</button>
                 <button id="save-settings-btn" class="btn btn-primary">保存设置</button>
                 <button class="btn btn-secondary cancel-modal-btn">取消</button>
             </div>
@@ -226,6 +227,52 @@
             <div class="modal-footer">
                 <button id="confirm-delete-btn" class="btn btn-danger">确认删除</button>
                 <button class="btn btn-secondary cancel-modal-btn">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logs Viewer Modal -->
+    <div id="logs-modal" class="modal-overlay hidden">
+        <div class="modal-card" style="max-width: 800px; width: 90%;">
+            <div class="modal-header">
+                <h2>📋 系统运行日志</h2>
+                <button class="close-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 12px 16px;">
+                <div class="form-group" style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
+                    <span style="font-size: 13px; color: var(--subtext0);">显示最近 200 行日志内容：</span>
+                    <button id="refresh-logs-btn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;">🔄 刷新</button>
+                    <button id="clear-logs-btn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;">🗑️ 清空日志</button>
+                    <button id="copy-logs-btn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;">📋 复制</button>
+                </div>
+                <div id="logs-container" style="background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 8px; padding: 12px; max-height: 400px; overflow-y: auto;">
+                    <pre><code id="logs-content" style="font-family: 'Consolas', 'Fira Code', monospace; font-size: 11px; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-all;"></code></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary cancel-modal-btn">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Packet Viewer Modal -->
+    <div id="packet-modal" class="modal-overlay hidden" style="z-index: 10002;">
+        <div class="modal-card" style="max-width: 800px; width: 90%;">
+            <div class="modal-header">
+                <h2>📦 原始数据包详情 (Sent/Received Packet)</h2>
+                <button class="close-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 12px 16px;">
+                <div class="form-group" style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
+                    <span style="font-size: 13px; color: var(--subtext0);">显示该消息的本地数据库记录与 API 传输 Payload：</span>
+                    <button id="copy-packet-btn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;">📋 复制完整 JSON</button>
+                </div>
+                <div id="packet-container" style="background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 8px; padding: 12px; max-height: 450px; overflow-y: auto;">
+                    <pre><code id="packet-content" class="language-json" style="font-family: 'Consolas', 'Fira Code', monospace; font-size: 11.5px; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-all;"></code></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary cancel-modal-btn">关闭</button>
             </div>
         </div>
     </div>

@@ -3,6 +3,9 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
+import logging
+
+logger = logging.getLogger("claude_chat")
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent
@@ -40,6 +43,7 @@ class DatabaseManager:
         return conn
 
     def init_db(self):
+        logger.info("Initializing SQLite database tables...")
         with self.get_connection() as conn:
             # Create conversations table
             conn.execute("""
@@ -135,7 +139,7 @@ class DatabaseManager:
                     counter += 1
                 f.rename(dest)
             except Exception as e:
-                print(f"Error migrating JSON file {f.name}: {e}")
+                logger.error(f"Error migrating JSON file {f.name}: {e}")
 
     def refresh(self):
         """

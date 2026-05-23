@@ -2,11 +2,40 @@ import json
 from pathlib import Path
 import platform
 import base64
+import logging
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent
 CONFIG_PATH = BASE_DIR / "config.json"
 CONVERSATIONS_DIR = BASE_DIR / "conversations"
+
+# Setup standard logging
+LOG_PATH = BASE_DIR / "claude_chat.log"
+
+def setup_logging():
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        # File Handler
+        try:
+            file_handler = logging.FileHandler(LOG_PATH, encoding="utf-8")
+            file_handler.setLevel(logging.INFO)
+            file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(file_formatter)
+            logger.addHandler(file_handler)
+        except Exception as e:
+            print(f"Failed to create file handler for logging: {e}")
+        
+        # Console Handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(console_formatter)
+        logger.addHandler(console_handler)
+
+setup_logging()
+logger = logging.getLogger("claude_chat")
+
 
 # Fallback Models if API listing fails
 FALLBACK_MODELS = [
@@ -100,7 +129,7 @@ class ConfigManager:
                             if obf:
                                 api_key_val = xor_decrypt(obf)
                     except Exception as e:
-                        print(f"Failed to read from keyring: {e}")
+                        logger.warning(f"Failed to read from keyring: {e}")
                         obf = loaded.get("api_key_obfuscated", "")
                         if obf:
                             api_key_val = xor_decrypt(obf)
@@ -114,7 +143,7 @@ class ConfigManager:
                 
                 self.data["api_key"] = api_key_val
             except (json.JSONDecodeError, Exception) as e:
-                print(f"Error loading config: {e}")
+                logger.error(f"Error loading config: {e}")
 
     def save(self):
         to_save = dict(self.data)
@@ -134,7 +163,7 @@ class ConfigManager:
                 # Write an obfuscated copy as fallback backup in case keyring becomes inaccessible
                 to_save["api_key_obfuscated"] = xor_crypt(api_key_val)
             except Exception as e:
-                print(f"Keyring save failed, using XOR fallback: {e}")
+                logger.warning(f"Keyring save failed, using XOR fallback: {e}")
                 to_save["api_key_storage"] = "xor"
                 to_save["api_key_obfuscated"] = xor_crypt(api_key_val)
                 
@@ -142,7 +171,7 @@ class ConfigManager:
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(to_save, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"Error saving config file: {e}")
+            logger.error(f"Error saving config file: {e}")
 
     def get(self, key, default=None):
         return self.data.get(key, default)

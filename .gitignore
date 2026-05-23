@@ -5,3 +5,4 @@ conversations/
 .antigravitycli
 claude_chat.db
 conversations_backup/
+*.log

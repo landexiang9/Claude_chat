@@ -2,6 +2,7 @@
 let config = {};
 let conversations = [];
 let currentConvId = null;
+let currentConv = null;
 let attachments = [];
 let isStreaming = false;
 let streamingText = "";
@@ -33,6 +34,18 @@ const tempLabelTitle = document.getElementById("temp-label-title");
 const maxTokensInput = document.getElementById("max-tokens-input");
 const budgetGroup = document.getElementById("budget-group");
 const budgetTokensInput = document.getElementById("budget-tokens-input");
+
+const viewLogsBtn = document.getElementById("view-logs-btn");
+const logsModal = document.getElementById("logs-modal");
+const refreshLogsBtn = document.getElementById("refresh-logs-btn");
+const clearLogsBtn = document.getElementById("clear-logs-btn");
+const copyLogsBtn = document.getElementById("copy-logs-btn");
+const logsContainer = document.getElementById("logs-container");
+const logsContent = document.getElementById("logs-content");
+
+const packetModal = document.getElementById("packet-modal");
+const packetContent = document.getElementById("packet-content");
+const copyPacketBtn = document.getElementById("copy-packet-btn");
 
 const proxyBtn = document.getElementById("proxy-btn");
 const proxyModal = document.getElementById("proxy-modal");
@@ -118,6 +131,13 @@ window.onModelsUpdated = (models) => {
 // Model change listener
 modelSelect.addEventListener("change", async (e) => {
     config.model = e.target.value;
+    // Sync with local conversations list
+    if (currentConvId) {
+        const conv = conversations.find(c => c.id === currentConvId);
+        if (conv) {
+            conv.model = config.model;
+        }
+    }
     await pywebview.api.save_config(config);
     statusLabel.textContent = `模型切换为: ${config.model}`;
 });
@@ -173,6 +193,7 @@ async function selectConversation(id) {
     
     const conv = await pywebview.api.load_conversation(id);
     if (!conv) return;
+    currentConv = conv;
     
     // Set tokens labels
     if (conv.input_tokens !== undefined && conv.output_tokens !== undefined) {
@@ -190,8 +211,8 @@ async function selectConversation(id) {
     }
 
     // Render messages
-    conv.messages.forEach(msg => {
-        appendMessage(msg.role, msg.content, msg.thinking);
+    conv.messages.forEach((msg, idx) => {
+        appendMessage(msg.role, msg.content, msg.thinking, false, idx);
     });
     
     scrollChatBottom();
@@ -208,7 +229,7 @@ async function startNewChat() {
 newChatBtn.addEventListener("click", startNewChat);
 
 // Append message block to display area
-function appendMessage(role, content, thinking, isStreamingPlaceholder = false) {
+function appendMessage(role, content, thinking, isStreamingPlaceholder = false, msgIndex = -1) {
     const row = document.createElement("div");
     row.className = `message-row ${role}`;
     if (isStreamingPlaceholder) {
@@ -238,8 +259,19 @@ function appendMessage(role, content, thinking, isStreamingPlaceholder = false) 
         const copy = document.createElement("button");
         copy.className = "copy-btn";
         copy.textContent = "📋";
+        copy.title = "复制消息内容";
         copy.onclick = () => copyText(typeof content === 'string' ? content : JSON.stringify(content));
         meta.appendChild(copy);
+
+        if (msgIndex !== -1) {
+            const packet = document.createElement("button");
+            packet.className = "copy-btn";
+            packet.style.marginLeft = "6px";
+            packet.textContent = "📦";
+            packet.title = "查看原始数据包";
+            packet.onclick = () => showPacketModal(currentConvId, msgIndex);
+            meta.appendChild(packet);
+        }
     }
     header.appendChild(meta);
     card.appendChild(header);
@@ -425,7 +457,8 @@ async function sendMessage() {
     if (attachments.length > 0) {
         displayContent += "\n[附件: " + attachments.map(a => a.name).join(", ") + "]";
     }
-    appendMessage("user", displayContent);
+    const userMsgIndex = currentConv ? currentConv.messages.length : -1;
+    appendMessage("user", displayContent, "", false, userMsgIndex);
     scrollChatBottom();
 
     // 2. Add empty Assistant placeholder for streaming response
@@ -512,6 +545,7 @@ window.onStreamMessage = (type, data) => {
         
         // Reload conversations to update title card
         loadConversations();
+        reloadCurrentConversation();
         
     } else if (type === "aborted") {
         isStreaming = false;
@@ -537,6 +571,7 @@ window.onStreamMessage = (type, data) => {
         if (thinkContainer) thinkContainer.removeAttribute("id");
         
         loadConversations();
+        reloadCurrentConversation();
         
     } else if (type === "error") {
         isStreaming = false;
@@ -676,6 +711,80 @@ saveSettingsBtn.onclick = async () => {
     hideModal(settingsModal);
     statusLabel.textContent = "设置已保存";
 };
+
+// Log Viewer Modal logic
+async function loadAndShowLogs() {
+    const logs = await pywebview.api.get_logs();
+    logsContent.textContent = logs;
+    if (logsContainer) {
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+    }
+}
+
+viewLogsBtn.onclick = () => {
+    hideModal(settingsModal);
+    loadAndShowLogs();
+    showModal(logsModal);
+};
+
+refreshLogsBtn.onclick = async () => {
+    await loadAndShowLogs();
+    statusLabel.textContent = "日志已刷新";
+};
+
+clearLogsBtn.onclick = async () => {
+    const success = await pywebview.api.clear_logs();
+    if (success) {
+        await loadAndShowLogs();
+        statusLabel.textContent = "日志已清空";
+    } else {
+        statusLabel.textContent = "清空日志失败";
+    }
+};
+
+copyLogsBtn.onclick = () => {
+    copyText(logsContent.textContent);
+    statusLabel.textContent = "📋 日志已成功复制到剪贴板";
+};
+
+// Packet Modal Logic
+async function showPacketModal(convId, messageIndex) {
+    if (!convId || messageIndex === -1) return;
+    packetContent.textContent = "正在从数据库加载原始数据包...";
+    showModal(packetModal);
+    
+    try {
+        const result = await pywebview.api.get_message_packet(convId, messageIndex);
+        if (result.error) {
+            packetContent.textContent = "加载失败: " + result.error;
+        } else {
+            const jsonText = JSON.stringify(result, null, 2);
+            packetContent.textContent = jsonText;
+            if (typeof hljs !== 'undefined') {
+                hljs.highlightElement(packetContent);
+            }
+        }
+    } catch (e) {
+        packetContent.textContent = "加载失败: " + e;
+    }
+}
+
+copyPacketBtn.onclick = () => {
+    copyText(packetContent.textContent);
+    statusLabel.textContent = "📋 数据包 JSON 已成功复制到剪贴板";
+};
+
+async function reloadCurrentConversation() {
+    if (!currentConvId) return;
+    const conv = await pywebview.api.load_conversation(currentConvId);
+    if (!conv) return;
+    currentConv = conv;
+    messageList.innerHTML = "";
+    conv.messages.forEach((msg, idx) => {
+        appendMessage(msg.role, msg.content, msg.thinking, false, idx);
+    });
+    scrollChatBottom();
+}
 
 // Proxy Modal
 proxyBtn.onclick = () => {

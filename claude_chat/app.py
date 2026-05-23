@@ -7,16 +7,19 @@ import queue
 import threading
 import json
 import mimetypes
+import logging
 from datetime import datetime
 from pathlib import Path
 import webview
+
+logger = logging.getLogger("claude_chat")
 
 # Local package imports
 from claude_chat.config import (
     FALLBACK_MODELS, IMAGE_EXTENSIONS, PDF_EXTENSIONS, TEXT_EXTENSIONS, ConfigManager
 )
 from claude_chat.conversation import read_text_file
-from claude_chat.db import DatabaseManager
+from claude_chat.db import DatabaseManager, deserialize_content
 from claude_chat.client import (
     extract_api_message, stream_claude_response, fetch_available_models
 )
@@ -85,10 +88,11 @@ class ClaudeChatApp:
                 f.write(content)
             return True
         except Exception as e:
-            print(f"Error saving code block: {e}")
+            logger.error(f"Error saving code block: {e}")
             return False
 
     def mainloop(self):
+        logger.info("Starting Claude Chat app GUI via pywebview...")
         # We start the webview window
         # HTML file path
         ui_dir = Path(__file__).parent / "ui"
@@ -225,6 +229,7 @@ class WebAPI:
         return self._app.config.data
 
     def save_config(self, new_config):
+        logger.info(f"Saving system configuration. Keys present: {list(new_config.keys())}")
         # Update config fields
         for k, v in new_config.items():
             self._app.config.set(k, v)
@@ -234,6 +239,7 @@ class WebAPI:
         
         # If there's an active conversation, update parameters as well
         if self._app.current_conv:
+            self._app.current_conv["model"] = self._app.config.get("model")
             self._app.current_conv["temperature"] = self._app.config.get("temperature", 0.7)
             self._app.current_conv["max_tokens"] = self._app.config.get("max_tokens", 4096)
             if self._app.config.get("thinking_enabled"):
@@ -307,12 +313,14 @@ class WebAPI:
         return self._app.conv_manager.refresh()
 
     def load_conversation(self, conv_id):
+        logger.info(f"Loading conversation details for ID: {conv_id}")
         conv = self._app.conv_manager.load_conversation(conv_id)
         if conv:
             self._app.current_conv = conv
         return conv
 
     def new_conversation(self):
+        logger.info("Initializing a new conversation session...")
         conv_data = self._app.conv_manager.new_conversation()
         conv_data["model"] = self._app.config.get("model", FALLBACK_MODELS[0])
         conv_data["temperature"] = self._app.config.get("temperature", 0.7)
@@ -327,10 +335,99 @@ class WebAPI:
         return conv_data
 
     def delete_conversation(self, conv_id):
+        logger.info(f"Deleting conversation ID: {conv_id}")
         self._app.conv_manager.delete_conversation(conv_id)
         if self._app.current_conv and self._app.current_conv.get("id") == conv_id:
             self._app.current_conv = None
         return True
+
+    def get_message_packet(self, conv_id, message_index):
+        logger.info(f"Fetching raw packet for conversation {conv_id} at index {message_index}")
+        try:
+            with self._app.conv_manager.get_connection() as conn:
+                conv_row = conn.execute("SELECT * FROM conversations WHERE id = ?", (conv_id,)).fetchone()
+                if not conv_row:
+                    return {"error": "Conversation not found"}
+                
+                cursor = conn.execute(
+                    "SELECT * FROM messages WHERE conversation_id = ? ORDER BY id ASC", 
+                    (conv_id,)
+                )
+                rows = cursor.fetchall()
+                if message_index < 0 or message_index >= len(rows):
+                    return {"error": "Message index out of range"}
+                
+                row = rows[message_index]
+                
+                # Construct database record
+                db_record = {
+                    "id": row["id"],
+                    "conversation_id": row["conversation_id"],
+                    "role": row["role"],
+                    "content": row["content"],
+                    "thinking": row["thinking"],
+                    "aborted": row["aborted"],
+                    "created_at": row["created_at"]
+                }
+                
+                # Construct API payload
+                role = row["role"]
+                raw_content = deserialize_content(row["content"])
+                
+                # Use client.py's extract_api_message logic to form content
+                from claude_chat.client import extract_api_message
+                
+                temp_msg = {
+                    "role": role,
+                    "content": raw_content
+                }
+                
+                api_msg = extract_api_message(temp_msg)
+                
+                # For assistant message, if there is thinking, include it in the API payload's content
+                if role == "assistant" and row["thinking"]:
+                    thinking_text = row["thinking"]
+                    has_thinking_block = False
+                    if isinstance(api_msg.get("content"), list):
+                        for block in api_msg["content"]:
+                            if isinstance(block, dict) and block.get("type") == "thinking":
+                                has_thinking_block = True
+                                break
+                    
+                    if not has_thinking_block:
+                        thinking_block = {
+                            "type": "thinking",
+                            "thinking": thinking_text,
+                            "signature": "omitted_for_display"
+                        }
+                        if isinstance(api_msg.get("content"), list):
+                            api_msg["content"].insert(0, thinking_block)
+                        else:
+                            api_msg["content"] = [thinking_block, {"type": "text", "text": str(raw_content)}]
+                
+                # Sanitize base64 in api_msg
+                def sanitize_base64_in_block(block):
+                    if isinstance(block, dict) and block.get("type") in ("image", "document"):
+                        source = block.get("source")
+                        if isinstance(source, dict) and source.get("type") == "base64":
+                            data = source.get("data")
+                            if isinstance(data, str) and len(data) > 120:
+                                source["data"] = f"[BASE64_DATA_OMITTED_SIZE_{len(data)}_CHARS]"
+                    return block
+                
+                if isinstance(api_msg.get("content"), list):
+                    api_msg["content"] = [sanitize_base64_in_block(b) for b in api_msg["content"]]
+                
+                return {
+                    "database_record": db_record,
+                    "api_payload": api_msg,
+                    "model": conv_row["model"],
+                    "temperature": conv_row["temperature"],
+                    "max_tokens": conv_row["max_tokens"],
+                }
+        except Exception as e:
+            logger.exception(f"Error fetching raw packet: {e}")
+            return {"error": str(e)}
 
     def select_attachments(self):
         if not self._app.window:
@@ -359,6 +456,7 @@ class WebAPI:
         return result
 
     def send_message(self, conv_id, text, attachments):
+        logger.info(f"Sending message in conversation {conv_id}. Text length: {len(text)}. Attachments: {len(attachments) if attachments else 0}")
         if self._app.is_streaming:
             return False
         
@@ -486,5 +584,29 @@ class WebAPI:
                 "size": size
             }
         except Exception as e:
-            print(f"Error saving dropped file: {e}")
+            logger.error(f"Error saving dropped file: {e}")
             return None
+
+    def get_logs(self, max_lines=200):
+        from claude_chat.config import LOG_PATH
+        if not LOG_PATH.exists():
+            return "暂无运行日志。"
+        try:
+            with open(LOG_PATH, "r", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+            last_lines = lines[-max_lines:] if len(lines) > max_lines else lines
+            return "".join(last_lines)
+        except Exception as e:
+            logger.error(f"Error reading log file: {e}")
+            return f"读取日志出错: {e}"
+
+    def clear_logs(self):
+        from claude_chat.config import LOG_PATH
+        try:
+            with open(LOG_PATH, "w", encoding="utf-8") as f:
+                f.write(f"{datetime.now().isoformat()} - claude_chat - INFO - Log cleared by user.\n")
+            logger.info("Logs cleared successfully.")
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing log file: {e}")
+            return False
