@@ -1555,7 +1555,7 @@ function renderArtifactPreview(content, type) {
         iframe.style.height = "100%";
         iframe.style.border = "none";
         iframe.style.backgroundColor = "#ffffff";
-        iframe.sandbox = "allow-scripts";
+        iframe.sandbox = "allow-scripts allow-same-origin allow-forms allow-modals allow-popups";
         iframe.srcdoc = content;
         
         artifactsPreviewContainer.appendChild(iframe);
