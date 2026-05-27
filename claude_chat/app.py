@@ -707,10 +707,16 @@ class WebAPI:
                 temp_path = temp_file.name
                 
             try:
+                import os
+                run_env = os.environ.copy()
+                run_env["PYTHONIOENCODING"] = "utf-8"
+                run_env["PYTHONUTF8"] = "1"
+                
                 res = subprocess.run(
                     [executable, temp_path],
                     capture_output=True,
-                    timeout=15
+                    timeout=15,
+                    env=run_env
                 )
                 
                 def safe_decode(b):
