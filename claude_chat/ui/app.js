@@ -1556,13 +1556,9 @@ function renderArtifactPreview(content, type) {
         iframe.style.border = "none";
         iframe.style.backgroundColor = "#ffffff";
         iframe.sandbox = "allow-scripts";
+        iframe.srcdoc = content;
         
         artifactsPreviewContainer.appendChild(iframe);
-        
-        const doc = iframe.contentDocument || iframe.contentWindow.document;
-        doc.open();
-        doc.write(content);
-        doc.close();
         
     } else if (type === "svg") {
         artifactsPreviewContainer.innerHTML = content;
