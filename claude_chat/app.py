@@ -54,6 +54,8 @@ class ClaudeChatApp:
         self.abort_event = threading.Event()
         self.active_stream = None
         self.window = None
+        self.active_processes = {}
+        self.process_lock = threading.Lock()
 
     def abort_generation(self):
         self.abort_event.set()
@@ -116,6 +118,19 @@ class ClaudeChatApp:
         
         # Start the pywebview event loop
         webview.start()
+        
+        # Clean up any active terminal processes on exit
+        logger.info("App window closed. Cleaning up active background console processes...")
+        with self.process_lock:
+            for proc_id, p_info in list(self.active_processes.items()):
+                try:
+                    proc = p_info["proc"]
+                    if proc.poll() is None:
+                        proc.kill()
+                    Path(p_info["temp_path"]).unlink(missing_ok=True)
+                except Exception:
+                    pass
+            self.active_processes.clear()
 
     def _refresh_models_async(self):
         def _fetch():
@@ -684,11 +699,15 @@ class WebAPI:
             logger.exception(f"Error branching conversation: {e}")
             return None
 
-    def execute_code_locally(self, code, lang):
-        logger.info(f"Executing local code block of lang {lang}")
+    def start_code_execution(self, code, lang):
+        logger.info(f"Starting async local code block execution of lang {lang}")
         import subprocess
         import tempfile
         import sys
+        import uuid
+        import os
+        import codecs
+        import threading
         
         norm_lang = lang.lower()
         if norm_lang not in ("python", "javascript", "js"):
@@ -701,70 +720,135 @@ class WebAPI:
             suffix = ".js"
             executable = "node"
             
+        proc_id = str(uuid.uuid4())
+        
         try:
             with tempfile.NamedTemporaryFile(mode='w', suffix=suffix, delete=False, encoding='utf-8') as temp_file:
                 temp_file.write(code)
                 temp_path = temp_file.name
                 
-            try:
-                import os
-                run_env = os.environ.copy()
+            run_env = os.environ.copy()
+            if norm_lang == "python":
                 run_env["PYTHONIOENCODING"] = "utf-8"
                 run_env["PYTHONUTF8"] = "1"
                 
-                res = subprocess.run(
-                    [executable, temp_path],
-                    capture_output=True,
-                    timeout=15,
-                    env=run_env
-                )
-                
-                def safe_decode(b):
-                    if not b:
-                        return ""
-                    try:
-                        return b.decode("utf-8")
-                    except UnicodeDecodeError:
-                        try:
-                            return b.decode("gbk", errors="replace")
-                        except Exception:
-                            return b.decode("utf-8", errors="replace")
-                
-                return {
-                    "stdout": safe_decode(res.stdout),
-                    "stderr": safe_decode(res.stderr),
-                    "exit_code": res.returncode
+            # Spawn process
+            proc = subprocess.Popen(
+                [executable, temp_path],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=run_env
+            )
+            
+            with self._app.process_lock:
+                self._app.active_processes[proc_id] = {
+                    "proc": proc,
+                    "temp_path": temp_path
                 }
-            except subprocess.TimeoutExpired as te:
-                def safe_decode(b):
-                    if not b:
-                        return ""
+                
+            # Start stream readers
+            def read_stream(stream, stream_type):
+                decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+                while True:
                     try:
-                        return b.decode("utf-8")
-                    except UnicodeDecodeError:
-                        try:
-                            return b.decode("gbk", errors="replace")
-                        except Exception:
-                            return b.decode("utf-8", errors="replace")
-                return {
-                    "stdout": safe_decode(te.stdout),
-                    "stderr": safe_decode(te.stderr) + "\n❌ 运行超时 (超过 15 秒)，程序已被强制中止。",
-                    "exit_code": -1
-                }
-            except FileNotFoundError:
-                if norm_lang in ("javascript", "js"):
-                    err_msg = "本地未检测到 Node.js 运行环境，请确保安装了 Node.js 且已将其加入系统环境变量 PATH 中。"
-                else:
-                    err_msg = "本地未检测到 Python 运行环境。"
-                return {"error": err_msg}
-            finally:
+                        b = stream.read(1)
+                        if not b:
+                            break
+                        char = decoder.decode(b)
+                        if char and self._app.window:
+                            js_code = f"if (window.onConsoleOutput) window.onConsoleOutput({json.dumps(proc_id)}, {json.dumps(stream_type)}, {json.dumps(char)});"
+                            self._app.window.evaluate_js(js_code)
+                    except Exception as e:
+                        logger.error(f"Error reading {stream_type} stream: {e}")
+                        break
+                # Send final decode if any
                 try:
-                    Path(temp_path).unlink(missing_ok=True)
+                    final_char = decoder.decode(b'', final=True)
+                    if final_char and self._app.window:
+                        js_code = f"if (window.onConsoleOutput) window.onConsoleOutput({json.dumps(proc_id)}, {json.dumps(stream_type)}, {json.dumps(final_char)});"
+                        self._app.window.evaluate_js(js_code)
                 except Exception:
                     pass
+            
+            # Start monitoring thread
+            def monitor_process():
+                try:
+                    exit_code = proc.wait()
+                except Exception as e:
+                    logger.error(f"Error waiting for process: {e}")
+                    exit_code = -1
+                finally:
+                    # Clean up
+                    with self._app.process_lock:
+                        if proc_id in self._app.active_processes:
+                            p_info = self._app.active_processes.pop(proc_id)
+                            try:
+                                Path(p_info["temp_path"]).unlink(missing_ok=True)
+                            except Exception:
+                                pass
+                                
+                    if self._app.window:
+                        js_code = f"if (window.onConsoleExit) window.onConsoleExit({json.dumps(proc_id)}, {exit_code});"
+                        self._app.window.evaluate_js(js_code)
+            
+            # Start threads
+            t_stdout = threading.Thread(target=read_stream, args=(proc.stdout, "stdout"), daemon=True)
+            t_stderr = threading.Thread(target=read_stream, args=(proc.stderr, "stderr"), daemon=True)
+            t_monitor = threading.Thread(target=monitor_process, daemon=True)
+            
+            t_stdout.start()
+            t_stderr.start()
+            t_monitor.start()
+            
+            return {"process_id": proc_id}
+            
+        except FileNotFoundError:
+            if norm_lang in ("javascript", "js"):
+                err_msg = "本地未检测到 Node.js 运行环境，请确保安装了 Node.js 且已将其加入系统环境变量 PATH 中。"
+            else:
+                err_msg = "本地未检测到 Python 运行环境。"
+            return {"error": err_msg}
         except Exception as e:
-            logger.exception(f"Error executing code block: {e}")
+            logger.exception(f"Error starting code execution: {e}")
             return {"error": str(e)}
+
+    def send_console_input(self, process_id, text):
+        logger.info(f"Sending input to console process {process_id}: {text}")
+        with self._app.process_lock:
+            p_info = self._app.active_processes.get(process_id)
+            if not p_info:
+                return False
+            
+            try:
+                proc = p_info["proc"]
+                if proc.poll() is None: # Process is still running
+                    proc.stdin.write((text + "\n").encode("utf-8"))
+                    proc.stdin.flush()
+                    return True
+            except Exception as e:
+                logger.error(f"Error sending input to process {process_id}: {e}")
+            return False
+
+    def kill_console_process(self, process_id):
+        logger.info(f"Terminating console process {process_id}")
+        with self._app.process_lock:
+            p_info = self._app.active_processes.get(process_id)
+            if not p_info:
+                return False
+                
+            try:
+                proc = p_info["proc"]
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=1.0)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                return True
+            except Exception as e:
+                logger.error(f"Error terminating process {process_id}: {e}")
+            return False
 
     def abort_generation(self):
         return self._app.abort_generation()

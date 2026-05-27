@@ -1711,6 +1711,55 @@ async function retryAssistantMessage(msgIndex) {
 }
 
 // Local Code Block Execution
+// Active console process registry
+const activeConsoleProcesses = new Map();
+
+// Global callbacks for interactive console output & exit
+window.onConsoleOutput = (procId, streamType, char) => {
+    const info = activeConsoleProcesses.get(procId);
+    if (info) {
+        const output = info.outputDiv;
+        let lastSpan = output.lastElementChild;
+        if (!lastSpan || lastSpan.dataset.stream !== streamType) {
+            lastSpan = document.createElement("span");
+            lastSpan.dataset.stream = streamType;
+            if (streamType === "stdout") {
+                lastSpan.style.color = "var(--green)";
+            } else if (streamType === "stderr") {
+                lastSpan.style.color = "var(--red)";
+            }
+            output.appendChild(lastSpan);
+        }
+        lastSpan.textContent += char;
+        output.scrollTop = output.scrollHeight;
+    }
+};
+
+window.onConsoleExit = (procId, exitCode) => {
+    const info = activeConsoleProcesses.get(procId);
+    if (info) {
+        const output = info.outputDiv;
+        const statusSpan = document.createElement("span");
+        if (exitCode === 0) {
+            statusSpan.style.color = "var(--overlay0)";
+            statusSpan.style.fontStyle = "italic";
+            statusSpan.textContent = `\n[程序运行完毕，退出状态码: ${exitCode}]\n`;
+        } else {
+            statusSpan.style.color = "var(--red)";
+            statusSpan.style.fontWeight = "bold";
+            statusSpan.textContent = `\n[程序异常退出，退出状态码: ${exitCode}]\n`;
+        }
+        output.appendChild(statusSpan);
+        output.scrollTop = output.scrollHeight;
+        
+        if (info.inputBar) {
+            info.inputBar.style.display = "none";
+        }
+        activeConsoleProcesses.delete(procId);
+    }
+};
+
+// Local Code Block Execution
 async function runCodeBlock(code, lang, preElement) {
     let consoleBox = preElement.nextSibling;
     if (consoleBox && consoleBox.classList && consoleBox.classList.contains("code-console-box")) {
@@ -1727,38 +1776,78 @@ async function runCodeBlock(code, lang, preElement) {
         consoleBox.style.fontFamily = "Consolas, monospace";
         consoleBox.style.fontSize = "11.5px";
         consoleBox.style.color = "var(--text)";
-        consoleBox.style.maxHeight = "200px";
-        consoleBox.style.overflowY = "auto";
-        consoleBox.style.whiteSpace = "pre-wrap";
-        consoleBox.style.wordBreak = "break-all";
+        consoleBox.style.display = "flex";
+        consoleBox.style.flexDirection = "column";
         
         preElement.style.borderRadius = "8px 8px 0 0";
         preElement.parentNode.insertBefore(consoleBox, preElement.nextSibling);
     }
     
-    consoleBox.innerHTML = `<span style="color: var(--yellow);">⚙️ 正在利用本地环境运行代码...</span>`;
+    // Render terminal structure
+    consoleBox.innerHTML = `
+        <div class="console-output-container" style="max-height: 180px; overflow-y: auto; white-space: pre-wrap; font-family: Consolas, monospace; font-size: 11.5px; word-break: break-all; padding-bottom: 4px;"></div>
+        <div class="console-input-bar" style="display: flex; align-items: center; border-top: 1px solid var(--surface0); padding-top: 8px; margin-top: 4px; gap: 8px;">
+            <span style="color: var(--blue); font-weight: bold; font-family: monospace;">&gt;</span>
+            <input type="text" class="console-input" placeholder="输入内容并回车..." style="flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-family: Consolas, monospace; font-size: 11.5px; padding: 0;">
+            <button class="console-stop-btn" style="background-color: var(--red) !important; color: var(--crust) !important; border: none; border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer; font-weight: bold; width: auto; height: auto;">⏹️ 终止</button>
+        </div>
+    `;
+    
+    const outputDiv = consoleBox.querySelector(".console-output-container");
+    const inputBar = consoleBox.querySelector(".console-input-bar");
+    const inputField = consoleBox.querySelector(".console-input");
+    const stopBtn = consoleBox.querySelector(".console-stop-btn");
+    
+    outputDiv.innerHTML = `<span style="color: var(--yellow);">⚙️ 正在利用本地环境启动程序...</span>\n`;
     
     try {
-        const result = await pywebview.api.execute_code_locally(code, lang);
+        const result = await pywebview.api.start_code_execution(code, lang);
         if (result.error) {
-            consoleBox.innerHTML = `<span style="color: var(--red);">❌ 运行失败:</span>\n${result.error}`;
+            outputDiv.innerHTML = `<span style="color: var(--red);">❌ 启动失败:</span>\n${result.error}`;
+            if (inputBar) inputBar.style.display = "none";
         } else {
-            let outputHtml = "";
-            if (result.stdout) {
-                outputHtml += `<span style="color: var(--green);">[标准输出 (stdout)]</span>\n${result.stdout}\n`;
-            }
-            if (result.stderr) {
-                outputHtml += `<span style="color: var(--red);">[错误输出 (stderr)]</span>\n${result.stderr}\n`;
-            }
-            if (result.exit_code !== 0) {
-                outputHtml += `<span style="color: var(--red); font-weight: bold;">[程序退出，状态码: ${result.exit_code}]</span>`;
-            } else if (!result.stdout && !result.stderr) {
-                outputHtml += `<span style="color: var(--overlay0); font-style: italic;">[程序运行完毕，无输出]</span>`;
-            }
-            consoleBox.innerHTML = outputHtml;
+            const procId = result.process_id;
+            outputDiv.innerHTML = `<span style="color: var(--green);">[程序已启动，正在运行...]</span>\n`;
+            
+            // Register process details
+            activeConsoleProcesses.set(procId, {
+                container: consoleBox,
+                outputDiv: outputDiv,
+                inputBar: inputBar,
+                inputField: inputField
+            });
+            
+            // Bind input event
+            inputField.onkeydown = async (e) => {
+                if (e.key === "Enter") {
+                    const text = inputField.value;
+                    inputField.value = "";
+                    
+                    // Echo output
+                    const userSpan = document.createElement("span");
+                    userSpan.style.color = "var(--blue)";
+                    userSpan.style.fontWeight = "bold";
+                    userSpan.textContent = `> ${text}\n`;
+                    outputDiv.appendChild(userSpan);
+                    outputDiv.scrollTop = outputDiv.scrollHeight;
+                    
+                    await pywebview.api.send_console_input(procId, text);
+                }
+            };
+            
+            // Bind stop button
+            stopBtn.onclick = async () => {
+                stopBtn.disabled = true;
+                stopBtn.textContent = "正在终止...";
+                await pywebview.api.kill_console_process(procId);
+            };
+            
+            // Focus input field
+            inputField.focus();
         }
     } catch (e) {
-        consoleBox.innerHTML = `<span style="color: var(--red);">❌ 运行出错:</span>\n${e}`;
+        outputDiv.innerHTML = `<span style="color: var(--red);">❌ 启动出错:</span>\n${e}`;
+        if (inputBar) inputBar.style.display = "none";
     }
     scrollChatBottom();
 }
