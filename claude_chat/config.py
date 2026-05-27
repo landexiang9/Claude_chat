@@ -94,6 +94,8 @@ class ConfigManager:
             "thinking_enabled": False,
             "thinking_type": "adaptive",
             "thinking_budget": 16000,
+            "thinking_level": "high",
+            "auto_run_code": False,
             "proxy_mode": "system",
             "proxy_url": "",
             "system_prompts": [

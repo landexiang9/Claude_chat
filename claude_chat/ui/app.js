@@ -7,6 +7,7 @@ let attachments = [];
 let isStreaming = false;
 let streamingText = "";
 let streamingThinking = "";
+let availableModels = [];
 
 // DOM Elements
 const convList = document.getElementById("conv-list");
@@ -34,6 +35,9 @@ const tempLabelTitle = document.getElementById("temp-label-title");
 const maxTokensInput = document.getElementById("max-tokens-input");
 const budgetGroup = document.getElementById("budget-group");
 const budgetTokensInput = document.getElementById("budget-tokens-input");
+const thinkingLevelGroup = document.getElementById("thinking-level-group");
+const thinkingLevelSelect = document.getElementById("thinking-level-select");
+const autoRunCodeInput = document.getElementById("auto-run-code-input");
 
 const viewLogsBtn = document.getElementById("view-logs-btn");
 const logsModal = document.getElementById("logs-modal");
@@ -89,6 +93,7 @@ window.addEventListener("pywebviewready", async () => {
     
     // 2. Load and configure model dropdown
     const models = await pywebview.api.fetch_models();
+    availableModels = models;
     updateModelList(models);
     
     // 3. Load conversations
@@ -115,27 +120,40 @@ function updateLedStatus() {
 function updateModelList(models) {
     modelSelect.innerHTML = "";
     models.forEach(m => {
+        const mId = typeof m === 'string' ? m : m.id;
+        const mName = typeof m === 'string' ? m : (m.display_name || m.id);
         const option = document.createElement("option");
-        option.value = m;
-        option.textContent = m;
-        if (m === config.model) option.selected = true;
+        option.value = mId;
+        option.textContent = mName;
+        if (mId === config.model) option.selected = true;
         modelSelect.appendChild(option);
     });
 }
 
 // Bind models updated callback
 window.onModelsUpdated = (models) => {
+    availableModels = models;
     updateModelList(models);
 };
 
 // Model change listener
 modelSelect.addEventListener("change", async (e) => {
     config.model = e.target.value;
+    
+    // Safeguard: check capabilities of the new model
+    const modelObj = availableModels.find(m => (typeof m === 'object' && m.id === config.model));
+    if (modelObj && !modelObj.thinking_supported) {
+        config.thinking_enabled = false;
+    }
+    
     // Sync with local conversations list
     if (currentConvId) {
         const conv = conversations.find(c => c.id === currentConvId);
         if (conv) {
             conv.model = config.model;
+            if (modelObj && !modelObj.thinking_supported) {
+                conv.thinking = null;
+            }
         }
     }
     await pywebview.api.save_config(config);
@@ -271,6 +289,34 @@ function appendMessage(role, content, thinking, isStreamingPlaceholder = false, 
             packet.title = "查看原始数据包";
             packet.onclick = () => showPacketModal(currentConvId, msgIndex);
             meta.appendChild(packet);
+            
+            const branch = document.createElement("button");
+            branch.className = "copy-btn";
+            branch.style.marginLeft = "6px";
+            branch.textContent = "🌿";
+            branch.title = "从此消息创建分支对话";
+            branch.onclick = () => branchConversation(msgIndex);
+            meta.appendChild(branch);
+            
+            if (role === "user") {
+                const edit = document.createElement("button");
+                edit.className = "copy-btn";
+                edit.style.marginLeft = "6px";
+                edit.textContent = "✏️";
+                edit.title = "编辑并重新发送";
+                edit.onclick = () => editUserMessage(msgIndex);
+                meta.appendChild(edit);
+            }
+            
+            if (role === "assistant" && currentConv && msgIndex === currentConv.messages.length - 1) {
+                const retry = document.createElement("button");
+                retry.className = "copy-btn";
+                retry.style.marginLeft = "6px";
+                retry.textContent = "🔄";
+                retry.title = "不满意，重新生成";
+                retry.onclick = () => retryAssistantMessage(msgIndex);
+                meta.appendChild(retry);
+            }
         }
     }
     header.appendChild(meta);
@@ -376,15 +422,29 @@ function highlightCodeBlocks(container) {
                 }
             });
             
+            let runBtnHtml = "";
+            const normLang = lang.toLowerCase();
+            if (normLang === 'python' || normLang === 'javascript' || normLang === 'js') {
+                runBtnHtml = `<button class="code-run-btn" style="background-color: var(--green) !important; color: var(--crust) !important; border: none; border-radius: 4px; padding: 2px 8px; font-size: 11.5px; cursor: pointer; font-weight: 600; margin-right: 6px;">▶️ 运行</button>`;
+            }
+
             const header = document.createElement('div');
             header.className = 'code-header';
             header.innerHTML = `
                 <span>${lang.toUpperCase()}</span>
                 <div class="code-header-actions">
+                    ${runBtnHtml}
                     <button class="code-save-btn">保存为文件</button>
                     <button class="code-copy-btn">复制</button>
                 </div>
             `;
+            
+            if (normLang === 'python' || normLang === 'javascript' || normLang === 'js') {
+                header.querySelector('.code-run-btn').onclick = () => {
+                    runCodeBlock(block.innerText, normLang, pre);
+                };
+            }
+
             // Add save action
             header.querySelector('.code-save-btn').onclick = async () => {
                 const content = block.innerText;
@@ -403,7 +463,6 @@ function highlightCodeBlocks(container) {
             pre.insertBefore(header, block);
             
             // Phase 2 Artifact: If code is html, svg, xml, or mermaid, add a preview button below pre block
-            const normLang = lang.toLowerCase();
             if (normLang === 'html' || normLang === 'svg' || normLang === 'mermaid' || normLang === 'xml') {
                 const showBtn = document.createElement('button');
                 showBtn.className = 'show-artifact-btn';
@@ -659,7 +718,15 @@ function showSettings() {
     });
     
     budgetTokensInput.value = config.thinking_budget;
-    toggleBudgetGroup(mode);
+    if (thinkingLevelSelect) {
+        thinkingLevelSelect.value = config.thinking_level || "high";
+    }
+    if (autoRunCodeInput) {
+        autoRunCodeInput.checked = !!config.auto_run_code;
+    }
+    
+    // Update settings UI components dynamically based on model capabilities
+    updateThinkingSettingsUI();
     
     // Render custom system prompts presets inside Settings dialog
     renderPresetsList();
@@ -667,18 +734,97 @@ function showSettings() {
     showModal(settingsModal);
 }
 
-// Handle settings budget show/hide
+// Handle settings thinking mode changes
 document.querySelectorAll("input[name='thinking-mode']").forEach(radio => {
     radio.onchange = (e) => {
-        toggleBudgetGroup(e.target.value);
+        updateThinkingSettingsUI();
     };
 });
 
-function toggleBudgetGroup(mode) {
+function updateThinkingSettingsUI() {
+    const selectedModelId = modelSelect.value || config.model;
+    const modelObj = availableModels.find(m => (typeof m === 'object' && m.id === selectedModelId));
+    
+    const caps = modelObj || {
+        thinking_supported: false,
+        adaptive_supported: false,
+        enabled_supported: false,
+        effort_levels: []
+    };
+    
+    const thinkingSection = document.querySelector("input[name='thinking-mode']").closest(".form-group");
+    if (!caps.thinking_supported) {
+        thinkingSection.classList.add("hidden");
+        budgetGroup.classList.add("hidden");
+        thinkingLevelGroup.classList.add("hidden");
+        return;
+    }
+    
+    thinkingSection.classList.remove("hidden");
+    
+    const adaptiveRadio = document.querySelector("input[name='thinking-mode'][value='adaptive']");
+    const enabledRadio = document.querySelector("input[name='thinking-mode'][value='enabled']");
+    
+    if (adaptiveRadio) {
+        adaptiveRadio.disabled = !caps.adaptive_supported;
+        adaptiveRadio.closest(".radio-label").style.opacity = caps.adaptive_supported ? "1" : "0.5";
+    }
+    if (enabledRadio) {
+        enabledRadio.disabled = !caps.enabled_supported;
+        enabledRadio.closest(".radio-label").style.opacity = caps.enabled_supported ? "1" : "0.5";
+    }
+    
+    let checkedRadio = document.querySelector("input[name='thinking-mode']:checked");
+    if (checkedRadio && checkedRadio.disabled) {
+        document.querySelector("input[name='thinking-mode'][value='disabled']").checked = true;
+        checkedRadio = document.querySelector("input[name='thinking-mode'][value='disabled']");
+    }
+    
+    const mode = checkedRadio ? checkedRadio.value : "disabled";
+    
     if (mode === "disabled") {
         budgetGroup.classList.add("hidden");
-    } else {
+        thinkingLevelGroup.classList.add("hidden");
+    } else if (mode === "adaptive") {
+        budgetGroup.classList.add("hidden");
+        if (caps.effort_levels && caps.effort_levels.length > 0) {
+            thinkingLevelGroup.classList.remove("hidden");
+            populateThinkingLevels(caps.effort_levels);
+        } else {
+            thinkingLevelGroup.classList.add("hidden");
+        }
+    } else if (mode === "enabled") {
         budgetGroup.classList.remove("hidden");
+        thinkingLevelGroup.classList.add("hidden");
+    }
+}
+
+function populateThinkingLevels(levels) {
+    const levelLabels = {
+        "low": "Low (低 - 快速且经济)",
+        "medium": "Medium (中 - 平衡)",
+        "high": "High (高 - 默认推荐)",
+        "xhigh": "X-High (极高)",
+        "max": "Max (最大级 - 最深思考)"
+    };
+    
+    const currentVal = thinkingLevelSelect.value || config.thinking_level || "high";
+    thinkingLevelSelect.innerHTML = "";
+    
+    levels.forEach(lvl => {
+        const option = document.createElement("option");
+        option.value = lvl;
+        option.textContent = levelLabels[lvl] || lvl.toUpperCase();
+        if (lvl === currentVal) option.selected = true;
+        thinkingLevelSelect.appendChild(option);
+    });
+    
+    if (!levels.includes(currentVal)) {
+        if (levels.includes("high")) {
+            thinkingLevelSelect.value = "high";
+        } else if (levels.length > 0) {
+            thinkingLevelSelect.value = levels[levels.length - 1];
+        }
     }
 }
 
@@ -705,6 +851,13 @@ saveSettingsBtn.onclick = async () => {
     config.thinking_enabled = (thinkingMode !== "disabled");
     config.thinking_type = thinkingMode;
     config.thinking_budget = parseInt(budgetTokensInput.value) || 16000;
+    
+    if (thinkingLevelSelect) {
+        config.thinking_level = thinkingLevelSelect.value || "high";
+    }
+    if (autoRunCodeInput) {
+        config.auto_run_code = autoRunCodeInput.checked;
+    }
     
     await pywebview.api.save_config(config);
     updateLedStatus();
@@ -784,6 +937,10 @@ async function reloadCurrentConversation() {
         appendMessage(msg.role, msg.content, msg.thinking, false, idx);
     });
     scrollChatBottom();
+    
+    if (config.auto_run_code) {
+        autoRunLastAssistantCode();
+    }
 }
 
 // Proxy Modal
@@ -1439,6 +1596,190 @@ function renderArtifactPreview(content, type) {
         } else {
             artifactsPreviewContainer.innerHTML = '<span style="color: var(--yellow);">Mermaid 库未加载，无法预览图表</span>';
         }
+    }
+}
+
+// In-place User Message Editing
+async function editUserMessage(msgIndex) {
+    if (isStreaming) return;
+    const msgRow = messageList.children[msgIndex];
+    if (!msgRow) return;
+    const body = msgRow.querySelector(".message-body");
+    if (!body) return;
+    
+    const rawContent = currentConv.messages[msgIndex].content;
+    let textVal = "";
+    if (typeof rawContent === 'string') {
+        textVal = rawContent;
+    } else if (Array.isArray(rawContent)) {
+        rawContent.forEach(item => {
+            if (item.type === "text") textVal += item.text;
+        });
+    }
+    
+    const originalHTML = body.innerHTML;
+    body.innerHTML = `
+        <div class="edit-msg-container" style="display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 4px;">
+            <textarea class="edit-msg-textarea" style="width: 100%; min-height: 80px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px; color: var(--text); padding: 8px; font-family: inherit; font-size: 13px; outline: none; resize: vertical;"></textarea>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button class="btn btn-secondary btn-sm edit-cancel-btn" style="padding: 4px 10px; font-size: 11px;">取消</button>
+                <button class="btn btn-primary btn-sm edit-save-btn" style="padding: 4px 10px; font-size: 11px;">保存并发送</button>
+            </div>
+        </div>
+    `;
+    
+    const textarea = body.querySelector(".edit-msg-textarea");
+    textarea.value = textVal;
+    textarea.focus();
+    
+    textarea.style.height = "auto";
+    textarea.style.height = textarea.scrollHeight + "px";
+    textarea.addEventListener("input", () => {
+        textarea.style.height = "auto";
+        textarea.style.height = textarea.scrollHeight + "px";
+    });
+    
+    body.querySelector(".edit-cancel-btn").onclick = (e) => {
+        e.stopPropagation();
+        body.innerHTML = originalHTML;
+        highlightCodeBlocks(msgRow);
+    };
+    
+    body.querySelector(".edit-save-btn").onclick = async (e) => {
+        e.stopPropagation();
+        const newText = textarea.value.trim();
+        if (!newText) return;
+        
+        while (messageList.children.length > msgIndex) {
+            messageList.removeChild(messageList.lastChild);
+        }
+        
+        appendMessage("user", newText, "", false, msgIndex);
+        scrollChatBottom();
+        
+        appendMessage("assistant", "思考中...", "", true);
+        
+        isStreaming = true;
+        streamingText = "";
+        streamingThinking = "";
+        
+        sendBtn.classList.add("stop-active");
+        sendBtn.title = "停止生成";
+        const sendIcon = sendBtn.querySelector(".send-icon");
+        if (sendIcon) sendIcon.textContent = "■";
+        statusLabel.textContent = "Claude 思考中...";
+        
+        await pywebview.api.edit_and_resend(currentConvId, msgIndex, newText);
+    };
+}
+
+// Branch Conversation
+async function branchConversation(msgIndex) {
+    if (isStreaming) return;
+    statusLabel.textContent = "正在创建分支对话...";
+    const newConv = await pywebview.api.branch_conversation(currentConvId, msgIndex);
+    if (newConv) {
+        await loadConversations();
+        await selectConversation(newConv.id);
+        statusLabel.textContent = `分支创建成功: ${newConv.title}`;
+        setTimeout(() => { if (statusLabel.textContent.startsWith("分支创建成功")) statusLabel.textContent = "就绪"; }, 2000);
+    } else {
+        statusLabel.textContent = "分支创建失败";
+    }
+}
+
+// Retry Assistant Response
+async function retryAssistantMessage(msgIndex) {
+    if (isStreaming) return;
+    
+    messageList.removeChild(messageList.lastChild);
+    scrollChatBottom();
+    
+    appendMessage("assistant", "思考中...", "", true);
+    
+    isStreaming = true;
+    streamingText = "";
+    streamingThinking = "";
+    
+    sendBtn.classList.add("stop-active");
+    sendBtn.title = "停止生成";
+    const sendIcon = sendBtn.querySelector(".send-icon");
+    if (sendIcon) sendIcon.textContent = "■";
+    statusLabel.textContent = "Claude 思考中...";
+    
+    await pywebview.api.retry_message(currentConvId, msgIndex);
+}
+
+// Local Code Block Execution
+async function runCodeBlock(code, lang, preElement) {
+    let consoleBox = preElement.nextSibling;
+    if (consoleBox && consoleBox.classList && consoleBox.classList.contains("code-console-box")) {
+        // Reuse existing console box
+    } else {
+        consoleBox = document.createElement("div");
+        consoleBox.className = "code-console-box";
+        consoleBox.style.backgroundColor = "var(--crust)";
+        consoleBox.style.border = "1px solid var(--surface0)";
+        consoleBox.style.borderRadius = "0 0 8px 8px";
+        consoleBox.style.marginTop = "-8px";
+        consoleBox.style.marginBottom = "12px";
+        consoleBox.style.padding = "10px 14px";
+        consoleBox.style.fontFamily = "Consolas, monospace";
+        consoleBox.style.fontSize = "11.5px";
+        consoleBox.style.color = "var(--text)";
+        consoleBox.style.maxHeight = "200px";
+        consoleBox.style.overflowY = "auto";
+        consoleBox.style.whiteSpace = "pre-wrap";
+        consoleBox.style.wordBreak = "break-all";
+        
+        preElement.style.borderRadius = "8px 8px 0 0";
+        preElement.parentNode.insertBefore(consoleBox, preElement.nextSibling);
+    }
+    
+    consoleBox.innerHTML = `<span style="color: var(--yellow);">⚙️ 正在利用本地环境运行代码...</span>`;
+    
+    try {
+        const result = await pywebview.api.execute_code_locally(code, lang);
+        if (result.error) {
+            consoleBox.innerHTML = `<span style="color: var(--red);">❌ 运行失败:</span>\n${result.error}`;
+        } else {
+            let outputHtml = "";
+            if (result.stdout) {
+                outputHtml += `<span style="color: var(--green);">[标准输出 (stdout)]</span>\n${result.stdout}\n`;
+            }
+            if (result.stderr) {
+                outputHtml += `<span style="color: var(--red);">[错误输出 (stderr)]</span>\n${result.stderr}\n`;
+            }
+            if (result.exit_code !== 0) {
+                outputHtml += `<span style="color: var(--red); font-weight: bold;">[程序退出，状态码: ${result.exit_code}]</span>`;
+            } else if (!result.stdout && !result.stderr) {
+                outputHtml += `<span style="color: var(--overlay0); font-style: italic;">[程序运行完毕，无输出]</span>`;
+            }
+            consoleBox.innerHTML = outputHtml;
+        }
+    } catch (e) {
+        consoleBox.innerHTML = `<span style="color: var(--red);">❌ 运行出错:</span>\n${e}`;
+    }
+    scrollChatBottom();
+}
+
+// Auto Run Last Assistant Response Code Blocks
+function autoRunLastAssistantCode() {
+    const assistantRows = messageList.querySelectorAll(".message-row.assistant");
+    if (assistantRows.length > 0) {
+        const lastRow = assistantRows[assistantRows.length - 1];
+        lastRow.querySelectorAll("pre code").forEach(block => {
+            let lang = "";
+            block.classList.forEach(cls => {
+                if (cls.startsWith('language-')) {
+                    lang = cls.replace('language-', '').toLowerCase();
+                }
+            });
+            if (lang === 'python' || lang === 'javascript' || lang === 'js') {
+                const pre = block.parentNode;
+                runCodeBlock(block.innerText, lang, pre);
+            }
+        });
     }
 }
 

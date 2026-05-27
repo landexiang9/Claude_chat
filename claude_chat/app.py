@@ -47,7 +47,8 @@ class ClaudeChatApp:
         self.config = ConfigManager()
         self.conv_manager = DatabaseManager()
         self.current_conv = None
-        self.available_models = list(FALLBACK_MODELS)
+        from claude_chat.client import get_default_capabilities
+        self.available_models = [get_default_capabilities(m) for m in FALLBACK_MODELS]
         self.streaming_queue = queue.Queue()
         self.is_streaming = False
         self.abort_event = threading.Event()
@@ -246,6 +247,7 @@ class WebAPI:
                 self._app.current_conv["thinking"] = {
                     "type": self._app.config.get("thinking_type", "adaptive"),
                     "budget_tokens": self._app.config.get("thinking_budget", 16000),
+                    "effort": self._app.config.get("thinking_level", "high"),
                 }
             else:
                 self._app.current_conv["thinking"] = None
@@ -418,12 +420,20 @@ class WebAPI:
                 if isinstance(api_msg.get("content"), list):
                     api_msg["content"] = [sanitize_base64_in_block(b) for b in api_msg["content"]]
                 
+                thinking_val = None
+                if conv_row["thinking"]:
+                    try:
+                        thinking_val = json.loads(conv_row["thinking"])
+                    except Exception:
+                        pass
+                
                 return {
                     "database_record": db_record,
                     "api_payload": api_msg,
                     "model": conv_row["model"],
                     "temperature": conv_row["temperature"],
                     "max_tokens": conv_row["max_tokens"],
+                    "thinking_config": thinking_val,
                 }
         except Exception as e:
             logger.exception(f"Error fetching raw packet: {e}")
@@ -455,52 +465,27 @@ class WebAPI:
                 pass
         return result
 
-    def send_message(self, conv_id, text, attachments):
-        logger.info(f"Sending message in conversation {conv_id}. Text length: {len(text)}. Attachments: {len(attachments) if attachments else 0}")
-        if self._app.is_streaming:
-            return False
-        
+    def _start_stream_generation(self, conv_id):
         self._app.is_streaming = True
         self._app.abort_event.clear()
         self._app.active_stream = None
         
-        # Load conversation
-        conv = self._app.conv_manager.load_conversation(conv_id)
-        if not conv:
+        self._app.current_conv = self._app.conv_manager.load_conversation(conv_id)
+        if not self._app.current_conv:
             self._app.is_streaming = False
             return False
             
-        self._app.current_conv = conv
-        
-        # Set config model if not matching
-        if not conv.get("model"):
-            conv["model"] = self._app.config.get("model")
-            
-        user_msg_display = {"role": "user", "content": text}
-        if attachments:
-            user_msg_display["content"] = [{"type": "text", "text": text}]
-            for att in attachments:
-                fp = att["path"]
-                ext = Path(fp).suffix.lower()
-                mime = get_mime_type(fp)
-                if ext in IMAGE_EXTENSIONS:
-                    user_msg_display["content"].append({"type": "image", "source": {"file_path": fp, "media_type": mime}})
-                elif ext in PDF_EXTENSIONS:
-                    user_msg_display["content"].append({"type": "document", "source": {"file_path": fp, "media_type": "application/pdf"}})
-                else:
-                    file_text = read_text_file(fp)
-                    user_msg_display["content"].append({"type": "text", "text": f"\n\n--- 文件: {Path(fp).name} ---\n{file_text}\n--- 文件结束 ---"})
-        
-        self._app.current_conv["messages"].append(user_msg_display)
-        self._app.conv_manager.save_conversation(self._app.current_conv)
-        
         api_messages = [extract_api_message(msg) for msg in self._app.current_conv["messages"]]
         
         thinking_config = None
+        output_config = None
         if self._app.config.get("thinking_enabled"):
             ttype = self._app.config.get("thinking_type", "adaptive")
             if ttype == "adaptive":
                 thinking_config = {"type": "adaptive"}
+                effort_val = self._app.config.get("thinking_level", "high")
+                if effort_val:
+                    output_config = {"effort": effort_val}
             elif ttype == "enabled":
                 thinking_config = {"type": "enabled", "budget_tokens": self._app.config.get("thinking_budget", 16000)}
                 
@@ -535,7 +520,7 @@ class WebAPI:
                 self._app.abort_event,
                 on_stream_created
             ),
-            kwargs={"system": system_prompt_val},
+            kwargs={"system": system_prompt_val, "output_config": output_config},
             daemon=True
         )
         thread.start()
@@ -547,6 +532,233 @@ class WebAPI:
         )
         reader_thread.start()
         return True
+
+    def send_message(self, conv_id, text, attachments):
+        logger.info(f"Sending message in conversation {conv_id}. Text length: {len(text)}. Attachments: {len(attachments) if attachments else 0}")
+        if self._app.is_streaming:
+            return False
+            
+        conv = self._app.conv_manager.load_conversation(conv_id)
+        if not conv:
+            return False
+            
+        # Set config model if not matching
+        if not conv.get("model"):
+            conv["model"] = self._app.config.get("model")
+            
+        user_msg_display = {"role": "user", "content": text}
+        if attachments:
+            user_msg_display["content"] = [{"type": "text", "text": text}]
+            for att in attachments:
+                fp = att["path"]
+                ext = Path(fp).suffix.lower()
+                mime = get_mime_type(fp)
+                if ext in IMAGE_EXTENSIONS:
+                    user_msg_display["content"].append({"type": "image", "source": {"file_path": fp, "media_type": mime}})
+                elif ext in PDF_EXTENSIONS:
+                    user_msg_display["content"].append({"type": "document", "source": {"file_path": fp, "media_type": "application/pdf"}})
+                else:
+                    file_text = read_text_file(fp)
+                    user_msg_display["content"].append({"type": "text", "text": f"\n\n--- 文件: {Path(fp).name} ---\n{file_text}\n--- 文件结束 ---"})
+        
+        conv["messages"].append(user_msg_display)
+        self._app.conv_manager.save_conversation(conv)
+        
+        return self._start_stream_generation(conv_id)
+
+    def edit_and_resend(self, conv_id, msg_index, new_content):
+        logger.info(f"Editing and resending message in conversation {conv_id} at index {msg_index}")
+        if self._app.is_streaming:
+            logger.warning("Generation already in progress.")
+            return False
+            
+        try:
+            with self._app.conv_manager.get_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT id FROM messages WHERE conversation_id = ? ORDER BY id ASC", 
+                    (conv_id,)
+                )
+                rows = cursor.fetchall()
+                if msg_index < 0 or msg_index >= len(rows):
+                    logger.error(f"Invalid message index {msg_index} for editing.")
+                    return False
+                
+                target_msg_id = rows[msg_index]["id"]
+                conn.execute(
+                    "DELETE FROM messages WHERE conversation_id = ? AND id >= ?", 
+                    (conv_id, target_msg_id)
+                )
+                conn.commit()
+                
+            conv = self._app.conv_manager.load_conversation(conv_id)
+            if not conv:
+                return False
+                
+            user_msg_display = {
+                "role": "user",
+                "content": new_content
+            }
+            conv["messages"].append(user_msg_display)
+            self._app.conv_manager.save_conversation(conv)
+            
+            return self._start_stream_generation(conv_id)
+        except Exception as e:
+            logger.exception(f"Error editing and resending message: {e}")
+            return False
+
+    def retry_message(self, conv_id, msg_index):
+        logger.info(f"Retrying message in conversation {conv_id} at index {msg_index}")
+        if self._app.is_streaming:
+            logger.warning("Generation already in progress.")
+            return False
+            
+        try:
+            with self._app.conv_manager.get_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT id, role FROM messages WHERE conversation_id = ? ORDER BY id ASC", 
+                    (conv_id,)
+                )
+                rows = cursor.fetchall()
+                if msg_index < 0 or msg_index >= len(rows):
+                    logger.error(f"Invalid message index {msg_index} for retrying.")
+                    return False
+                
+                if rows[msg_index]["role"] != "assistant":
+                    logger.error(f"Message at index {msg_index} is not an assistant message.")
+                    return False
+                    
+                target_msg_id = rows[msg_index]["id"]
+                conn.execute(
+                    "DELETE FROM messages WHERE conversation_id = ? AND id >= ?", 
+                    (conv_id, target_msg_id)
+                )
+                conn.commit()
+                
+            return self._start_stream_generation(conv_id)
+        except Exception as e:
+            logger.exception(f"Error retrying message: {e}")
+            return False
+
+    def branch_conversation(self, conv_id, msg_index):
+        logger.info(f"Branching conversation {conv_id} at message index {msg_index}")
+        try:
+            with self._app.conv_manager.get_connection() as conn:
+                conv_row = conn.execute("SELECT * FROM conversations WHERE id = ?", (conv_id,)).fetchone()
+                if not conv_row:
+                    logger.error(f"Conversation {conv_id} not found.")
+                    return None
+                    
+                cursor = conn.execute(
+                    "SELECT role, content, thinking, aborted, created_at FROM messages WHERE conversation_id = ? ORDER BY id ASC", 
+                    (conv_id,)
+                )
+                rows = cursor.fetchall()
+                if msg_index < 0 or msg_index >= len(rows):
+                    logger.error(f"Invalid message index {msg_index} for branching.")
+                    return None
+                
+                branch_rows = rows[:msg_index + 1]
+                
+            branch_title = f"{conv_row['title'] or '新对话'} (分支)"
+            import uuid
+            new_conv_id = str(uuid.uuid4())
+            now_str = datetime.now().isoformat()
+            
+            with self._app.conv_manager.get_connection() as conn:
+                conn.execute("""
+                    INSERT INTO conversations (id, title, model, temperature, max_tokens, thinking, created_at, updated_at, input_tokens, output_tokens)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (new_conv_id, branch_title, conv_row["model"], conv_row["temperature"], conv_row["max_tokens"], 
+                      conv_row["thinking"], now_str, now_str, conv_row["input_tokens"], conv_row["output_tokens"]))
+                
+                for r in branch_rows:
+                    conn.execute("""
+                        INSERT INTO messages (conversation_id, role, content, thinking, aborted, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (new_conv_id, r["role"], r["content"], r["thinking"], r["aborted"], r["created_at"]))
+                conn.commit()
+                
+            logger.info(f"Successfully branched conversation to {new_conv_id}")
+            return self._app.conv_manager.load_conversation(new_conv_id)
+        except Exception as e:
+            logger.exception(f"Error branching conversation: {e}")
+            return None
+
+    def execute_code_locally(self, code, lang):
+        logger.info(f"Executing local code block of lang {lang}")
+        import subprocess
+        import tempfile
+        import sys
+        
+        norm_lang = lang.lower()
+        if norm_lang not in ("python", "javascript", "js"):
+            return {"error": f"不支持的语言: {lang}"}
+            
+        if norm_lang == "python":
+            suffix = ".py"
+            executable = sys.executable
+        else:
+            suffix = ".js"
+            executable = "node"
+            
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', suffix=suffix, delete=False, encoding='utf-8') as temp_file:
+                temp_file.write(code)
+                temp_path = temp_file.name
+                
+            try:
+                res = subprocess.run(
+                    [executable, temp_path],
+                    capture_output=True,
+                    timeout=15
+                )
+                
+                def safe_decode(b):
+                    if not b:
+                        return ""
+                    try:
+                        return b.decode("utf-8")
+                    except UnicodeDecodeError:
+                        try:
+                            return b.decode("gbk", errors="replace")
+                        except Exception:
+                            return b.decode("utf-8", errors="replace")
+                
+                return {
+                    "stdout": safe_decode(res.stdout),
+                    "stderr": safe_decode(res.stderr),
+                    "exit_code": res.returncode
+                }
+            except subprocess.TimeoutExpired as te:
+                def safe_decode(b):
+                    if not b:
+                        return ""
+                    try:
+                        return b.decode("utf-8")
+                    except UnicodeDecodeError:
+                        try:
+                            return b.decode("gbk", errors="replace")
+                        except Exception:
+                            return b.decode("utf-8", errors="replace")
+                return {
+                    "stdout": safe_decode(te.stdout),
+                    "stderr": safe_decode(te.stderr) + "\n❌ 运行超时 (超过 15 秒)，程序已被强制中止。",
+                    "exit_code": -1
+                }
+            except FileNotFoundError:
+                if norm_lang in ("javascript", "js"):
+                    err_msg = "本地未检测到 Node.js 运行环境，请确保安装了 Node.js 且已将其加入系统环境变量 PATH 中。"
+                else:
+                    err_msg = "本地未检测到 Python 运行环境。"
+                return {"error": err_msg}
+            finally:
+                try:
+                    Path(temp_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.exception(f"Error executing code block: {e}")
+            return {"error": str(e)}
 
     def abort_generation(self):
         return self._app.abort_generation()

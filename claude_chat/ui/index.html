@@ -162,6 +162,23 @@
                     <input type="number" id="budget-tokens-input" value="16000">
                 </div>
 
+                <div id="thinking-level-group" class="form-group hidden">
+                    <label for="thinking-level-select">Thinking Level (思考等级 / Effort):</label>
+                    <select id="thinking-level-select">
+                        <option value="low">Low (低 - 快速且经济)</option>
+                        <option value="medium">Medium (中 - 平衡)</option>
+                        <option value="high">High (高 - 默认推荐)</option>
+                        <option value="xhigh">X-High (极高)</option>
+                        <option value="max">Max (最大级 - 最深思考)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                        <input type="checkbox" id="auto-run-code-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 自动运行生成的 Python/JS 代码 (Auto-run Code)
+                    </label>
+                </div>
+
                 <div class="divider" style="margin: 16px 0; border-top: 1px solid var(--surface0);"></div>
                 <div class="form-group">
                     <label style="margin-bottom: 8px; display: block; font-weight: 600;">📝 系统提示词预设管理 (System Prompts)</label>

@@ -72,7 +72,7 @@ def extract_api_message(msg):
     return {"role": role, "content": api_content_list}
 
 
-def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None):
+def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None):
     """
     Initiates Anthropic stream in background thread and pushes events into streaming_queue.
     """
@@ -88,6 +88,8 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
         }
         if thinking_config:
             kwargs["thinking"] = thinking_config
+        if output_config:
+            kwargs["output_config"] = output_config
         if system and system.strip():
             kwargs["system"] = system.strip()
 
@@ -139,9 +141,99 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
             streaming_queue.put(("error", f"未知错误: {e}"))
 
 
+def get_model_capabilities(m):
+    mid = m.id
+    res = {
+        "id": mid,
+        "display_name": getattr(m, "display_name", mid),
+        "thinking_supported": False,
+        "adaptive_supported": False,
+        "enabled_supported": False,
+        "effort_levels": []
+    }
+    
+    caps = getattr(m, "capabilities", None)
+    if caps:
+        thinking = getattr(caps, "thinking", None)
+        if thinking and getattr(thinking, "supported", False):
+            res["thinking_supported"] = True
+            types = getattr(thinking, "types", None)
+            if types:
+                adaptive = getattr(types, "adaptive", None)
+                if adaptive and getattr(adaptive, "supported", False):
+                    res["adaptive_supported"] = True
+                enabled = getattr(types, "enabled", None)
+                if enabled and getattr(enabled, "supported", False):
+                    res["enabled_supported"] = True
+        
+        effort = getattr(caps, "effort", None)
+        if effort and getattr(effort, "supported", False):
+            levels = []
+            for lvl in ["low", "medium", "high", "xhigh", "max"]:
+                lvl_support = getattr(effort, lvl, None)
+                if lvl_support and getattr(lvl_support, "supported", False):
+                    levels.append(lvl)
+            res["effort_levels"] = levels
+            
+    if not res["thinking_supported"]:
+        mid_lower = mid.lower()
+        if "opus-4-7" in mid_lower or "sonnet-4-6" in mid_lower or "opus-4-6" in mid_lower or "3-7-sonnet" in mid_lower or "claude-3-7" in mid_lower:
+            res["thinking_supported"] = True
+            res["adaptive_supported"] = True
+            res["enabled_supported"] = True
+            res["effort_levels"] = ["low", "medium", "high", "max"]
+        elif "opus-4-5" in mid_lower:
+            res["thinking_supported"] = True
+            res["adaptive_supported"] = False
+            res["enabled_supported"] = True
+            res["effort_levels"] = []
+            
+    return res
+
+
+def get_default_capabilities(model_id):
+    mid = model_id.lower()
+    res = {
+        "id": model_id,
+        "display_name": model_id,
+        "thinking_supported": False,
+        "adaptive_supported": False,
+        "enabled_supported": False,
+        "effort_levels": []
+    }
+    
+    if "opus-4-7" in mid or "sonnet-4-6" in mid or "opus-4-6" in mid or "3-7-sonnet" in mid or "claude-3-7" in mid:
+        res["thinking_supported"] = True
+        res["adaptive_supported"] = True
+        res["enabled_supported"] = True
+        res["effort_levels"] = ["low", "medium", "high", "max"]
+        if "opus-4-7" in mid:
+            res["display_name"] = "Claude Opus 4.7"
+        elif "opus-4-6" in mid:
+            res["display_name"] = "Claude Opus 4.6"
+        elif "sonnet-4-6" in mid:
+            res["display_name"] = "Claude Sonnet 4.6"
+        elif "3-7-sonnet" in mid or "claude-3-7" in mid:
+            res["display_name"] = "Claude 3.7 Sonnet"
+    elif "opus-4-5" in mid:
+        res["thinking_supported"] = True
+        res["adaptive_supported"] = False
+        res["enabled_supported"] = True
+        res["effort_levels"] = []
+        res["display_name"] = "Claude Opus 4.5"
+    elif "3-5-sonnet" in mid:
+        res["display_name"] = "Claude 3.5 Sonnet"
+    elif "3-5-haiku" in mid:
+        res["display_name"] = "Claude 3.5 Haiku"
+    elif "3-opus" in mid:
+        res["display_name"] = "Claude 3 Opus"
+        
+    return res
+
+
 def fetch_available_models(api_key, proxy_mode, proxy_url):
     """
-    Fetches the list of active models from Anthropic API.
+    Fetches the list of active models from Anthropic API with their capabilities.
     """
     if not api_key:
         return []
@@ -150,20 +242,23 @@ def fetch_available_models(api_key, proxy_mode, proxy_url):
         client = Anthropic(api_key=api_key, http_client=http_client)
         models = client.models.list()
         
-        model_ids = []
+        models_data = []
         has_opus_47 = False
         
         for m in models.data:
             mid = m.id
             if hasattr(m, 'deprecation_date') and m.deprecation_date:
                 continue
-            model_ids.append(mid)
+            
+            m_cap = get_model_capabilities(m)
+            models_data.append(m_cap)
+            
             if "opus-4-7" in mid.lower():
                 has_opus_47 = True
                 
         if not has_opus_47:
-            model_ids.insert(0, "claude-opus-4-7")
+            models_data.insert(0, get_default_capabilities("claude-opus-4-7"))
             
-        return model_ids
+        return models_data
     except Exception:
         return []
