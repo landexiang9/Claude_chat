@@ -6,7 +6,10 @@ from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestErro
 
 def build_http_client(proxy_mode="system", proxy_url=""):
     """
-    Builds httpx.Client configuring the appropriate proxy mode.
+    构建并返回一个配置好代理的 httpx.Client 实例。
+    - "none": 禁用代理，禁用信任操作系统环境变量代理行为。
+    - "custom": 使用用户自定义输入的代理地址（如 http://127.0.0.1:7890）。
+    - "system": 默认选项，自动继承操作系统的环境变量（如 HTTP_PROXY, HTTPS_PROXY）。
     """
     if proxy_mode == "none":
         return httpx.Client(trust_env=False)
@@ -18,8 +21,8 @@ def build_http_client(proxy_mode="system", proxy_url=""):
 
 def extract_api_message(msg):
     """
-    Converts conversation history message into Anthropic API compliant message,
-    resolving and reading attached files to Base64 data blocks.
+    将本地保存的消息记录转换为符合 Anthropic 官方 API 规范的请求消息结构。
+    对携带的本地附件（图片、PDF 文档）进行异步路径读取，并将其编码转换为 Base64 格式的数据块传递给 API。
     """
     role = msg.get("role")
     content = msg.get("content")
@@ -31,6 +34,7 @@ def extract_api_message(msg):
     
     for item in items_source:
         if isinstance(item, dict) and item.get("type") == "image":
+            # 处理图片附件并编码为 Base64
             source = item.get("source", {})
             if "file_path" in source:
                 try:
@@ -47,6 +51,7 @@ def extract_api_message(msg):
                 api_content_list.append(item)
                 
         elif isinstance(item, dict) and item.get("type") == "document":
+            # 处理 PDF 文档附件并编码为 Base64
             source = item.get("source", {})
             if "file_path" in source:
                 try:
@@ -74,12 +79,16 @@ def extract_api_message(msg):
 
 def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None):
     """
-    Initiates Anthropic stream in background thread and pushes events into streaming_queue.
+    启动 Anthropic API 消息流式接收。
+    通常运行在后台线程中，实时抓取流中的文本块（text_delta）和思考推理块（thinking_delta），
+    并将其放入线程安全的队列 `streaming_queue` 中供前端渲染。
+    支持通过设置 `abort_event` 中止事件随时强行中断请求。
     """
     try:
         http_client = build_http_client(proxy_mode, proxy_url)
         client = Anthropic(api_key=api_key, http_client=http_client)
         
+        # 组装 API 调用参数
         kwargs = {
             "model": model,
             "max_tokens": max_tokens,
@@ -93,14 +102,17 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
         if system and system.strip():
             kwargs["system"] = system.strip()
 
+        # 发起流式请求
         with client.messages.stream(**kwargs) as stream:
             if on_stream_created:
                 on_stream_created(stream)
                 
             for event in stream:
+                # 检查用户是否触发了“停止生成”按钮
                 if abort_event and abort_event.is_set():
                     streaming_queue.put(("aborted", {}))
                     return
+                
                 etype = event.type if hasattr(event, 'type') else ''
                 if etype == 'thinking':
                     t = getattr(event, 'thinking', '')
@@ -110,10 +122,13 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                     d = event.delta
                     dtypes = getattr(d, 'type', '')
                     if dtypes == 'text_delta':
+                        # 推送生成的回复文本
                         streaming_queue.put(("text", getattr(d, 'text', '')))
                     elif dtypes == 'thinking_delta':
+                        # 推送模型实时思考轨迹
                         streaming_queue.put(("thinking", getattr(d, 'thinking', '')))
 
+        # 获取最终完整的 Message 对象并提取 Token 统计信息
         final = stream.get_final_message()
         input_tokens = final.usage.input_tokens if hasattr(final, 'usage') and final.usage else 0
         output_tokens = final.usage.output_tokens if hasattr(final, 'usage') and final.usage else 0
@@ -142,6 +157,10 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
 
 
 def get_model_capabilities(m):
+    """
+    解析 API 返回的模型对象，识别该模型是否支持思维推理能力（Extended Thinking/Thinking Mode）
+    以及所支持的具体思考力度等级等级（effort levels: low, medium, high 等）
+    """
     mid = m.id
     res = {
         "id": mid,
@@ -175,6 +194,7 @@ def get_model_capabilities(m):
                     levels.append(lvl)
             res["effort_levels"] = levels
             
+    # API 如果没有明确返回模型能力，则针对已知支持推理的大模型进行硬编码兼容
     if not res["thinking_supported"]:
         mid_lower = mid.lower()
         if "opus-4-7" in mid_lower or "sonnet-4-6" in mid_lower or "opus-4-6" in mid_lower or "3-7-sonnet" in mid_lower or "claude-3-7" in mid_lower:
@@ -192,6 +212,9 @@ def get_model_capabilities(m):
 
 
 def get_default_capabilities(model_id):
+    """
+    针对未联网拉取到最新列表时使用的本地缓存备用模型列表，初始化其默认的能力字典结构
+    """
     mid = model_id.lower()
     res = {
         "id": model_id,
@@ -233,7 +256,8 @@ def get_default_capabilities(model_id):
 
 def fetch_available_models(api_key, proxy_mode, proxy_url):
     """
-    Fetches the list of active models from Anthropic API with their capabilities.
+    从 Anthropic 官方 API 拉取当前账户所有活跃模型的列表及其详细能力结构。
+    如果获取失败，则返回空列表（前端会自动退化使用默认的本地备用列表）。
     """
     if not api_key:
         return []
@@ -247,6 +271,7 @@ def fetch_available_models(api_key, proxy_mode, proxy_url):
         
         for m in models.data:
             mid = m.id
+            # 过滤掉已经失效或标明即将弃用的模型
             if hasattr(m, 'deprecation_date') and m.deprecation_date:
                 continue
             
@@ -256,6 +281,7 @@ def fetch_available_models(api_key, proxy_mode, proxy_url):
             if "opus-4-7" in mid.lower():
                 has_opus_47 = True
                 
+        # 强制将预置模型塞入列表首位以提升体验
         if not has_opus_47:
             models_data.insert(0, get_default_capabilities("claude-opus-4-7"))
             

@@ -1,6 +1,8 @@
 # Claude Chat
 
-Desktop GUI client for Anthropic Claude API, built with **pywebview** and modern web technologies. Features a premium **Catppuccin Mocha** dark theme, real-time streaming, collapsible reasoning/thinking steps, offline-first assets, text selection with custom context menus, secure credential storage, SQLite database architecture, custom system prompts preset manager, artifacts side panel preview, and proxy support.
+[简体中文](./README_ZH.md) | **English**
+
+Desktop GUI client for Anthropic Claude API, built with **pywebview** and modern web technologies. Features a premium **Catppuccin Mocha** dark theme, real-time streaming, collapsible reasoning/thinking steps, offline-first assets, text selection with custom context menus, secure credential storage, SQLite database architecture, custom system prompts preset manager, artifacts side panel preview, proxy support, and headless server mode for multi-platform deployment (Linux, Android Termux, macOS, etc.).
 
 ## Key Features
 
@@ -27,15 +29,38 @@ Desktop GUI client for Anthropic Claude API, built with **pywebview** and modern
 
 ## Quick Start
 
-```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+### 1. Windows Setup (Automated Virtual Environment)
 
-# 2. Run the application
-python claude_chat.py
+We provide virtual environment configuration scripts that automatically create a `.venv`, upgrade pip, and install all python dependencies:
+- Double-click **`setup_venv.bat`** (CMD version)
+- Or run **`setup_venv.ps1`** in PowerShell.
+
+Once configured, run the app using the virtualenv python:
+```bash
+.venv\Scripts\python.exe claude_chat.py
 ```
 
-On first launch, click the settings gear icon (⚙️) to configure your Anthropic API Key.
+### 2. Multi-Platform Headless Server (Linux, Android Termux, macOS, etc.)
+
+If you run the app on a headless server or Android Termux where GUI libraries cannot be loaded, the app automatically falls back to a Web server-only mode. You can also force it via CLI:
+
+```bash
+# Set up environment
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# Start in headless mode, listening on all interfaces
+python claude_chat.py --server --host 0.0.0.0 --port 8000
+```
+Then navigate to `http://<device-ip>:8000` on any device in the LAN.
+
+### 3. Build Portable Windows Executable
+To package the app into a standalone `dist/ClaudeChat.exe`:
+```bash
+.venv\Scripts\python.exe build_executable.py
+```
 
 ## Dependencies
 

@@ -1,0 +1,29 @@
+[project]
+name = "claude-chat"
+version = "1.0.0"
+description = "Desktop GUI client for Anthropic Claude API, built with pywebview."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Developer"}
+]
+dependencies = [
+    "pywebview>=5.0",
+    "anthropic>=0.103.0",
+    "Pillow>=10.0.0",
+    "keyring>=24.0.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+# Enable Pyflakes (F) and pycodestyle (E, W) codes by default
+select = ["E", "F", "W", "I"]
+ignore = []
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-single-line = false

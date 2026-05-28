@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Claude Chat</title>
-    <!-- Catppuccin Mocha themed css and Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Local CSS and syntax highlighting styles -->
+    <link rel="stylesheet" href="fonts.css">
     
     <!-- Code Highlight Style -->
     <link rel="stylesheet" href="libs/github-dark.min.css">
@@ -124,68 +122,111 @@
                 <button class="close-modal-btn">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label for="api-key-input">Anthropic API Key:</label>
-                    <div class="input-row">
-                        <input type="password" id="api-key-input" placeholder="输入您的 sk-ant-api03-... 密钥">
-                        <button id="toggle-key-visibility" class="btn btn-secondary">👁</button>
+                <!-- Group 1: Base Parameters Settings -->
+                <div class="settings-section-card">
+                    <div class="settings-section-title">💬 基础参数设置 (Base Settings)</div>
+                    <div class="form-group">
+                        <label for="api-key-input">Anthropic API Key:</label>
+                        <div class="input-row">
+                            <input type="password" id="api-key-input" placeholder="输入您的 sk-ant-api03-... 密钥">
+                            <button id="toggle-key-visibility" class="btn btn-secondary">👁</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="temp-slider" id="temp-label-title">Temperature: 0.70</label>
+                        <input type="range" id="temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="max-tokens-input">Max Tokens:</label>
+                        <input type="number" id="max-tokens-input" value="4096">
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="temp-slider" id="temp-label-title">Temperature: 0.70</label>
-                    <input type="range" id="temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
-                </div>
+                <!-- Group 2: Extended Thinking Settings -->
+                <div class="settings-section-card">
+                    <div class="settings-section-title">🧠 深度思考设置 (Extended Thinking)</div>
+                    <div class="form-group">
+                        <label>Extended Thinking (深度思考):</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="thinking-mode" value="disabled" checked> Disabled
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="thinking-mode" value="adaptive"> Adaptive
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="thinking-mode" value="enabled"> Enabled
+                            </label>
+                        </div>
+                    </div>
 
-                <div class="form-group">
-                    <label for="max-tokens-input">Max Tokens:</label>
-                    <input type="number" id="max-tokens-input" value="4096">
-                </div>
+                    <div id="budget-group" class="form-group hidden">
+                        <label for="budget-tokens-input">Budget Tokens:</label>
+                        <input type="number" id="budget-tokens-input" value="16000">
+                    </div>
 
-                <div class="form-group">
-                    <label>Extended Thinking (深度思考):</label>
-                    <div class="radio-group">
-                        <label class="radio-label">
-                            <input type="radio" name="thinking-mode" value="disabled" checked> Disabled
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="thinking-mode" value="adaptive"> Adaptive
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="thinking-mode" value="enabled"> Enabled
-                        </label>
+                    <div id="thinking-level-group" class="form-group hidden">
+                        <label for="thinking-level-select">Thinking Level (思考等级 / Effort):</label>
+                        <select id="thinking-level-select">
+                            <option value="low">Low (低 - 快速且经济)</option>
+                            <option value="medium">Medium (中 - 平衡)</option>
+                            <option value="high">High (高 - 默认推荐)</option>
+                            <option value="xhigh">X-High (极高)</option>
+                            <option value="max">Max (最大级 - 最深思考)</option>
+                        </select>
                     </div>
                 </div>
 
-                <div id="budget-group" class="form-group hidden">
-                    <label for="budget-tokens-input">Budget Tokens:</label>
-                    <input type="number" id="budget-tokens-input" value="16000">
-                </div>
-
-                <div id="thinking-level-group" class="form-group hidden">
-                    <label for="thinking-level-select">Thinking Level (思考等级 / Effort):</label>
-                    <select id="thinking-level-select">
-                        <option value="low">Low (低 - 快速且经济)</option>
-                        <option value="medium">Medium (中 - 平衡)</option>
-                        <option value="high">High (高 - 默认推荐)</option>
-                        <option value="xhigh">X-High (极高)</option>
-                        <option value="max">Max (最大级 - 最深思考)</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
-                        <input type="checkbox" id="auto-run-code-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 自动运行生成的 Python/JS 代码 (Auto-run Code)
-                    </label>
-                </div>
-
-                <div class="divider" style="margin: 16px 0; border-top: 1px solid var(--surface0);"></div>
-                <div class="form-group">
-                    <label style="margin-bottom: 8px; display: block; font-weight: 600;">📝 系统提示词预设管理 (System Prompts)</label>
-                    <div id="presets-list" class="presets-list" style="max-height: 150px; overflow-y: auto; border: 1px solid var(--surface0); border-radius: 8px; padding: 8px; background-color: var(--crust);">
-                        <!-- Dynamic Presets list -->
+                <!-- Group 3: Function & Network Settings -->
+                <div class="settings-section-card">
+                    <div class="settings-section-title">🌐 功能与服务端设置 (Function & Server)</div>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                            <input type="checkbox" id="auto-run-code-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 自动运行生成的 Python/JS 代码 (Auto-run Code)
+                        </label>
                     </div>
-                    <button id="add-preset-btn" class="btn btn-secondary btn-sm" style="margin-top: 8px; padding: 4px 10px; font-size: 11px;">+ 添加新预设</button>
+
+                    <div class="form-group" style="display: flex; gap: 16px;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                            <input type="checkbox" id="enable-server-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用局域网 Web 服务
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                            <input type="checkbox" id="sync-config-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 同步 APIKey/配置
+                        </label>
+                    </div>
+
+                    <div class="form-group" style="display: flex; gap: 16px;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                            <input type="checkbox" id="only-server-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 仅运行服务端 (无本地窗口)
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="server-port-input">服务端端口 (Server Port):</label>
+                        <input type="number" id="server-port-input" min="1024" max="65535" value="8000" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100px;">
+                    </div>
+                </div>
+
+                <!-- Group 4: Fonts & System Prompts Presets -->
+                <div class="settings-section-card">
+                    <div class="settings-section-title">📝 字体与提示词预设 (Fonts & Presets)</div>
+                    <div class="form-group">
+                        <label for="font-mode-select">界面字体设置 (Font Settings):</label>
+                        <select id="font-mode-select">
+                            <option value="custom">使用内置新字体 (Inter / Outfit / JetBrains Mono)</option>
+                            <option value="system">使用系统默认字体 (Segoe UI / 微软雅黑 / Consolas)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 6px;">
+                        <label style="margin-bottom: 8px; display: block; font-weight: 600;">系统提示词预设管理 (System Prompts)</label>
+                        <div id="presets-list" class="presets-list" style="max-height: 150px; overflow-y: auto; border: 1px solid var(--surface0); border-radius: 8px; padding: 8px; background-color: var(--crust);">
+                            <!-- Dynamic Presets list -->
+                        </div>
+                        <button id="add-preset-btn" class="btn btn-secondary btn-sm" style="margin-top: 8px; padding: 4px 10px; font-size: 11px;">+ 添加新预设</button>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">

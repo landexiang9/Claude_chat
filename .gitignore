@@ -6,3 +6,7 @@ conversations/
 claude_chat.db
 conversations_backup/
 *.log
+.venv/
+build/
+dist/
+.ruff_cache/

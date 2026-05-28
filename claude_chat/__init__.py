@@ -1,1 +1,2 @@
-# Claude Chat package
+# Claude Chat 核心业务包
+# 包含应用的配置管理、数据持久化、API 客户端及 Web 服务与界面桥接等模块。

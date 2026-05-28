@@ -24,6 +24,18 @@
     --thinking-bg: #2d2845;
     --thinking-border: #453b6d;
     --thinking-box-bg: #11111b;
+
+    /* Custom local fonts (default) */
+    --font-sans: 'Inter', 'Microsoft YaHei', sans-serif;
+    --font-title: 'Outfit', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+}
+
+body.font-mode-system {
+    /* System font overrides */
+    --font-sans: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
+    --font-title: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
+    --font-mono: 'Consolas', 'Courier New', monospace;
 }
 
 /* Base Styles */
@@ -34,7 +46,7 @@
 }
 
 body {
-    font-family: 'Inter', 'Microsoft YaHei', sans-serif;
+    font-family: var(--font-sans);
     background-color: var(--base);
     color: var(--text);
     overflow: hidden;
@@ -91,7 +103,7 @@ body {
 }
 
 .brand-name {
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font-title);
     font-weight: 700;
     font-size: 16px;
     letter-spacing: 0.5px;
@@ -389,7 +401,7 @@ body {
 }
 
 .message-body code {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     background-color: var(--crust);
     padding: 2px 4px;
     border-radius: 4px;
@@ -513,7 +525,7 @@ body {
     background-color: var(--thinking-box-bg);
     border-top: 1px solid var(--thinking-border);
     padding: 10px 12px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     color: var(--subtext1);
     line-height: 1.5;
@@ -680,7 +692,7 @@ body {
     background-color: var(--base);
     border: 1px solid var(--surface0);
     border-radius: 12px;
-    width: 400px;
+    width: 480px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     display: flex;
     flex-direction: column;
@@ -699,7 +711,7 @@ body {
 
 .modal-header h2 {
     font-size: 14px;
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font-title);
     color: var(--text);
 }
 
@@ -721,6 +733,29 @@ body {
     display: flex;
     flex-direction: column;
     gap: 14px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* Card-style grouped items in settings modal */
+.settings-section-card {
+    background-color: var(--mantle);
+    border: 1px solid var(--surface0);
+    border-radius: 8px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+.settings-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--mauve);
+    border-bottom: 1px solid var(--surface0);
+    padding-bottom: 6px;
+    margin-bottom: 4px;
 }
 
 .form-group {
@@ -1117,7 +1152,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font-title);
     font-weight: 600;
     font-size: 15px;
 }
@@ -1205,7 +1240,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 #artifacts-code-view {
     margin: 0;
     padding: 16px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 12.5px;
     white-space: pre-wrap;
 }
