@@ -10,3 +10,7 @@ conversations_backup/
 build/
 dist/
 .ruff_cache/
+server.crt
+server.key
+AGENTS.md
+

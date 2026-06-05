@@ -51,7 +51,9 @@ body {
     color: var(--text);
     overflow: hidden;
     height: 100vh;
+    height: 100dvh;
     width: 100vw;
+    width: 100dvw;
     -webkit-font-smoothing: antialiased;
 }
 
@@ -70,7 +72,9 @@ body {
 .app-container {
     display: flex;
     height: 100vh;
+    height: 100dvh;
     width: 100vw;
+    width: 100dvw;
 }
 
 /* Compact Sidebar */
@@ -427,6 +431,23 @@ body {
     font-size: 12px;
 }
 
+/* Image styles within message body */
+.message-body img {
+    max-width: 100%;
+    max-height: 400px;
+    object-fit: contain;
+    border-radius: 8px;
+    border: 1px solid var(--surface0);
+    cursor: pointer;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    transition: opacity 0.2s;
+}
+
+.message-body img:hover {
+    opacity: 0.85;
+}
+
 .code-header {
     position: absolute;
     top: 0;
@@ -672,7 +693,9 @@ body {
     top: 0;
     left: 0;
     width: 100vw;
+    width: 100dvw;
     height: 100vh;
+    height: 100dvh;
     background-color: rgba(17, 17, 27, 0.7);
     backdrop-filter: blur(4px);
     z-index: 1000;
@@ -1054,7 +1077,9 @@ input[type="range"]::-webkit-slider-thumb:hover {
     top: 0;
     left: 0;
     width: 100vw;
+    width: 100dvw;
     height: 100vh;
+    height: 100dvh;
     background: rgba(24, 24, 37, 0.7);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
@@ -1116,6 +1141,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .artifacts-panel {
     width: 480px;
     height: 100vh;
+    height: 100dvh;
     background-color: var(--mantle);
     border-left: 1px solid var(--surface0);
     display: flex;
@@ -1134,7 +1160,9 @@ input[type="range"]::-webkit-slider-thumb:hover {
     top: 0;
     left: 0;
     width: 100vw;
+    width: 100dvw;
     height: 100vh;
+    height: 100dvh;
     z-index: 9999;
 }
 
@@ -1324,4 +1352,368 @@ input[type="range"]::-webkit-slider-thumb:hover {
 /* Dropdown styling updates */
 .system-prompt-wrapper {
     margin-left: 8px;
+}
+
+/* Sidebar toggle button (hidden on desktop) */
+.sidebar-toggle-btn {
+    display: none !important;
+}
+
+/* Sidebar overlay (hidden on desktop) */
+.sidebar-overlay {
+    display: none;
+}
+
+/* Responsive Styles for Mobile and Portrait screens */
+@media (max-width: 768px) {
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 1000;
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: none;
+    }
+    
+    .app-container.sidebar-open .sidebar {
+        transform: translateX(0);
+        box-shadow: 5px 0 20px rgba(0, 0, 0, 0.4);
+    }
+    
+    .sidebar-overlay {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(2px);
+        -webkit-backdrop-filter: blur(2px);
+        z-index: 999;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+    
+    .app-container.sidebar-open .sidebar-overlay {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    
+    .sidebar-toggle-btn {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        background: transparent;
+        border: none;
+        color: var(--text);
+        cursor: pointer;
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        transition: background-color 0.2s;
+    }
+    
+    .sidebar-toggle-btn:hover {
+        background-color: var(--surface0);
+    }
+    
+    /* Navigation Bar compaction */
+    .top-bar {
+        padding: 0 8px;
+        gap: 4px;
+    }
+    
+    .top-bar-left {
+        gap: 6px;
+    }
+    
+    .select-menu {
+        max-width: 105px;
+        text-overflow: ellipsis;
+        padding: 4px 6px;
+        font-size: 11px;
+    }
+    
+    .token-label {
+        display: none !important;
+    }
+    
+    /* Viewport & Message layout */
+    .chat-viewport {
+        padding: 12px 0;
+    }
+    
+    .message-list {
+        padding: 0 10px;
+        gap: 12px;
+    }
+    
+    .message-card {
+        max-width: 90% !important;
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+    
+    .message-row.assistant .message-card {
+        max-width: 95% !important;
+    }
+    
+    /* Code blocks spacing */
+    .message-body pre {
+        margin: 6px 0;
+    }
+    
+    .message-body pre code {
+        font-size: 11.5px;
+        padding: 8px;
+    }
+    
+    .code-header {
+        height: 24px;
+        font-size: 9.5px;
+    }
+    
+    /* Deep thinking box */
+    .thinking-container {
+        max-width: 95%;
+    }
+    
+    /* Input Capsule & Section */
+    .input-section {
+        padding: 8px 10px 10px 10px;
+    }
+    
+    .input-capsule {
+        padding: 4px 10px;
+        gap: 8px;
+        border-radius: 18px;
+    }
+    
+    .input-box {
+        font-size: 13px;
+    }
+    
+    /* Artifacts panel layout override (Fullscreen) */
+    .artifacts-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: 100vw;
+        width: 100dvw;
+        height: 100vh;
+        height: 100dvh;
+        z-index: 1001;
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        border-left: none;
+    }
+    
+    .artifacts-panel:not(.collapsed) {
+        transform: translateX(0);
+        display: flex !important;
+    }
+    
+    /* Settings dialog responsiveness */
+    .modal-card {
+        width: 95% !important;
+        max-height: 90vh;
+    }
+    
+    .modal-body {
+        max-height: 55vh !important;
+    }
+}
+
+/* Very narrow portrait screens compaction */
+@media (max-width: 480px) {
+    .system-prompt-wrapper {
+        display: none !important;
+    }
+    
+    .select-menu {
+        max-width: 140px; /* give more space to the model selector if system prompt is hidden */
+    }
+}
+
+/* ==========================================
+   Phase 18: Web Search Integration Styles
+   ========================================== */
+
+/* Web Search Toggle Button active state */
+#web-search-btn.active {
+    color: var(--blue) !important;
+    background-color: var(--surface0);
+    text-shadow: 0 0 8px rgba(137, 180, 250, 0.5);
+    box-shadow: inset 0 0 4px rgba(137, 180, 250, 0.2);
+    border: 1px solid rgba(137, 180, 250, 0.3);
+}
+
+/* Web Search Container Card inside Chat View */
+.search-card {
+    background: rgba(30, 30, 46, 0.45);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--surface0);
+    border-radius: 10px;
+    margin: 8px 0 12px 0;
+    max-width: 90%;
+    overflow: hidden;
+    animation: fadeInUp 0.25s ease-out forwards;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.search-card:hover {
+    border-color: rgba(137, 180, 250, 0.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.search-card-header {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: rgba(17, 17, 27, 0.3);
+    cursor: pointer;
+    user-select: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--blue);
+}
+
+.search-status-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Radar Rotating Animation */
+.search-radar {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px dashed var(--blue);
+    border-radius: 50%;
+    animation: spin 2.5s linear infinite;
+    flex-shrink: 0;
+}
+
+.search-radar-done {
+    display: inline-block;
+    color: var(--green);
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.search-card-toggle-icon {
+    font-size: 10px;
+    color: var(--subtext0);
+    transition: transform 0.2s ease;
+}
+
+.search-card.collapsed .search-card-toggle-icon {
+    transform: rotate(-90deg);
+}
+
+.search-card-body {
+    border-top: 1px solid var(--surface0);
+    padding: 10px 12px;
+    background-color: rgba(17, 17, 27, 0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+    transition: max-height 0.25s ease;
+}
+
+.search-card.collapsed .search-card-body {
+    display: none !important;
+}
+
+/* Individual Search Result Item */
+.search-result-item {
+    padding: 6px 8px;
+    border-radius: 6px;
+    background-color: rgba(24, 24, 37, 0.4);
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.search-result-item:hover {
+    background-color: rgba(24, 24, 37, 0.7);
+    border-color: rgba(137, 180, 250, 0.2);
+}
+
+.search-result-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.search-result-title a {
+    color: var(--text);
+    text-decoration: none;
+    transition: color 0.15s ease;
+    word-break: break-all;
+}
+
+.search-result-title a:hover {
+    color: var(--blue);
+    text-decoration: underline;
+}
+
+.search-result-link-icon {
+    font-size: 10px;
+    color: var(--subtext0);
+    opacity: 0.7;
+}
+
+.search-result-url {
+    font-size: 10.5px;
+    color: var(--overlay0);
+    margin-bottom: 4px;
+    word-break: break-all;
+    display: block;
+}
+
+.search-result-snippet {
+    font-size: 11.5px;
+    color: var(--subtext1);
+    line-height: 1.5;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* 联网搜索的搜索引擎标识样式 */
+.search-engine-info {
+    font-size: 11px;
+    color: var(--subtext0);
+    padding: 6px 4px 0 4px;
+    border-top: 1px dashed rgba(147, 153, 178, 0.2);
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end; /* 右对齐以显得整洁高档 */
+}
+
+.search-engine-badge {
+    background-color: var(--surface1);
+    color: var(--blue); /* 与整体科技感蓝色呼应 */
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 10px;
 }

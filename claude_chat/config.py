@@ -48,25 +48,31 @@ def setup_logging():
         logger.addHandler(console_handler)
 
 # 初始化日志设置
-setup_logging()
+# setup_logging()  # Moved to ConfigManager.__init__
 logger = logging.getLogger("claude_chat")
+
 
 
 # ==========================================
 # 默认/备用模型列表 (如果从 API 获取在线模型失败时使用)
 # ==========================================
 FALLBACK_MODELS = [
-    "claude-sonnet-4-20250514",
-    "claude-opus-4-7",
-    "claude-opus-4-6",
-    "claude-opus-4-5",
-    "claude-sonnet-4-6",
-    "claude-sonnet-4-5",
+    "claude-3-7-sonnet-latest",
     "claude-3-5-sonnet-20241022",
     "claude-3-5-haiku-20241022",
     "claude-3-opus-20240229",
-    "claude-3-sonnet-20240229",
-    "claude-3-haiku-20240307",
+]
+
+FALLBACK_MODELS_DEEPSEEK = [
+    "deepseek-chat",
+    "deepseek-reasoner",
+]
+
+FALLBACK_MODELS_GEMINI = [
+    "gemini-2.0-flash",
+    "gemini-2.0-pro-exp",
+    "gemini-1.5-pro",
+    "gemini-1.5-flash",
 ]
 
 # 支持上传/解析的文件扩展名分类
@@ -83,6 +89,57 @@ TEXT_EXTENSIONS = {
 # ==========================================
 # 加密混淆工具函数 (用于安全保存 API Key 备用副本)
 # ==========================================
+def _get_machine_key() -> bytes:
+    import uuid
+    import platform
+    import os
+    import getpass
+    import hashlib
+    
+    try:
+        user = os.getlogin()
+    except Exception:
+        try:
+            user = getpass.getuser()
+        except Exception:
+            user = "unknown_user"
+            
+    node = platform.node() or "unknown_node"
+    machine = platform.machine() or "unknown_machine"
+    
+    fingerprint = f"{node}_{machine}_{user}".encode('utf-8')
+    salt = b"ClaudeChatSecretSalt_GCM_2026"
+    return hashlib.pbkdf2_hmac('sha256', fingerprint, salt, 100000)
+
+
+def aes_encrypt(data: str) -> str:
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        import os
+        aesgcm = AESGCM(_get_machine_key())
+        nonce = os.urandom(12)
+        ciphertext = aesgcm.encrypt(nonce, data.encode('utf-8'), None)
+        return f"{base64.b64encode(nonce).decode('utf-8')}:{base64.b64encode(ciphertext).decode('utf-8')}"
+    except Exception as e:
+        logger.error(f"AES-GCM 加密失败: {e}")
+        return ""
+
+
+def aes_decrypt(encrypted_str: str) -> str:
+    if not encrypted_str or ":" not in encrypted_str:
+        return ""
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        nonce_b64, ciphertext_b64 = encrypted_str.split(":", 1)
+        nonce = base64.b64decode(nonce_b64.encode('utf-8'))
+        ciphertext = base64.b64decode(ciphertext_b64.encode('utf-8'))
+        aesgcm = AESGCM(_get_machine_key())
+        return aesgcm.decrypt(nonce, ciphertext, None).decode('utf-8')
+    except Exception as e:
+        logger.error(f"AES-GCM 解密失败: {e}")
+        return ""
+
+
 def xor_crypt(data: str) -> str:
     """
     使用基于主机名 (platform.node) 的动态盐进行简单的 XOR 混淆加密，并输出 Base64 编码字符串
@@ -110,6 +167,7 @@ def xor_decrypt(obfuscated_b64: str) -> str:
         return ""
 
 
+
 # ==========================================
 # 系统配置管理器
 # ==========================================
@@ -119,120 +177,158 @@ class ConfigManager:
     并支持通过系统 Keyring 安全地加密保存 API 密钥，在 Linux/无图形环境下支持平滑退化为本地 XOR 加密。
     """
     def __init__(self):
+        import threading
+        self._lock = threading.RLock()
+        setup_logging()
         # 默认系统配置数据结构
+
+
         self.data = {
+            "active_platform": "claude",
             "api_key": "",
-            "model": "claude-sonnet-4-20250514",
+            "deepseek_api_key": "",
+            "gemini_api_key": "",
+            "deepseek_api_url": "https://api.deepseek.com",
+            "gemini_api_url": "",
+            "ocr_mode": "auto",
+            "ocr_cloud_model": "gemini",
+            "model": "claude-3-7-sonnet-latest",
             "temperature": 0.7,
             "max_tokens": 4096,
             "thinking_enabled": False,
             "thinking_type": "adaptive",
             "thinking_budget": 16000,
             "thinking_level": "high",
+            "enable_code_sandbox": False,
             "auto_run_code": False,
             "font_mode": "custom",
             "enable_server": True,
             "server_port": 8000,
+            "enable_ssl": False,
             "sync_config_to_web": True,
             "only_server": False,
             "proxy_mode": "system",
             "proxy_url": "",
+            "security_token": "",
             "system_prompts": [
                 {"id": "default_helper", "name": "AI 助手", "content": "You are a helpful, respectful and honest assistant."},
                 {"id": "translator", "name": "专业翻译官", "content": "你是一个专业的翻译官，请将我输入的所有内容翻译成地道的英文，如果本身就是英文则翻译成中文。无需解释。"},
                 {"id": "programmer", "name": "高级程序员", "content": "你是一位拥有20年开发经验的资深软件架构师。请以严谨、结构化、注重性能与安全性的视角回答编程问题，并提供符合最佳实践的完整代码段。"}
+
             ],
-            "selected_system_prompt_id": ""
+            "selected_system_prompt_id": "",
+            "enable_web_search": False,
+            "web_search_engine": "google",
+            "tavily_api_key": "",
+            "jina_api_key": "",
+            "web_page_parser": "local"
         }
         self.load()
+        
+        # 确保存在一个安全验证 Token 用于跨端与网络鉴权
+        if not self.data.get("security_token"):
+            import secrets
+            self.data["security_token"] = secrets.token_hex(16)
+            self.save()
 
     def load(self):
         """
-        从本地 config.json 加载保存的系统配置，并自动从 Keyring 或混淆备份中读取 API Key
+        从本地 config.json 加载保存的系统配置，并自动从 Keyring 或混淆备份中读取所有 API Key
         """
-        if CONFIG_PATH.exists():
-            try:
-                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                    loaded = json.load(f)
-                
-                # 用读取到的字段覆盖更新默认配置字典（排除 api_key 字段防覆盖）
-                self.data.update(loaded)
-                
-                storage = loaded.get("api_key_storage", "none")
-                api_key_val = ""
-                
-                if storage == "keyring":
-                    # 尝试从系统保险箱读取
-                    try:
-                        import keyring
-                        val = keyring.get_password("ClaudeChat", "api_key")
-                        if val:
-                            api_key_val = val
-                        else:
-                            # 如果系统保险箱读取为空，降级采用 XOR 混淆副本
-                            obf = loaded.get("api_key_obfuscated", "")
+        with self._lock:
+            if CONFIG_PATH.exists():
+                try:
+                    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                        loaded = json.load(f)
+                    
+                    # 用读取到的字段覆盖更新默认配置字典
+                    self.data.update(loaded)
+                    
+                    # 定义所有需要安全加密保存的 API Key 列表
+                    api_keys = ["api_key", "tavily_api_key", "jina_api_key", "deepseek_api_key", "gemini_api_key"]
+                    
+                    for key in api_keys:
+                        storage = loaded.get(f"{key}_storage", "none")
+                        key_val = ""
+                        
+                        obf = loaded.get(f"{key}_obfuscated", "")
+                        if storage == "keyring":
+                            # 尝试从系统保险箱读取
+                            try:
+                                import keyring
+                                val = keyring.get_password("ClaudeChat", key)
+                                if val:
+                                    key_val = val
+                                elif obf:
+                                    key_val = aes_decrypt(obf) if ":" in obf else xor_decrypt(obf)
+                            except Exception as e:
+                                logger.warning(f"从 keyring 中读取 {key} 失败，降级采用本地加密副本: {e}")
+                                if obf:
+                                    key_val = aes_decrypt(obf) if ":" in obf else xor_decrypt(obf)
+                        elif storage in ("aes", "xor"):
+                            # 使用本地加密文件存储
                             if obf:
-                                api_key_val = xor_decrypt(obf)
-                    except Exception as e:
-                        logger.warning(f"从 keyring 中读取密码失败，降级采用 XOR 副本: {e}")
-                        obf = loaded.get("api_key_obfuscated", "")
-                        if obf:
-                            api_key_val = xor_decrypt(obf)
-                elif storage == "xor":
-                    # 使用 XOR 加密文件存储
-                    obf = loaded.get("api_key_obfuscated", "")
-                    if obf:
-                        api_key_val = xor_decrypt(obf)
-                elif loaded.get("api_key"):
-                    # 兼容老版本明文 key 字段迁移
-                    api_key_val = loaded["api_key"]
-                
-                self.data["api_key"] = api_key_val
-            except (json.JSONDecodeError, Exception) as e:
-                logger.error(f"加载配置文件出错: {e}")
+                                key_val = aes_decrypt(obf) if ":" in obf else xor_decrypt(obf)
+    
+                        elif loaded.get(key):
+                            # 兼容老版本直接明文保存的字段迁移
+                            key_val = loaded[key]
+                            
+                        self.data[key] = key_val
+                        
+                except (json.JSONDecodeError, Exception) as e:
+                    logger.error(f"加载配置文件出错: {e}")
+
 
     def save(self):
         """
-        保存当前配置到本地文件。出于安全考虑，api_key 不会以明文写入磁盘文件。
-        会优先存入 keyring 并保存一份基于机器指纹的 XOR 混淆混淆副本到配置文件。
-        在 Linux 命令行或 Android Termux 下因无桌面而调用 Keyring 报错时，会自动降级为 XOR 方式。
+        保存当前配置到本地 file。出于安全考虑，敏感 API Key 不会以明文写入磁盘文件。
+        优先存入 keyring 并保存一份基于机器指纹的 XOR 混淆副本。
         """
-        to_save = dict(self.data)
-        api_key_val = to_save.get("api_key", "").strip()
-        
-        # 清除要写入磁盘明文字段中的敏感信息
-        to_save["api_key"] = ""
-        to_save["api_key_storage"] = "none"
-        to_save["api_key_obfuscated"] = ""
-        
-        if api_key_val:
-            # 优先尝试存入系统钥匙串 (Windows Credential Manager / macOS Keychain)
-            try:
-                import keyring
-                keyring.set_password("ClaudeChat", "api_key", api_key_val)
-                to_save["api_key_storage"] = "keyring"
-                # 同时写入一个 XOR 混淆混淆副本作为备份，以便以后转移或在 keyring 不可用时降级恢复
-                to_save["api_key_obfuscated"] = xor_crypt(api_key_val)
-            except Exception as e:
-                logger.warning(f"保存至 keyring 失败，将自动降级为本地混淆存储 (XOR): {e}")
-                to_save["api_key_storage"] = "xor"
-                to_save["api_key_obfuscated"] = xor_crypt(api_key_val)
+        with self._lock:
+            to_save = dict(self.data)
+
+            # 定义所有需要安全加密保存的 API Key 列表
+            api_keys = ["api_key", "tavily_api_key", "jina_api_key", "deepseek_api_key", "gemini_api_key"]
+            
+            for key in api_keys:
+                key_val = to_save.get(key, "").strip()
                 
-        try:
-            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-                json.dump(to_save, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.error(f"写入配置文件失败: {e}")
+                # 清除要写入磁盘的明文字段
+                to_save[key] = ""
+                to_save[f"{key}_storage"] = "none"
+                to_save[f"{key}_obfuscated"] = ""
+                
+                if key_val:
+                    try:
+                        import keyring
+                        keyring.set_password("ClaudeChat", key, key_val)
+                        to_save[f"{key}_storage"] = "keyring"
+                        to_save[f"{key}_obfuscated"] = ""
+                    except Exception as e:
+                        logger.warning(f"保存 {key} 至 keyring 失败，将自动降级为本地加密存储 (AES): {e}")
+                        to_save[f"{key}_storage"] = "aes"
+                        to_save[f"{key}_obfuscated"] = aes_encrypt(key_val)
+
+            try:
+                with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+                    json.dump(to_save, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                logger.error(f"写入配置文件失败: {e}")
 
     def get(self, key, default=None):
         """
         获取配置参数值，如果键不存在则返回 default 默认值
         """
-        return self.data.get(key, default)
+        with self._lock:
+            return self.data.get(key, default)
+
 
     def set(self, key, value):
         """
         更新指定的配置项并立即持久化写入本地配置文件中
         """
-        self.data[key] = value
-        self.save()
+        with self._lock:
+            self.data[key] = value
+            self.save()
+

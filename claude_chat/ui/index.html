@@ -13,11 +13,15 @@
     
     <!-- Local Dependencies -->
     <script src="libs/marked.min.js"></script>
+    <script src="libs/purify.min.js"></script>
     <script src="libs/highlight.min.js"></script>
     <script src="libs/mermaid.min.js"></script>
 </head>
 <body>
     <div class="app-container">
+        <!-- Sidebar overlay for mobile collapsible drawer -->
+        <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
@@ -40,6 +44,14 @@
             <!-- Top Navigation Bar -->
             <header class="top-bar">
                 <div class="top-bar-left">
+                    <button id="sidebar-toggle-btn" class="icon-btn sidebar-toggle-btn" title="切换菜单">☰</button>
+                    <div class="platform-select-wrapper" style="margin-right: 8px;">
+                        <select id="platform-select" class="select-menu">
+                            <option value="claude">Anthropic Claude</option>
+                            <option value="deepseek">DeepSeek AI</option>
+                            <option value="gemini">Google Gemini</option>
+                        </select>
+                    </div>
                     <div class="model-select-wrapper">
                         <select id="model-select" class="select-menu">
                             <option value="">正在加载模型...</option>
@@ -55,6 +67,7 @@
                 </div>
                 
                 <div class="top-bar-right">
+                    <button id="web-search-btn" class="icon-btn" title="开启联网搜索 (当前: 关闭)">🔍</button>
                     <button id="proxy-btn" class="icon-btn" title="网络代理设置">🌐</button>
                     <button id="settings-btn" class="icon-btn" title="参数配置">⚙️</button>
                     <button id="clear-chat-btn" class="icon-btn" title="清空/删除当前对话">🗑️</button>
@@ -124,16 +137,86 @@
             <div class="modal-body">
                 <!-- Group 1: Base Parameters Settings -->
                 <div class="settings-section-card">
-                    <div class="settings-section-title">💬 基础参数设置 (Base Settings)</div>
-                    <div class="form-group">
-                        <label for="api-key-input">Anthropic API Key:</label>
-                        <div class="input-row">
-                            <input type="password" id="api-key-input" placeholder="输入您的 sk-ant-api03-... 密钥">
-                            <button id="toggle-key-visibility" class="btn btn-secondary">👁</button>
+                    <div class="settings-section-title">💬 基础参数与密钥设置 (Base & API Keys Settings)</div>
+                    
+                    <div class="platform-tabs" style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--surface0); padding-bottom: 8px;">
+                        <button type="button" class="tab-btn active" data-platform-tab="claude" style="padding: 6px 12px; border-radius: 6px; border: none; background: var(--surface0); color: var(--text); cursor: pointer; font-size: 12px;">Claude</button>
+                        <button type="button" class="tab-btn" data-platform-tab="deepseek" style="padding: 6px 12px; border-radius: 6px; border: none; background: transparent; color: var(--subtext0); cursor: pointer; font-size: 12px;">DeepSeek</button>
+                        <button type="button" class="tab-btn" data-platform-tab="gemini" style="padding: 6px 12px; border-radius: 6px; border: none; background: transparent; color: var(--subtext0); cursor: pointer; font-size: 12px;">Gemini</button>
+                    </div>
+
+                    <!-- Claude Panel -->
+                    <div id="platform-panel-claude" class="platform-panel">
+                        <div class="form-group" id="api-key-input-container">
+                            <label for="api-key-input">Anthropic API Key:</label>
+                            <div class="input-row">
+                                <input type="password" id="api-key-input" placeholder="输入您的 sk-ant-api03-... 密钥">
+                                <button type="button" id="toggle-key-visibility" class="btn btn-secondary">👁</button>
+                            </div>
+                        </div>
+                        <div class="form-group hidden" id="api-key-status-container">
+                            <label>Anthropic API Key 状态:</label>
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;">
+                                <span style="color: var(--green); font-size: 12px; font-weight: 500;">🔒 API Key 已加密配置在服务端</span>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" id="change-key-btn" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 3px 8px;">更换</button>
+                                    <button type="button" id="disconnect-key-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 11px; padding: 3px 8px;">断开/清除</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="form-group">
+                    <!-- DeepSeek Panel -->
+                    <div id="platform-panel-deepseek" class="platform-panel hidden">
+                        <div class="form-group" id="deepseek-api-key-input-container">
+                            <label for="deepseek-api-key-input">DeepSeek API Key:</label>
+                            <div class="input-row">
+                                <input type="password" id="deepseek-api-key-input" placeholder="输入您的 sk-... 密钥">
+                                <button type="button" id="toggle-deepseek-key-visibility" class="btn btn-secondary">👁</button>
+                            </div>
+                        </div>
+                        <div class="form-group hidden" id="deepseek-api-key-status-container">
+                            <label>DeepSeek API Key 状态:</label>
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;">
+                                <span style="color: var(--green); font-size: 12px; font-weight: 500;">🔒 API Key 已加密配置在服务端</span>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" id="change-deepseek-key-btn" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 3px 8px;">更换</button>
+                                    <button type="button" id="disconnect-deepseek-key-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 11px; padding: 3px 8px;">断开/清除</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-top: 8px;">
+                            <label for="deepseek-api-url-input">DeepSeek API URL (可选自定义代理):</label>
+                            <input type="text" id="deepseek-api-url-input" placeholder="https://api.deepseek.com" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text);">
+                        </div>
+                    </div>
+
+                    <!-- Gemini Panel -->
+                    <div id="platform-panel-gemini" class="platform-panel hidden">
+                        <div class="form-group" id="gemini-api-key-input-container">
+                            <label for="gemini-api-key-input">Gemini API Key:</label>
+                            <div class="input-row">
+                                <input type="password" id="gemini-api-key-input" placeholder="输入您的 API Key">
+                                <button type="button" id="toggle-gemini-key-visibility" class="btn btn-secondary">👁</button>
+                            </div>
+                        </div>
+                        <div class="form-group hidden" id="gemini-api-key-status-container">
+                            <label>Gemini API Key 状态:</label>
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;">
+                                <span style="color: var(--green); font-size: 12px; font-weight: 500;">🔒 API Key 已加密配置在服务端</span>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" id="change-gemini-key-btn" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 3px 8px;">更换</button>
+                                    <button type="button" id="disconnect-gemini-key-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 11px; padding: 3px 8px;">断开/清除</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-top: 8px;">
+                            <label for="gemini-api-url-input">Gemini API URL (可选自定义代理):</label>
+                            <input type="text" id="gemini-api-url-input" placeholder="留空为默认" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text);">
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 12px;">
                         <label for="temp-slider" id="temp-label-title">Temperature: 0.70</label>
                         <input type="range" id="temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
                     </div>
@@ -182,9 +265,12 @@
                 <!-- Group 3: Function & Network Settings -->
                 <div class="settings-section-card">
                     <div class="settings-section-title">🌐 功能与服务端设置 (Function & Server)</div>
-                    <div class="form-group">
+                    <div class="form-group" style="display: flex; gap: 16px;">
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="auto-run-code-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 自动运行生成的 Python/JS 代码 (Auto-run Code)
+                            <input type="checkbox" id="auto-run-code-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 自动运行代码 (Auto-run)
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                            <input type="checkbox" id="enable-code-sandbox-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用本地代码执行沙盒
                         </label>
                     </div>
 
@@ -202,14 +288,105 @@
                             <input type="checkbox" id="only-server-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 仅运行服务端 (无本地窗口)
                         </label>
                     </div>
-
+                    <div class="form-group" style="display: flex; gap: 16px; margin-top: -6px;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                            <input type="checkbox" id="enable-ssl-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用 SSL/HTTPS 传输 (自签名证书可能需浏览器手动信任)
+                        </label>
+                    </div>
+                    
                     <div class="form-group">
                         <label for="server-port-input">服务端端口 (Server Port):</label>
                         <input type="number" id="server-port-input" min="1024" max="65535" value="8000" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100px;">
                     </div>
+
+                    <div class="form-group">
+                        <label for="server-token-input">安全验证 Token (Security Token):</label>
+                        <div class="input-row" style="display: flex; gap: 8px;">
+                            <input type="password" id="server-token-input" placeholder="安全 Token...">
+                            <button type="button" id="toggle-token-visibility" class="btn btn-secondary" title="显示/隐藏 Token">👁</button>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Group 4: Fonts & System Prompts Presets -->
+                <!-- Group 4: Web Search Settings -->
+                <div class="settings-section-card">
+                    <div class="settings-section-title">🔍 联网搜索设置 (Web Search)</div>
+                    <div class="form-group" style="display: flex; gap: 16px; margin-bottom: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; user-select: none; font-weight: 500;">
+                            <input type="checkbox" id="enable-search-input" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--blue);"> 全局启用联网搜索功能 (支持所有 AI 平台)
+                        </label>
+                    </div>
+                    
+                    <div class="form-group" style="display: flex; gap: 16px; margin-bottom: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; user-select: none; font-weight: 500;">
+                            <input type="checkbox" id="enable-fetch-input" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--blue);"> 全局启用网页正文深度抓取
+                        </label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="search-engine-select">联网搜索默认引擎 (Search Engine):</label>
+                        <select id="search-engine-select" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
+                            <option value="google">Google (默认谷歌，带智能备用)</option>
+                            <option value="bing">Bing (微软必应，带智能备用)</option>
+                            <option value="duckduckgo">DuckDuckGo HTML (极致防屏蔽，免翻/免验证)</option>
+                            <option value="tavily">Tavily Search API (专为 AI 设计，免代理防屏蔽，需 Key)</option>
+                            <option value="jina">Jina Search API (专为 AI 设计，免代理防屏蔽，需 Key)</option>
+                            <option value="claude">Claude 官方原生搜索 (仅支持 claude-3-7 等最新模型，按量收费)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="tavily-key-group" style="display: none;">
+                        <label for="tavily-key-input">Tavily API Key (免费 1000 次/月):</label>
+                        <div id="tavily-key-input-container" class="input-row" style="display: flex; gap: 8px;">
+                            <input type="password" id="tavily-key-input" placeholder="输入您的 Tavily API Key (tvly-...)" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
+                            <button type="button" id="toggle-tavily-visibility" class="btn btn-secondary" style="padding: 6px 12px;">👁</button>
+                        </div>
+                        <div class="form-group hidden" id="tavily-key-status-container" style="margin-top: 6px;">
+                            <label>Tavily API Key 状态:</label>
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;">
+                                <span style="color: var(--green); font-size: 12px; font-weight: 500;">🔒 Tavily Key 已加密配置在服务端</span>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" id="change-tavily-btn" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 3px 8px;">更换</button>
+                                    <button type="button" id="disconnect-tavily-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 11px; padding: 3px 8px;">断开/清除</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="jina-key-group" style="display: none;">
+                        <label for="jina-key-input">Jina API Key (获取更高额度速率):</label>
+                        <div id="jina-key-input-container" class="input-row" style="display: flex; gap: 8px;">
+                            <input type="password" id="jina-key-input" placeholder="输入您的 Jina API Key (jina_...)" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
+                            <button type="button" id="toggle-jina-visibility" class="btn btn-secondary" style="padding: 6px 12px;">👁</button>
+                        </div>
+                        <div class="form-group hidden" id="jina-key-status-container" style="margin-top: 6px;">
+                            <label>Jina API Key 状态:</label>
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;">
+                                <span style="color: var(--green); font-size: 12px; font-weight: 500;">🔒 Jina Key 已加密配置在服务端</span>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" id="change-jina-btn" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 3px 8px;">更换</button>
+                                    <button type="button" id="disconnect-jina-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 11px; padding: 3px 8px;">断开/清除</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="web-page-parser-select">网页内容读取方式 (Web Page Parser):</label>
+                        <select id="web-page-parser-select" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
+                            <option value="local">本地精简解析器 (Local Reader - 自动剔除多余标签)</option>
+                            <option value="jina">Jina Reader API (极速转换为干净 Markdown，需 Jina Key)</option>
+                            <option value="local_raw">原始 HTML 源码 (Raw HTML - 完整保留不过滤)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="web-fetch-limit-input">第三方接口网页抓取最大字符数 (防溢出):</label>
+                        <input type="number" id="web-fetch-limit-input" placeholder="默认 15000" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
+                    </div>
+                </div>
+
+                <!-- Group 5: Fonts & System Prompts Presets -->
                 <div class="settings-section-card">
                     <div class="settings-section-title">📝 字体与提示词预设 (Fonts & Presets)</div>
                     <div class="form-group">
@@ -226,6 +403,37 @@
                             <!-- Dynamic Presets list -->
                         </div>
                         <button id="add-preset-btn" class="btn btn-secondary btn-sm" style="margin-top: 8px; padding: 4px 10px; font-size: 11px;">+ 添加新预设</button>
+                    </div>
+                </div>
+
+                <!-- Group 6: OCR & Document Parser Settings -->
+                <div class="settings-section-card">
+                    <div class="settings-section-title">📷 图像与文档解析设置 (OCR & File Parser)</div>
+                    <div class="form-group">
+                        <label for="ocr-mode-select">图像 OCR 识别模式:</label>
+                        <select id="ocr-mode-select" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
+                            <option value="auto">智能自动降级 (优先本地 EasyOCR，失败则使用云端大模型)</option>
+                            <option value="local">强制本地 EasyOCR 提取</option>
+                            <option value="cloud">强制云端大模型 OCR 提取 (精度最高，需配置 Key)</option>
+                            <option value="none">关闭图像 OCR</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ocr-cloud-model-select">云端 OCR 降级模型:</label>
+                        <select id="ocr-cloud-model-select" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
+                            <option value="gemini">Google Gemini (使用 gemini-1.5-flash，推荐，免费/便宜)</option>
+                            <option value="claude">Anthropic Claude (使用 claude-3-5-sonnet，高成本高精度)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label style="margin-bottom: 8px; display: block;">本地解析库与 OCR 依赖安装状态:</label>
+                        <div id="parser-status-list" style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px;">
+                            <span class="parser-badge" id="badge-docx" style="padding: 4px 8px; border-radius: 4px; background: var(--surface0); color: var(--text);">python-docx: 检测中...</span>
+                            <span class="parser-badge" id="badge-openpyxl" style="padding: 4px 8px; border-radius: 4px; background: var(--surface0); color: var(--text);">openpyxl: 检测中...</span>
+                            <span class="parser-badge" id="badge-pptx" style="padding: 4px 8px; border-radius: 4px; background: var(--surface0); color: var(--text);">python-pptx: 检测中...</span>
+                            <span class="parser-badge" id="badge-pypdf" style="padding: 4px 8px; border-radius: 4px; background: var(--surface0); color: var(--text);">pypdf: 检测中...</span>
+                            <span class="parser-badge" id="badge-easyocr" style="padding: 4px 8px; border-radius: 4px; background: var(--surface0); color: var(--text);">easyocr: 检测中...</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -374,6 +582,17 @@
                 <button id="save-preset-btn" class="btn btn-primary">保存预设</button>
                 <button class="btn btn-secondary" id="cancel-preset-btn">取消</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Image Preview Modal -->
+    <div id="image-modal" class="modal-overlay hidden" style="z-index: 10003;">
+        <div class="modal-card" style="max-width: 90%; max-height: 90%; background: transparent; box-shadow: none; display: flex; flex-direction: column; align-items: center;">
+            <div style="width: 100%; display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                <button class="btn btn-secondary" id="download-image-btn" style="margin-right: 10px; padding: 6px 12px; border-radius: 6px;">📥 下载保存</button>
+                <button class="close-modal-btn" id="close-image-modal-btn" style="background: var(--surface0); border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">&times;</button>
+            </div>
+            <img id="preview-image-el" src="" style="max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
         </div>
     </div>
 

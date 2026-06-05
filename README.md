@@ -2,124 +2,205 @@
 
 [简体中文](./README_ZH.md) | **English**
 
-Desktop GUI client for Anthropic Claude API, built with **pywebview** and modern web technologies. Features a premium **Catppuccin Mocha** dark theme, real-time streaming, collapsible reasoning/thinking steps, offline-first assets, text selection with custom context menus, secure credential storage, SQLite database architecture, custom system prompts preset manager, artifacts side panel preview, proxy support, and headless server mode for multi-platform deployment (Linux, Android Termux, macOS, etc.).
+A powerful desktop GUI / headless web client for **Claude (Anthropic)**, **DeepSeek**, and **Google Gemini** APIs, built with **pywebview** and modern web technologies. Features a premium **Catppuccin Mocha** dark theme, real-time streaming, multi-platform AI support with seamless model switching, web search integration, file attachments, collapsible reasoning/thinking steps, offline-first assets, secure credential storage, and SQLite database architecture.
 
 ## Key Features
 
-- **Premium Dark UI** — Powered by a modern web layout using the HSL-based Catppuccin Mocha color palette, featuring glassmorphism elements, custom scrollbars, and micro-animations.
-- **Model Switching & Persistence** — Auto-fetches available models via the API in the background. Initially loads from a cached local model list for a near-instant startup. Switched model settings persist across application restarts.
-- **Extended Thinking** — Configurable reasoning/thinking mode (adaptive / enabled / disabled) with budget token controls. Reasoning paths are visualized in an expandable toggle panel with estimated token sizes.
-- **Stop Generating Button** — Interrupt active streaming with a visual control, terminating the connection and displaying an `🚫 已中止` (Aborted) badge while saving partial responses.
-- **Artifacts Side Panel** — A collapsible right-hand side panel that renders SVGs natively, runs HTML snippets in a sandboxed `<iframe>` container, and processes Markdown or structural graphs using local `mermaid.js`, providing rich, isolated previews.
-- **System Prompts Preset Manager** — Save, edit, and delete system prompt presets via the Settings (⚙️) modal. Easily switch active presets directly from the navigation bar dropdown.
-- **Secure Storage** — Encrypts and stores Anthropic API keys directly inside the Windows Credential Manager using `keyring`. Falls back to an obfuscated Base64 + XOR salt scheme when a keyring isn't available.
-- **SQLite Database Architecture** — Shifts the storage layer from individual files to a structured SQLite database (`claude_chat.db`). Legacy chat history JSON files inside `conversations/` are automatically migrated on boot and archived in `conversations_backup/`.
-- **System Log Viewer** — Logs system behavior directly to `claude_chat.log`. View, refresh, copy, and clear logs in real time from the Settings (⚙️) modal.
-- **Raw Packet Viewer** — An API payload inspector. Click the package icon (`📦`) next to any message to view the database record and the Anthropic API request/response JSON payload (with massive base64 content sanitized).
-- **Text Selection & Custom Context Menu** — Full mouse selection enabled natively. Right-clicking inside input fields brings up standard Cut/Copy/Paste/Select All options, while right-clicking inside message cards offers "Copy Selection", "Copy Message", and "Select All" actions.
-- **Windows Ctypes Clipboard Bridge** — Utilizes a ctypes clipboard hook on Windows to bypass WebView2's clipboard restrictions, ensuring reliable copy/paste functions.
-- **Offline-First Libraries** — Markdown (`marked.js`), syntax highlighting (`highlight.js`), and graphing (`mermaid.js`) are fully localized. The application operates entirely without external CDN network requests.
-- **Proxy Support** — Choose between system proxy (environment variables), no proxy, or custom proxy URL configs directly via a graphical modal.
+### 🤖 Multi-Platform AI Support
+- **Claude (Anthropic)** — Full support including Extended Thinking (adaptive/enabled), vision, PDF parsing, and native search grounding.
+- **DeepSeek** — Full chat support including DeepSeek-V3 and DeepSeek-R1 (reasoning). Automatic tool-based web search.
+- **Google Gemini** — Full support including Gemini 2.0 Flash, Gemini 1.5 Pro, and reasoning models. Native Gemini search grounding.
+- **Instant model switching** — Switch platform and model from the top bar. Platform-aware validation prevents cross-platform model errors (e.g. sending a Claude model name to DeepSeek).
+- **Dynamic model list** — Fetches available models from each platform's API in the background; falls back to a built-in list if the network is unavailable.
+
+### 🔍 Web Search
+- **Integrated web search** — Toggle search on/off per-session. Supports Google, Bing, DuckDuckGo, Tavily (API), and Jina (API).
+- **Live search card UI** — A real-time radar animation card appears during search; expands to show result titles, URLs, and snippets. Search cards persist in the conversation history.
+- **Deep webpage reading** — The AI can read full page content via local extraction or Jina Reader API.
+- **Platform-native search** — Claude uses Anthropic's native web search tool; Gemini uses built-in Google Search grounding; DeepSeek uses tool-call based web search.
+
+### 📎 File Attachments & Vision
+- **Claude & Gemini** — Native multimodal: drag-and-drop or upload images (PNG/JPG/GIF/WebP) and PDFs directly as API content blocks.
+- **DeepSeek** — Text-only API: images/PDFs are automatically extracted via OCR or local PDF parser and sent as text.
+- **OCR Engine** — Auto-mode selects the best OCR: native vision (Claude/Gemini) for multimodal models, EasyOCR (local) or cloud OCR (Gemini Flash) for text-only platforms. Configurable via Settings.
+- **Text file support** — `.py`, `.js`, `.md`, `.json`, `.csv`, `.sql`, and 30+ other text formats are read and injected as code blocks.
+
+### 🧠 Extended Thinking / Reasoning
+- **Claude** — Supports adaptive and enabled thinking modes, with configurable budget tokens and effort level.
+- **DeepSeek-R1 / Gemini 2.0 Flash Thinking** — Reasoning traces are shown in a collapsible toggle panel with estimated token count.
+- Thinking config is saved per-conversation.
+
+### 🎨 Premium UI
+- **Catppuccin Mocha** dark theme with HSL color system, glassmorphism panels, and micro-animations.
+- **Artifacts side panel** — Renders SVG, sandboxed HTML iframes, and Mermaid diagrams in an isolated collapsible panel.
+- **System prompts manager** — Save, edit, and switch preset system prompts from the Settings modal.
+- **Stop generation** — Interrupt streaming at any time; partial responses are saved with an `🚫 Aborted` badge.
+- **Retry / Edit / Branch** — Regenerate the last AI response, edit and resend any user message, or fork a new conversation from any point.
+- **Raw packet inspector** — Click `📦` on any message to view the raw DB record and API payload JSON.
+
+### 🛠️ Developer & Power Features
+- **Local code sandbox** — Run Python/JavaScript code blocks directly in the app. A real-time interactive terminal appears below each code block with stdin support (must be manually enabled in settings for security).
+- **Comprehensive security** — Uses strict DOMPurify sanitization to prevent XSS injections. Renders Mermaid diagrams and SVG graphics inside secure sandboxed environments.
+- **Proxy support** — System proxy, no proxy, or custom HTTP proxy URL.
+- **Secure credential storage** — API keys are stored in the OS keyring (Windows Credential Manager, macOS Keychain, Linux libsecret). Falls back to PBKDF2/AES-256-GCM encrypted local storage.
+- **SQLite architecture** — All conversations and messages are stored in `claude_chat.db`. Auto-migrates legacy JSON conversation files on first boot.
+- **Headless server mode** — Runs as a pure HTTP server for LAN/remote access from any browser (Linux, macOS, Android Termux, etc.).
+- **Offline-first libraries** — `marked.js`, `highlight.js`, and `mermaid.js` are fully local; no external CDN requests.
+
+---
 
 ## Requirements
 
 - Python 3.10+
-- Anthropic API key (configured inside the app settings)
+- API key(s) for one or more platforms:
+  - **Anthropic Claude** — [console.anthropic.com](https://console.anthropic.com)
+  - **DeepSeek** — [platform.deepseek.com](https://platform.deepseek.com)
+  - **Google Gemini** — [aistudio.google.com](https://aistudio.google.com)
 - Internet connection (for API calls)
+
+---
 
 ## Quick Start
 
-### 1. Windows Setup (Automated Virtual Environment)
+### Windows (Automated Setup)
 
-We provide virtual environment configuration scripts that automatically create a `.venv`, upgrade pip, and install all python dependencies:
-- Double-click **`setup_venv.bat`** (CMD version)
-- Or run **`setup_venv.ps1`** in PowerShell.
+Setup scripts create a `.venv`, install all dependencies, and configure the environment:
 
-Once configured, run the app using the virtualenv python:
+```bash
+# Option 1: CMD
+setup_venv.bat
+
+# Option 2: PowerShell
+.\setup_venv.ps1
+```
+
+Then run the app:
 ```bash
 .venv\Scripts\python.exe claude_chat.py
 ```
 
-### 2. Multi-Platform Headless Server (Linux, Android Termux, macOS, etc.)
-
-If you run the app on a headless server or Android Termux where GUI libraries cannot be loaded, the app automatically falls back to a Web server-only mode. You can also force it via CLI:
+### Linux / macOS / Android Termux (Headless Server Mode)
 
 ```bash
-# Set up environment
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Start in headless mode, listening on all interfaces
+# Start server accessible from any device on the LAN
 python claude_chat.py --server --host 0.0.0.0 --port 8000
 ```
-Then navigate to `http://<device-ip>:8000` on any device in the LAN.
+Navigate to `http://<device-ip>:8000` from any browser on the network.
 
-### 3. Build Portable Windows Executable
-To package the app into a standalone `dist/ClaudeChat.exe`:
+### Build Windows Executable
+
 ```bash
 .venv\Scripts\python.exe build_executable.py
+# Output: dist/ClaudeChat.exe
 ```
+
+---
 
 ## Dependencies
 
 | Package | Version | Description |
 |---------|---------|-------------|
 | pywebview | >=5.0 | Desktop GUI container |
-| anthropic | >=0.103.0 | Anthropic SDK |
+| anthropic | >=0.103.0 | Anthropic Claude SDK |
+| openai | >=1.0.0 | DeepSeek (OpenAI-compatible) SDK |
+| google-genai | >=1.0.0 | Google Gemini SDK |
 | Pillow | >=10.0.0 | Image processing |
 | keyring | >=24.0.0 | Secure OS credential storage |
+| requests | >=2.28.0 | HTTP client for web search |
+| beautifulsoup4 | >=4.12.0 | Web page parsing |
+
+Optional (for enhanced file parsing):
+- `easyocr` — Local OCR for images on text-only platforms
+- `pypdf` — PDF text extraction
+- `python-docx` — Word document parsing
+- `openpyxl` — Excel file parsing
+- `python-pptx` — PowerPoint parsing
+
+---
 
 ## Project Structure
 
 ```text
 Claude_chat/
-├── claude_chat.py      # Application launcher entry point
-├── requirements.txt    # Python dependencies
-├── claude_chat/        # Core application source
-│   ├── __init__.py     # Module initialization
-│   ├── app.py          # PyWebView GUI & JS bridge API
-│   ├── client.py       # Anthropic Client wrapper
-│   ├── config.py       # Configuration manager & Secure Storage
-│   ├── conversation.py # Conversation JSON manager (Legacy)
-│   ├── db.py           # SQLite database layer & JSON migrator
-│   └── ui/             # Web interface files
-│       ├── index.html  # Application HTML layout
-│       ├── style.css   # HSL Catppuccin Mocha styles
-│       ├── app.js      # Frontend interaction logic & stream callbacks
-│       └── libs/       # Localized libraries (marked, highlight, mermaid)
-├── config.json         # Runtime configuration file (git-ignored)
-├── claude_chat.db      # SQLite database file (git-ignored)
-├── conversations/      # Legacy chat history directory (git-ignored)
-└── conversations_backup/# Legacy chat history archives after migration (git-ignored)
+├── claude_chat.py          # Application launcher entry point
+├── requirements.txt        # Python dependencies
+├── setup_venv.bat          # Windows CMD setup script
+├── setup_venv.ps1          # Windows PowerShell setup script
+├── build_executable.py     # PyInstaller packaging script
+├── pyproject.toml          # Project metadata & linting config
+├── claude_chat/            # Core application source
+│   ├── __init__.py         # Module initialization
+│   ├── app.py              # PyWebView GUI & JS bridge API
+│   ├── client.py           # Multi-platform API client (Claude/DeepSeek/Gemini)
+│   ├── config.py           # Configuration & secure storage manager
+│   ├── conversation.py     # Legacy conversation JSON reader
+│   ├── db.py               # SQLite database layer
+│   ├── search.py           # Web search engine integration
+│   ├── attachment_parser.py# File attachment parsing & OCR
+│   ├── server.py           # HTTP server for headless/web mode
+│   └── ui/                 # Web interface
+│       ├── index.html      # Application HTML layout
+│       ├── style.css       # Catppuccin Mocha styles
+│       ├── app.js          # Frontend logic & stream callbacks
+│       └── libs/           # Localized JS libraries
+├── config.json             # Runtime configuration (git-ignored)
+├── claude_chat.db          # SQLite database (git-ignored)
+├── conversations_backup/   # Migrated legacy JSON files (git-ignored)
+└── test/                   # Test scripts and modules
 ```
 
-### config.json
+---
+
+## Configuration Reference (`config.json`)
 
 ```json
 {
-  "api_key": "sk-ant-...",
-  "model": "claude-3-7-sonnet-20250219",
+  "active_platform": "claude",
+  "model": "claude-3-7-sonnet-latest",
   "temperature": 1.0,
-  "max_tokens": 4096,
-  "thinking_enabled": true,
-  "thinking_type": "enabled",
+  "max_tokens": 16000,
+  "thinking_enabled": false,
+  "thinking_type": "adaptive",
   "thinking_budget": 16000,
+  "thinking_level": "high",
+  "enable_web_search": false,
+  "web_search_engine": "google",
+  "web_page_parser": "local",
   "proxy_mode": "system",
-  "proxy_url": ""
+  "proxy_url": "",
+  "ocr_mode": "auto",
+  "ocr_cloud_model": "gemini"
 }
 ```
+
+---
 
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+Enter` | Send message |
-| `Shift+Enter` | Newline (default behavior) |
+| `Shift+Enter` | Insert newline |
+
+---
 
 ## Proxy Modes
 
-1. **System proxy** — reads `HTTP_PROXY`/`HTTPS_PROXY` environment variables.
-2. **No proxy** — ignores all proxy settings.
-3. **Custom proxy** — specify a proxy URL (e.g. `http://127.0.0.1:10808`).
+1. **System proxy** — Reads `HTTP_PROXY` / `HTTPS_PROXY` environment variables.
+2. **No proxy** — Forces direct connections, ignoring all proxy settings.
+3. **Custom proxy** — Specify a proxy URL (e.g. `http://127.0.0.1:10808`).
+
+---
+
+## CLI Arguments
+
+| Flag | Full Form | Description |
+|------|-----------|-------------|
+| `-s` | `--server` | Force headless web server mode (no GUI window) |
+| | `--host <ip>` | Bind IP address (default: `127.0.0.1`; use `0.0.0.0` for LAN access) |
+| `-p` | `--port <port>` | HTTP server port (default: `8000`) |

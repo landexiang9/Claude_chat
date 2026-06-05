@@ -84,6 +84,7 @@ class ClaudeChatApp:
         # 当前活跃的本地代码执行子进程映射 { process_id: { "proc": Popen对象, "temp_path": 临时文件路径 } }
         self.active_processes = {}
         self.process_lock = threading.Lock()
+        self.lock = threading.Lock()
         
         # 挂载的终端日志监听回调列表
         self.console_listeners = []
@@ -99,7 +100,6 @@ class ClaudeChatApp:
             except Exception:
                 pass
             self.active_stream = None
-        self.is_streaming = False
         return True
 
     def save_code_block(self, content, suggest_name):
@@ -110,8 +110,8 @@ class ClaudeChatApp:
             return False
         
         file_path = self.window.create_file_dialog(
-            webview.SAVE_FILE_DIALOG,
-            directory=None,
+            webview.SAVE_DIALOG,
+            directory='',
             save_filename=suggest_name
         )
         if not file_path:
@@ -130,6 +130,58 @@ class ClaudeChatApp:
         except Exception as e:
             logger.error(f"保存代码块时发生写入错误: {e}")
             return False
+
+    def save_image(self, image_data, suggest_name):
+        """
+        弹出文件保存对话框（在 GUI 模式下），将图片数据保存为本地文件。
+        image_data 可以是 data URI (data:image/...;base64,...) 或 HTTP URL。
+        """
+        if not self.window:
+            return None
+
+        file_path = self.window.create_file_dialog(
+            webview.SAVE_DIALOG,
+            directory='',
+            save_filename=suggest_name
+        )
+        if not file_path:
+            return None
+
+        if isinstance(file_path, (list, tuple)):
+            file_path = file_path[0] if file_path else None
+        if not file_path:
+            return None
+
+        try:
+            import base64, re
+            image_bytes = None
+
+            if image_data.startswith("data:"):
+                # data URI: data:image/png;base64,xxxxx
+                header, encoded = image_data.split(",", 1)
+                # Ensure we only decode the base64 part
+                if "base64" in header:
+                    image_bytes = base64.b64decode(encoded)
+                else:
+                    logger.error("不支持的 data URI 格式（非 base64）")
+                    return None
+            elif image_data.startswith("http://") or image_data.startswith("https://"):
+                import urllib.request
+                req = urllib.request.Request(image_data, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    image_bytes = resp.read()
+            else:
+                logger.error(f"不支持的图片数据格式: {image_data[:80]}...")
+                return None
+
+            if image_bytes:
+                with open(file_path, "wb") as f:
+                    f.write(image_bytes)
+                return file_path
+            return None
+        except Exception as e:
+            logger.error(f"保存图片时发生错误: {e}")
+            return None
 
     def mainloop(self):
         """
@@ -163,10 +215,11 @@ class ClaudeChatApp:
         bind_host = self.cli_host if self.cli_host is not None else '0.0.0.0'
         
         port = None
+        is_ssl = False
         if enable_server:
             # 开启本地 HTTP/API Web 服务器
             from claude_chat.server import start_server
-            port = start_server(self, api, host=bind_host, start_port=server_port)
+            port, is_ssl = start_server(self, api, host=bind_host, start_port=server_port)
             
         if only_server and enable_server and port:
             # 纯服务模式 (Headless)：阻塞当前主线程，等待退出信号
@@ -182,8 +235,9 @@ class ClaudeChatApp:
         # 图形界面 (GUI) 模式
         logger.info("正在通过 pywebview 渲染启动 Claude Chat 图形界面...")
         if port:
-            url_target = f"http://localhost:{port}"
-            logger.info(f"窗口加载的本地服务器端 URL: {url_target}")
+            protocol = "https" if is_ssl else "http"
+            url_target = f"{protocol}://localhost:{port}/?token={self.config.get('security_token', '')}"
+            logger.info(f"窗口加载的本地服务器端 URL: {protocol}://localhost:{port}")
         else:
             # 如果服务器被彻底禁用，使用直接加载本地 index.html 方案
             ui_dir = Path(__file__).parent / "ui"
@@ -224,11 +278,23 @@ class ClaudeChatApp:
         执行 evaluate_js 回调将最新列表更新推送到 GUI 前端下拉列表中。
         """
         def _fetch():
-            api_key = self.config.get("api_key")
+            active_platform = self.config.get("active_platform", "claude")
+            
+            # Select the correct api key and url based on platform
+            if active_platform == "deepseek":
+                api_key = self.config.get("deepseek_api_key", "")
+                platform_api_url = self.config.get("deepseek_api_url", "https://api.deepseek.com")
+            elif active_platform == "gemini":
+                api_key = self.config.get("gemini_api_key", "")
+                platform_api_url = self.config.get("gemini_api_url", "")
+            else:
+                api_key = self.config.get("api_key", "")
+                platform_api_url = None
+
             proxy_mode = self.config.get("proxy_mode", "system")
             proxy_url = self.config.get("proxy_url", "")
             
-            model_ids = fetch_available_models(api_key, proxy_mode, proxy_url)
+            model_ids = fetch_available_models(api_key, proxy_mode, proxy_url, active_platform=active_platform, platform_api_url=platform_api_url)
             if model_ids:
                 self.available_models = model_ids
                 if self.window:
@@ -267,22 +333,41 @@ class ClaudeChatApp:
                         js_code = f"if (window.onStreamMessage) window.onStreamMessage('thinking', {json.dumps(msg_data)});"
                         self.window.evaluate_js(js_code)
                     
+                elif msg_type == "search_start":
+                    if self.window:
+                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('search_start', {json.dumps(msg_data)});"
+                        self.window.evaluate_js(js_code)
+                    
+                elif msg_type == "search_done":
+                    if self.window:
+                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('search_done', {json.dumps(msg_data)});"
+                        self.window.evaluate_js(js_code)
+                    
+                elif msg_type == "fetch_start":
+                    if self.window:
+                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('fetch_start', {json.dumps(msg_data)});"
+                        self.window.evaluate_js(js_code)
+                    
+                elif msg_type == "fetch_done":
+                    if self.window:
+                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('fetch_done', {json.dumps(msg_data)});"
+                        self.window.evaluate_js(js_code)
+                    
                 elif msg_type == "done":
                     # 生成成功结束包，计算 Token 数量并持久化写入 SQLite 数据库
                     if self.current_conv:
-                        self.current_conv["input_tokens"] = msg_data.get("input_tokens", 0)
-                        self.current_conv["output_tokens"] = msg_data.get("output_tokens", 0)
-                        self.current_conv["messages"].append({
-                            "role": "assistant",
-                            "content": streaming_text,
-                            "thinking": streaming_thinking_text if streaming_thinking_text else None
-                        })
-                        # 如果是首轮对话自动根据前 30 个字截取作为对话标题
-                        if len(self.current_conv["messages"]) == 2:
-                            title = streaming_text[:30].replace("\n", " ")
-                            self.current_conv["title"] = title or "新对话"
-                        self.current_conv["updated_at"] = datetime.now().isoformat()
-                        self.conv_manager.save_conversation(self.current_conv)
+                        input_tokens = msg_data.get("input_tokens", 0)
+                        output_tokens = msg_data.get("output_tokens", 0)
+                        thinking = streaming_thinking_text if streaming_thinking_text else None
+                        self.conv_manager.add_assistant_message_and_update_tokens(
+                            self.current_conv["id"],
+                            streaming_text,
+                            thinking,
+                            input_tokens,
+                            output_tokens
+                        )
+                        # 从数据库重新加载以保持内存状态同步
+                        self.current_conv = self.conv_manager.load_conversation(self.current_conv["id"])
                     
                     if self.window:
                         js_code = f"if (window.onStreamMessage) window.onStreamMessage('done', {json.dumps(msg_data)});"
@@ -294,17 +379,14 @@ class ClaudeChatApp:
                 elif msg_type == "aborted":
                     # 用户手工中止包，对现有生成内容作局部保存
                     if self.current_conv:
-                        self.current_conv["messages"].append({
-                            "role": "assistant",
-                            "content": streaming_text,
-                            "thinking": streaming_thinking_text if streaming_thinking_text else None,
-                            "aborted": True
-                        })
-                        if len(self.current_conv["messages"]) == 2:
-                            title = streaming_text[:30].replace("\n", " ")
-                            self.current_conv["title"] = title or "新对话"
-                        self.current_conv["updated_at"] = datetime.now().isoformat()
-                        self.conv_manager.save_conversation(self.current_conv)
+                        thinking = streaming_thinking_text if streaming_thinking_text else None
+                        self.conv_manager.add_assistant_message_and_update_tokens(
+                            self.current_conv["id"],
+                            streaming_text,
+                            thinking,
+                            aborted=True
+                        )
+                        self.current_conv = self.conv_manager.load_conversation(self.current_conv["id"])
                     
                     if self.window:
                         js_code = f"if (window.onStreamMessage) window.onStreamMessage('aborted', {{}});"
@@ -316,12 +398,11 @@ class ClaudeChatApp:
                 elif msg_type == "error":
                     # 出错，通知前端弹窗并在本地数据库记录已生成的这部分文本内容
                     if self.current_conv and streaming_text:
-                        self.current_conv["messages"].append({
-                            "role": "assistant",
-                            "content": streaming_text
-                        })
-                        self.current_conv["updated_at"] = datetime.now().isoformat()
-                        self.conv_manager.save_conversation(self.current_conv)
+                        self.conv_manager.add_assistant_message_and_update_tokens(
+                            self.current_conv["id"],
+                            streaming_text
+                        )
+                        self.current_conv = self.conv_manager.load_conversation(self.current_conv["id"])
                         
                     if self.window:
                         js_code = f"if (window.onStreamMessage) window.onStreamMessage('error', {json.dumps(msg_data)});"
@@ -331,7 +412,9 @@ class ClaudeChatApp:
                     break
             except Exception as e:
                 if self.window:
-                    js_code = f"if (window.onStreamMessage) window.onStreamMessage('error', {json.dumps(str(e))});"
+                    from claude_chat.client import sanitize_error_message
+                    cleaned_err = sanitize_error_message(e)
+                    js_code = f"if (window.onStreamMessage) window.onStreamMessage('error', {json.dumps(cleaned_err)});"
                     self.window.evaluate_js(js_code)
                 self.is_streaming = False
                 break
@@ -346,38 +429,93 @@ class WebAPI:
     def __init__(self, app):
         self._app = app
 
+    def check_parsers(self):
+        """
+        检查本地可选解析依赖库安装状态
+        """
+        status = {
+            "docx": False,
+            "openpyxl": False,
+            "pptx": False,
+            "pypdf": False,
+            "easyocr": False
+        }
+        try:
+            import docx
+            status["docx"] = True
+        except ImportError: pass
+        try:
+            import openpyxl
+            status["openpyxl"] = True
+        except ImportError: pass
+        try:
+            import pptx
+            status["pptx"] = True
+        except ImportError: pass
+        try:
+            import pypdf
+            status["pypdf"] = True
+        except ImportError: pass
+        try:
+            import easyocr
+            status["easyocr"] = True
+        except ImportError: pass
+        return status
+
     def get_config(self):
         """
-        获取当前系统的全部配置字典数据
+        获取当前系统的全部配置字典数据，将敏感密钥替换为 has_xxx 标志返回给前端，保护密钥安全。
         """
-        return self._app.config.data
+        with self._app.lock:
+            cfg = dict(self._app.config.data)
+            api_keys = ["api_key", "tavily_api_key", "jina_api_key", "deepseek_api_key", "gemini_api_key"]
+            for key in api_keys:
+                cfg[f"has_{key}"] = bool(cfg.get(key, "").strip())
+                cfg[key] = ""
+            return cfg
 
     def save_config(self, new_config):
         """
         更新并存储系统配置信息
         """
-        logger.info(f"保存系统配置，键名列表: {list(new_config.keys())}")
-        for k, v in new_config.items():
-            self._app.config.set(k, v)
+        with self._app.lock:
+            logger.info(f"保存系统配置，键名列表: {list(new_config.keys())}")
             
-        # 刷新可用的模型列表以更新凭证
-        self._app._refresh_models_async()
-        
-        # 联调：如果存在活跃的对话且属于全局配置范畴，同步修改对话内置的模型参数以防数据割裂
-        if self._app.current_conv:
-            self._app.current_conv["model"] = self._app.config.get("model")
-            self._app.current_conv["temperature"] = self._app.config.get("temperature", 0.7)
-            self._app.current_conv["max_tokens"] = self._app.config.get("max_tokens", 4096)
-            if self._app.config.get("thinking_enabled"):
-                self._app.current_conv["thinking"] = {
-                    "type": self._app.config.get("thinking_type", "adaptive"),
-                    "budget_tokens": self._app.config.get("thinking_budget", 16000),
-                    "effort": self._app.config.get("thinking_level", "high"),
-                }
-            else:
-                self._app.current_conv["thinking"] = None
-            self._app.conv_manager.save_conversation(self._app.current_conv)
-        return True
+            # 1. 过滤并保存常规字段，跳过 has_xxx / clear_xxx 标志
+            for k, v in new_config.items():
+                if k.startswith("has_") or k.startswith("clear_"):
+                    continue
+                # 对于敏感 Key 字段，仅当其有值时才保存；空值由 clear_xxx 逻辑处理，防止前端空值覆盖
+                if k in ["api_key", "deepseek_api_key", "gemini_api_key", "tavily_api_key", "jina_api_key"]:
+                    if v:
+                        self._app.config.set(k, v)
+                else:
+                    self._app.config.set(k, v)
+            
+            # 2. 显式处理清除敏感 Key 的请求
+            api_keys = ["api_key", "deepseek_api_key", "gemini_api_key", "tavily_api_key", "jina_api_key"]
+            for key in api_keys:
+                if new_config.get(f"clear_{key}"):
+                    self._app.config.set(key, "")
+                
+            # 刷新可用的模型列表以更新凭证
+            self._app._refresh_models_async()
+            
+            # 联调：如果存在活跃的对话且属于全局配置范畴，同步修改对话内置的模型参数以防数据割裂
+            if self._app.current_conv:
+                self._app.current_conv["model"] = self._app.config.get("model")
+                self._app.current_conv["temperature"] = self._app.config.get("temperature", 0.7)
+                self._app.current_conv["max_tokens"] = self._app.config.get("max_tokens", 4096)
+                if self._app.config.get("thinking_enabled"):
+                    self._app.current_conv["thinking"] = {
+                        "type": self._app.config.get("thinking_type", "adaptive"),
+                        "budget_tokens": self._app.config.get("thinking_budget", 16000),
+                        "effort": self._app.config.get("thinking_level", "high"),
+                    }
+                else:
+                    self._app.current_conv["thinking"] = None
+                self._app.conv_manager.save_conversation(self._app.current_conv)
+            return True
 
     def fetch_models(self):
         """
@@ -444,46 +582,51 @@ class WebAPI:
         """
         侧边栏拉取对话卡片列表并做对话总数的自动清理（默认最多保存 50 个）
         """
-        self._app.conv_manager.auto_clean(keep=50)
-        return self._app.conv_manager.refresh()
+        with self._app.lock:
+            self._app.conv_manager.auto_clean(keep=50)
+            return self._app.conv_manager.refresh()
 
     def load_conversation(self, conv_id):
         """
         根据 ID 从 SQLite 数据库读取指定对话的详情记录并缓存至内存中
         """
-        logger.info(f"正在加载对话记录，ID: {conv_id}")
-        conv = self._app.conv_manager.load_conversation(conv_id)
-        if conv:
-            self._app.current_conv = conv
-        return conv
+        with self._app.lock:
+            logger.info(f"正在加载对话记录，ID: {conv_id}")
+            conv = self._app.conv_manager.load_conversation(conv_id)
+            if conv:
+                self._app.current_conv = conv
+            return conv
 
     def new_conversation(self):
         """
         在数据库中初始化一条空白新对话，同时将全局配置项设置作为其默认初始值
         """
-        logger.info("正在创建新会话...")
-        conv_data = self._app.conv_manager.new_conversation()
-        conv_data["model"] = self._app.config.get("model", FALLBACK_MODELS[0])
-        conv_data["temperature"] = self._app.config.get("temperature", 0.7)
-        conv_data["max_tokens"] = self._app.config.get("max_tokens", 4096)
-        if self._app.config.get("thinking_enabled"):
-            conv_data["thinking"] = {
-                "type": self._app.config.get("thinking_type", "adaptive"),
-                "budget_tokens": self._app.config.get("thinking_budget", 16000),
-            }
-        self._app.conv_manager.save_conversation(conv_data)
-        self._app.current_conv = conv_data
-        return conv_data
+        with self._app.lock:
+            logger.info("正在创建新会话...")
+            conv_data = self._app.conv_manager.new_conversation()
+            conv_data["model"] = self._app.config.get("model", FALLBACK_MODELS[0])
+            conv_data["temperature"] = self._app.config.get("temperature", 0.7)
+            conv_data["max_tokens"] = self._app.config.get("max_tokens", 4096)
+            if self._app.config.get("thinking_enabled"):
+                conv_data["thinking"] = {
+                    "type": self._app.config.get("thinking_type", "adaptive"),
+                    "budget_tokens": self._app.config.get("thinking_budget", 16000),
+                    "effort": self._app.config.get("thinking_level", "high"),
+                }
+            self._app.conv_manager.save_conversation(conv_data)
+            self._app.current_conv = conv_data
+            return conv_data
 
     def delete_conversation(self, conv_id):
         """
         删除指定的对话及名下所有消息
         """
-        logger.info(f"正在删除对话，ID: {conv_id}")
-        self._app.conv_manager.delete_conversation(conv_id)
-        if self._app.current_conv and self._app.current_conv.get("id") == conv_id:
-            self._app.current_conv = None
-        return True
+        with self._app.lock:
+            logger.info(f"正在删除对话，ID: {conv_id}")
+            self._app.conv_manager.delete_conversation(conv_id)
+            if self._app.current_conv and self._app.current_conv.get("id") == conv_id:
+                self._app.current_conv = None
+            return True
 
     def get_message_packet(self, conv_id, message_index):
         """
@@ -621,247 +764,281 @@ class WebAPI:
         根据会话 ID 捞出所有上下文消息，对复杂附件调用 client 进行转换，
         配置思维模型扩展思考模式参数（思维预算，深度水平），获取系统角色设置并启动后台生成线程。
         """
-        self._app.is_streaming = True
-        self._app.abort_event.clear()
-        self._app.active_stream = None
-        
-        self._app.current_conv = self._app.conv_manager.load_conversation(conv_id)
-        if not self._app.current_conv:
-            self._app.is_streaming = False
-            return False
+        try:
+            self._app.is_streaming = True
+            self._app.abort_event.clear()
+            self._app.active_stream = None
             
-        api_messages = [extract_api_message(msg) for msg in self._app.current_conv["messages"]]
-        
-        # 组装思考推理 Extended Thinking 字段
-        thinking_config = None
-        output_config = None
-        if self._app.config.get("thinking_enabled"):
-            ttype = self._app.config.get("thinking_type", "adaptive")
-            if ttype == "adaptive":
-                thinking_config = {"type": "adaptive"}
-                effort_val = self._app.config.get("thinking_level", "high")
-                if effort_val:
-                    output_config = {"effort": effort_val}
-            elif ttype == "enabled":
-                thinking_config = {"type": "enabled", "budget_tokens": self._app.config.get("thinking_budget", 16000)}
+            self._app.current_conv = self._app.conv_manager.load_conversation(conv_id)
+            if not self._app.current_conv:
+                self._app.is_streaming = False
+                return False
                 
-        # 挂载流通道队列
-        active_queue = custom_queue if custom_queue is not None else queue.Queue()
-        if custom_queue is None:
-            self._app.streaming_queue = active_queue
-        
-        # 获取选定的系统提示词 System Prompt Preset 属性并应用
-        system_prompt_val = None
-        selected_id = self._app.config.get("selected_system_prompt_id", "")
-        if selected_id:
-            presets = self._app.config.get("system_prompts", [])
-            for p in presets:
-                if p.get("id") == selected_id:
-                    system_prompt_val = p.get("content")
-                    break
-        
-        def on_stream_created(stream):
-            self._app.active_stream = stream
+            api_messages = [extract_api_message(msg) for msg in self._app.current_conv["messages"]]
+            
+            # 组装思考推理 Extended Thinking 字段
+            thinking_config = None
+            output_config = None
+            if self._app.config.get("thinking_enabled"):
+                ttype = self._app.config.get("thinking_type", "adaptive")
+                if ttype == "adaptive":
+                    thinking_config = {"type": "adaptive"}
+                    effort_val = self._app.config.get("thinking_level", "high")
+                    if effort_val:
+                        output_config = {"effort": effort_val}
+                elif ttype == "enabled":
+                    thinking_config = {"type": "enabled", "budget_tokens": self._app.config.get("thinking_budget", 16000)}
+                    
+            # 挂载流通道队列
+            active_queue = custom_queue if custom_queue is not None else queue.Queue()
+            if custom_queue is None:
+                self._app.streaming_queue = active_queue
+            
+            # 获取选定的系统提示词 System Prompt Preset 属性并应用
+            system_prompt_val = None
+            selected_id = self._app.config.get("selected_system_prompt_id", "")
+            if selected_id:
+                presets = self._app.config.get("system_prompts", [])
+                for p in presets:
+                    if p.get("id") == selected_id:
+                        system_prompt_val = p.get("content")
+                        break
+            
+            def on_stream_created(stream):
+                self._app.active_stream = stream
 
-        # 后台线程异步发起 API 通信，放置阻塞主 GUI 事件循环导致卡死
-        thread = threading.Thread(
-            target=stream_claude_response,
-            args=(
-                self._app.config.get("api_key"),
-                self._app.config.get("proxy_mode", "system"),
-                self._app.config.get("proxy_url", ""),
-                api_messages,
-                self._app.current_conv.get("model", self._app.config.get("model")),
-                self._app.config.get("max_tokens", 4096),
-                self._app.config.get("temperature", 0.7),
-                thinking_config,
-                active_queue,
-                self._app.abort_event,
-                on_stream_created
-            ),
-            kwargs={"system": system_prompt_val, "output_config": output_config},
-            daemon=True
-        )
-        thread.start()
-        
-        if custom_queue is None:
-            # 开启异步读取流线程
-            reader_thread = threading.Thread(
-                target=self._app._process_sending_stream,
+            # 后台线程异步发起 API 通信，放置阻塞主 GUI 事件循环导致卡死
+            thread = threading.Thread(
+                target=stream_claude_response,
+                args=(
+                    self._app.config.get("api_key"),
+                    self._app.config.get("proxy_mode", "system"),
+                    self._app.config.get("proxy_url", ""),
+                    api_messages,
+                    self._app.current_conv.get("model", self._app.config.get("model")),
+                    self._app.config.get("max_tokens", 4096),
+                    self._app.config.get("temperature", 0.7),
+                    thinking_config,
+                    active_queue,
+                    self._app.abort_event,
+                    on_stream_created
+                ),
+                kwargs={
+                    "system": system_prompt_val,
+                    "output_config": output_config,
+                    "enable_search": self._app.config.get("enable_web_search", False),
+                    "enable_web_fetch": self._app.config.get("enable_web_fetch", True),
+                    "web_fetch_limit": self._app.config.get("web_fetch_limit", 15000),
+                    "search_engine": self._app.config.get("web_search_engine", "google"),
+                    "tavily_api_key": self._app.config.get("tavily_api_key", ""),
+                    "jina_api_key": self._app.config.get("jina_api_key", ""),
+                    "web_page_parser": self._app.config.get("web_page_parser", "local"),
+                    "conv_id": conv_id,
+                    "conv_manager": self._app.conv_manager,
+                    "active_platform": self._app.config.get("active_platform", "claude"),
+                    "deepseek_api_key": self._app.config.get("deepseek_api_key", ""),
+                    "deepseek_api_url": self._app.config.get("deepseek_api_url", "https://api.deepseek.com"),
+                    "gemini_api_key": self._app.config.get("gemini_api_key", ""),
+                    "gemini_api_url": self._app.config.get("gemini_api_url", ""),
+                    "thinking_enabled": self._app.config.get("thinking_enabled", False),
+                    "thinking_budget": self._app.config.get("thinking_budget", 1024),
+                    "thinking_level": self._app.config.get("thinking_level", "high"),
+                    "depth": 0
+                },
                 daemon=True
             )
-            reader_thread.start()
-        return True
+            thread.start()
+            
+            if custom_queue is None:
+                # 开启异步读取流线程
+                reader_thread = threading.Thread(
+                    target=self._app._process_sending_stream,
+                    daemon=True
+                )
+                reader_thread.start()
+            return True
+        except Exception as e:
+            logger.exception(f"启动流生成线程发生错误: {e}")
+            self._app.is_streaming = False
+            return False
 
     def send_message(self, conv_id, text, attachments, custom_queue=None):
         """
         发送用户消息。如果是大文本附件会自动拼装文本隔离区域随 Prompt 一同发送，
         图片或 PDF 则被转换为符合接口的多媒体结构在后台线程以二进制块编码为 Base64 发送。
         """
-        logger.info(f"正在发送消息，会话 ID: {conv_id}，文本大小: {len(text)}")
-        if self._app.is_streaming:
-            return False
+        with self._app.lock:
+            logger.info(f"正在发送消息，会话 ID: {conv_id}，文本大小: {len(text)}")
+            if self._app.is_streaming:
+                return False
+                
+            conv = self._app.conv_manager.load_conversation(conv_id)
+            if not conv:
+                return False
+            import copy
+            backup_conv = copy.deepcopy(conv)
+                
+            # 设置当前对话选择的模型
+            if not conv.get("model"):
+                conv["model"] = self._app.config.get("model")
+                
+            user_msg_display = {"role": "user", "content": text}
+            if attachments:
+                user_msg_display["content"] = [{"type": "text", "text": text}]
+                for att in attachments:
+                    fp = att["path"]
+                    ext = Path(fp).suffix.lower()
+                    mime = get_mime_type(fp)
+                    if self._app.config.get("active_platform") == "deepseek" and (ext in IMAGE_EXTENSIONS or ext in PDF_EXTENSIONS):
+                        from claude_chat.attachment_parser import parse_attachment_to_markdown
+                        md_res = parse_attachment_to_markdown(
+                            att, 
+                            ocr_mode=self._app.config.get("ocr_mode", "auto"), 
+                            cloud_provider=self._app.config.get("ocr_cloud_model", "gemini"), 
+                            api_key=self._app.config.get("gemini_api_key", ""),
+                            proxy_mode=self._app.config.get("proxy_mode", "system"),
+                            proxy_url=self._app.config.get("proxy_url", "")
+                        )
+                        user_msg_display["content"].append({"type": "text", "text": f"\n\n--- 附件文件: {Path(fp).name} ---\n{md_res}\n--- 附件结束 ---"})
+                    elif ext in IMAGE_EXTENSIONS:
+                        # 图片附件
+                        user_msg_display["content"].append({"type": "image", "source": {"file_path": fp, "media_type": mime}})
+                    elif ext in PDF_EXTENSIONS:
+                        # PDF 文档附件
+                        user_msg_display["content"].append({"type": "document", "source": {"file_path": fp, "media_type": "application/pdf"}})
+                    else:
+                        # 纯文本/代码源文件读取附件
+                        file_text = read_text_file(fp)
+                        user_msg_display["content"].append({"type": "text", "text": f"\n\n--- 附件文件: {Path(fp).name} ---\n{file_text}\n--- 附件结束 ---"})
             
-        conv = self._app.conv_manager.load_conversation(conv_id)
-        if not conv:
-            return False
+            conv["messages"].append(user_msg_display)
+            self._app.conv_manager.save_conversation(conv)
             
-        # 设置当前对话选择的模型
-        if not conv.get("model"):
-            conv["model"] = self._app.config.get("model")
-            
-        user_msg_display = {"role": "user", "content": text}
-        if attachments:
-            user_msg_display["content"] = [{"type": "text", "text": text}]
-            for att in attachments:
-                fp = att["path"]
-                ext = Path(fp).suffix.lower()
-                mime = get_mime_type(fp)
-                if ext in IMAGE_EXTENSIONS:
-                    # 图片附件
-                    user_msg_display["content"].append({"type": "image", "source": {"file_path": fp, "media_type": mime}})
-                elif ext in PDF_EXTENSIONS:
-                    # PDF 文档附件
-                    user_msg_display["content"].append({"type": "document", "source": {"file_path": fp, "media_type": "application/pdf"}})
-                else:
-                    # 纯文本/代码源文件读取附件
-                    file_text = read_text_file(fp)
-                    user_msg_display["content"].append({"type": "text", "text": f"\n\n--- 附件文件: {Path(fp).name} ---\n{file_text}\n--- 附件结束 ---"})
-        
-        conv["messages"].append(user_msg_display)
-        self._app.conv_manager.save_conversation(conv)
-        
-        return self._start_stream_generation(conv_id, custom_queue=custom_queue)
+            success = self._start_stream_generation(conv_id, custom_queue=custom_queue)
+            if not success:
+                self._app.conv_manager.save_conversation(backup_conv)
+                return False
+            return True
 
     def edit_and_resend(self, conv_id, msg_index, new_content, custom_queue=None):
         """
         用户修改并重新发送历史已发送消息：删除目标索引后的所有历史消息，重新发起生成请求。
         """
-        logger.info(f"编辑并重新发送消息，会话 ID: {conv_id}，消息索引: {msg_index}")
-        if self._app.is_streaming:
-            logger.warning("当前正处于流生成阶段，禁止修改。")
-            return False
-            
-        try:
-            with self._app.conv_manager.get_connection() as conn:
-                cursor = conn.execute(
-                    "SELECT id FROM messages WHERE conversation_id = ? ORDER BY id ASC", 
-                    (conv_id,)
-                )
-                rows = cursor.fetchall()
-                if msg_index < 0 or msg_index >= len(rows):
-                    logger.error(f"消息索引越界 {msg_index}")
-                    return False
-                
-                # 砍掉指定索引之后的所有历史纪录，实现分支回滚
-                target_msg_id = rows[msg_index]["id"]
-                conn.execute(
-                    "DELETE FROM messages WHERE conversation_id = ? AND id >= ?", 
-                    (conv_id, target_msg_id)
-                )
-                conn.commit()
+        with self._app.lock:
+            logger.info(f"编辑并重新发送消息，会话 ID: {conv_id}，消息索引: {msg_index}")
+            if self._app.is_streaming:
+                logger.warning("当前正处于流生成阶段，禁止修改。")
+                return False
                 
             conv = self._app.conv_manager.load_conversation(conv_id)
             if not conv:
                 return False
+            import copy
+            backup_conv = copy.deepcopy(conv)
                 
-            user_msg_display = {
-                "role": "user",
-                "content": new_content
-            }
-            conv["messages"].append(user_msg_display)
-            self._app.conv_manager.save_conversation(conv)
-            
-            return self._start_stream_generation(conv_id, custom_queue=custom_queue)
-        except Exception as e:
-            logger.exception(f"重新编辑生成消息失败: {e}")
-            return False
+            try:
+                if msg_index < 0 or msg_index >= len(conv["messages"]):
+                    logger.error(f"消息索引越界 {msg_index}")
+                    return False
+                
+                conv["messages"] = conv["messages"][:msg_index]
+                user_msg_display = {
+                    "role": "user",
+                    "content": new_content
+                }
+                conv["messages"].append(user_msg_display)
+                self._app.conv_manager.save_conversation(conv)
+                
+                success = self._start_stream_generation(conv_id, custom_queue=custom_queue)
+                if not success:
+                    self._app.conv_manager.save_conversation(backup_conv)
+                    return False
+                return True
+            except Exception as e:
+                logger.exception(f"重新编辑生成消息失败: {e}")
+                self._app.conv_manager.save_conversation(backup_conv)
+                return False
 
     def retry_message(self, conv_id, msg_index, custom_queue=None):
         """
         重新生成某条 Assistant 的回答：删除此回答及其后面的所有记录，重新发起推理。
         """
-        logger.info(f"重新生成回答，会话 ID: {conv_id}，目标消息索引: {msg_index}")
-        if self._app.is_streaming:
-            logger.warning("已处于流生成阶段。")
-            return False
-            
-        try:
-            with self._app.conv_manager.get_connection() as conn:
-                cursor = conn.execute(
-                    "SELECT id, role FROM messages WHERE conversation_id = ? ORDER BY id ASC", 
-                    (conv_id,)
-                )
-                rows = cursor.fetchall()
-                if msg_index < 0 or msg_index >= len(rows):
+        with self._app.lock:
+            logger.info(f"重新生成回答，会话 ID: {conv_id}，目标消息索引: {msg_index}")
+            if self._app.is_streaming:
+                logger.warning("已处于流生成阶段。")
+                return False
+                
+            conv = self._app.conv_manager.load_conversation(conv_id)
+            if not conv:
+                return False
+            import copy
+            backup_conv = copy.deepcopy(conv)
+                
+            try:
+                if msg_index < 0 or msg_index >= len(conv["messages"]):
                     logger.error(f"消息索引越界: {msg_index}")
                     return False
                 
-                if rows[msg_index]["role"] != "assistant":
+                if conv["messages"][msg_index]["role"] != "assistant":
                      logger.error("只能对 Assistant 产生的回答消息发起重新生成。")
                      return False
                      
-                target_msg_id = rows[msg_index]["id"]
-                conn.execute(
-                    "DELETE FROM messages WHERE conversation_id = ? AND id >= ?", 
-                    (conv_id, target_msg_id)
-                )
-                conn.commit()
+                conv["messages"] = conv["messages"][:msg_index]
+                self._app.conv_manager.save_conversation(conv)
                 
-            return self._start_stream_generation(conv_id, custom_queue=custom_queue)
-        except Exception as e:
-            logger.exception(f"重新生成模型回答时出错: {e}")
-            return False
+                success = self._start_stream_generation(conv_id, custom_queue=custom_queue)
+                if not success:
+                    self._app.conv_manager.save_conversation(backup_conv)
+                    return False
+                return True
+            except Exception as e:
+                logger.exception(f"重新生成模型回答时出错: {e}")
+                self._app.conv_manager.save_conversation(backup_conv)
+                return False
 
     def branch_conversation(self, conv_id, msg_index):
         """
         分叉新对话：从当前对话的指定位置消息中切断，复制出一条带有分支标记的新对话及上下文。
         """
-        logger.info(f"正在创建分叉对话，源 ID: {conv_id}，目标索引: {msg_index}")
-        try:
-            with self._app.conv_manager.get_connection() as conn:
-                conv_row = conn.execute("SELECT * FROM conversations WHERE id = ?", (conv_id,)).fetchone()
-                if not conv_row:
+        with self._app.lock:
+            logger.info(f"正在创建分叉对话，源 ID: {conv_id}，目标索引: {msg_index}")
+            try:
+                conv = self._app.conv_manager.load_conversation(conv_id)
+                if not conv:
                     logger.error(f"源对话 {conv_id} 不存在。")
                     return None
                     
-                cursor = conn.execute(
-                    "SELECT role, content, thinking, aborted, created_at FROM messages WHERE conversation_id = ? ORDER BY id ASC", 
-                    (conv_id,)
-                )
-                rows = cursor.fetchall()
-                if msg_index < 0 or msg_index >= len(rows):
+                if msg_index < 0 or msg_index >= len(conv["messages"]):
                     logger.error("消息索引越界。")
                     return None
                 
-                branch_rows = rows[:msg_index + 1]
+                branch_messages = conv["messages"][:msg_index + 1]
+                branch_title = f"{conv['title'] or '新对话'} (分叉)"
+                import uuid
+                new_conv_id = str(uuid.uuid4())
+                now_str = datetime.now().isoformat()
                 
-            branch_title = f"{conv_row['title'] or '新对话'} (分叉)"
-            import uuid
-            new_conv_id = str(uuid.uuid4())
-            now_str = datetime.now().isoformat()
-            
-            with self._app.conv_manager.get_connection() as conn:
-                # 写入新会话
-                conn.execute("""
-                    INSERT INTO conversations (id, title, model, temperature, max_tokens, thinking, created_at, updated_at, input_tokens, output_tokens)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (new_conv_id, branch_title, conv_row["model"], conv_row["temperature"], conv_row["max_tokens"], 
-                      conv_row["thinking"], now_str, now_str, conv_row["input_tokens"], conv_row["output_tokens"]))
+                new_conv = {
+                    "id": new_conv_id,
+                    "title": branch_title,
+                    "model": conv.get("model", ""),
+                    "temperature": conv.get("temperature", 0.7),
+                    "max_tokens": conv.get("max_tokens", 4096),
+                    "thinking": conv.get("thinking"),
+                    "created_at": now_str,
+                    "updated_at": now_str,
+                    "input_tokens": conv.get("input_tokens", 0),
+                    "output_tokens": conv.get("output_tokens", 0),
+                    "messages": branch_messages
+                }
                 
-                # 迁移拷贝历史消息
-                for r in branch_rows:
-                    conn.execute("""
-                        INSERT INTO messages (conversation_id, role, content, thinking, aborted, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (new_conv_id, r["role"], r["content"], r["thinking"], r["aborted"], r["created_at"]))
-                conn.commit()
-                
-            logger.info(f"对话成功分叉至新会话，新 ID: {new_conv_id}")
-            return self._app.conv_manager.load_conversation(new_conv_id)
-        except Exception as e:
-            logger.exception(f"创建分叉对话失败: {e}")
-            return None
+                self._app.conv_manager.save_conversation(new_conv)
+                logger.info(f"对话成功分叉至新会话，新 ID: {new_conv_id}")
+                return self._app.conv_manager.load_conversation(new_conv_id)
+            except Exception as e:
+                logger.exception(f"创建分叉对话失败: {e}")
+                return None
 
     def start_code_execution(self, code, lang):
         """
@@ -870,6 +1047,9 @@ class WebAPI:
         将其写入安全临时文件中并启动本地相应的子进程 (Python 解释器 / Node.js) 异步执行之。
         使用线程实时读取子进程的 stdout 与 stderr 管道，并即时推送到前端控制台面板进行交互式渲染。
         """
+        if not self._app.config.get("enable_code_sandbox", False):
+            return {"error": "出于安全考虑，代码沙盒执行功能已默认关闭。请在配置文件或设置中手动开启后使用。"}
+            
         logger.info(f"正在异步启动本地沙盒代码块执行，语言: {lang}")
         import subprocess
         import tempfile
@@ -878,6 +1058,7 @@ class WebAPI:
         import os
         import codecs
         import threading
+        import atexit
         
         norm_lang = lang.lower()
         if norm_lang not in ("python", "javascript", "js"):
@@ -897,6 +1078,14 @@ class WebAPI:
             with tempfile.NamedTemporaryFile(mode='w', suffix=suffix, delete=False, encoding='utf-8') as temp_file:
                 temp_file.write(code)
                 temp_path = temp_file.name
+                
+            def cleanup_temp_file(path):
+                try:
+                    if os.path.exists(path):
+                        os.unlink(path)
+                except Exception:
+                    pass
+            atexit.register(cleanup_temp_file, temp_path)
                 
             run_env = os.environ.copy()
             if norm_lang == "python":
@@ -958,9 +1147,21 @@ class WebAPI:
                     pass
             
             # 后台线程：对进程生存状态进行监听，负责进程死亡后的垃圾文件清理及出口状态收集
-            def monitor_process():
+            def monitor_process(t_out, t_err):
                 try:
-                    exit_code = proc.wait()
+                    # 设定 120 秒超时机制防止资源死锁
+                    exit_code = proc.wait(timeout=120.0)
+                    # 进程退出后，等待 stdout 和 stderr 线程将缓冲区的数据读取完毕 (最多等待2秒防死锁)
+                    t_out.join(timeout=2.0)
+                    t_err.join(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"沙盒进程执行超时 (120秒)，即将强制终止 {proc_id}")
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=2.0)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                    exit_code = -1
                 except Exception as e:
                     logger.error(f"等待子进程返回异常: {e}")
                     exit_code = -1
@@ -987,7 +1188,7 @@ class WebAPI:
             # 开启三驾马车子线程实时读取和监控
             t_stdout = threading.Thread(target=read_stream, args=(proc.stdout, "stdout"), daemon=True)
             t_stderr = threading.Thread(target=read_stream, args=(proc.stderr, "stderr"), daemon=True)
-            t_monitor = threading.Thread(target=monitor_process, daemon=True)
+            t_monitor = threading.Thread(target=monitor_process, args=(t_stdout, t_stderr), daemon=True)
             
             t_stdout.start()
             t_stderr.start()
@@ -1053,6 +1254,9 @@ class WebAPI:
 
     def save_code_block(self, content, suggest_name):
         return self._app.save_code_block(content, suggest_name)
+
+    def save_image(self, image_data, suggest_name):
+        return self._app.save_image(image_data, suggest_name)
 
     def upload_dropped_file(self, name, size, base64_data):
         """

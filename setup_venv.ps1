@@ -32,22 +32,23 @@ if (-not (Test-Path ".venv")) {
     Write-Host "虚拟环境 .venv 已存在，将直接更新依赖。" -ForegroundColor Green
 }
 
-# 3. 激活虚拟环境并升级 pip
-Write-Host "正在激活虚拟环境并升级 pip ..." -ForegroundColor Yellow
-# Run in the scope of the caller or in this script session
-. .venv\Scripts\Activate.ps1
-& python -m pip install --upgrade pip
+# 3. 升级 pip
+Write-Host "正在升级 .venv 内的 pip ..." -ForegroundColor Yellow
+& .venv\Scripts\python.exe -m pip install --upgrade pip
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[警告] 升级 pip 失败，将尝试直接安装依赖。" -ForegroundColor Yellow
+}
 
 # 4. 安装依赖库
 Write-Host "正在安装项目依赖项 (requirements.txt) ..." -ForegroundColor Yellow
-& pip install -r requirements.txt
+& .venv\Scripts\python.exe -m pip install -r requirements.txt
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[警告] 依赖项安装中出现错误，请检查网络或代理设置。" -ForegroundColor Yellow
 }
 
 # 5. 安装开发与打包依赖项
 Write-Host "正在安装打包/代码格式化工具 (pyinstaller, ruff) ..." -ForegroundColor Yellow
-& pip install pyinstaller ruff
+& .venv\Scripts\python.exe -m pip install pyinstaller ruff
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[警告] 开发工具安装失败。" -ForegroundColor Yellow
 }

@@ -47,6 +47,18 @@ def deserialize_content(content_str):
     return content_str
 
 
+class AutoCloseConnection(sqlite3.Connection):
+    """
+    自定义 SQLite 连接子类，用于在 __exit__ 上下文退出时自动关闭连接，
+    防止高并发或频繁读写下的数据库句柄泄露。
+    """
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            super().__exit__(exc_type, exc_val, exc_tb)
+        finally:
+            self.close()
+
+
 class DatabaseManager:
     """
     SQLite 数据库管理器，负责应用程序对话和消息在本地数据库的读写、结构初始化及历史 JSON 数据迁移
@@ -59,9 +71,11 @@ class DatabaseManager:
         """
         获取一个 SQLite 数据库连接，并设置 row_factory 为 sqlite3.Row 以便通过字段名访问数据
         """
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = sqlite3.connect(str(DB_PATH), factory=AutoCloseConnection)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
         return conn
+
 
     def init_db(self):
         """
@@ -295,7 +309,7 @@ class DatabaseManager:
         self.save_conversation(data)
         return data
 
-    def auto_clean(self, keep=50):
+    def auto_clean(self, keep=50, active_conv_id=None):
         """
         根据最后的更新时间，限制数据库中只保留前 keep 个对话，超出的历史记录会被清理以节省空间
         """
@@ -308,20 +322,124 @@ class DatabaseManager:
             """, (keep,))
             kept_ids = [row["id"] for row in cursor.fetchall()]
             
+            # 如果活跃对话不在 kept_ids 中，强制将其加入以避免被意外清理
+            if active_conv_id and active_conv_id not in kept_ids:
+                kept_ids.append(active_conv_id)
+                
             if len(kept_ids) < keep:
                 return
                 
             placeholders = ",".join("?" for _ in kept_ids)
             
-            # 手动执行删除级联
-            conn.execute(f"""
-                DELETE FROM messages 
-                WHERE conversation_id NOT IN ({placeholders})
-            """, kept_ids)
+            # 手动执行级联删除以确保向下兼容（SQLite 虽启用了 foreign_keys，但显式清理更为安全）
+            conn.execute("DELETE FROM messages WHERE conversation_id NOT IN (" + placeholders + ")", kept_ids)
+            conn.execute("DELETE FROM conversations WHERE id NOT IN (" + placeholders + ")", kept_ids)
             
-            conn.execute(f"""
-                DELETE FROM conversations 
-                WHERE id NOT IN ({placeholders})
-            """, kept_ids)
-            
+            conn.commit()
+
+
+    def add_message(self, conv_id, role, content, thinking=None, aborted=False):
+        """
+        [增量更新] 向指定对话中追加一条新消息，并更新对话的更新时间，
+        彻底规避多线程并发加载-修改-保存造成的“旧快照覆盖抹除新数据”的竞争风险。
+        """
+        now = datetime.now().isoformat()
+        aborted_val = 1 if aborted else 0
+        serialized_content = serialize_content(content)
+        
+        with self.get_connection() as conn:
+            conn.execute("BEGIN EXCLUSIVE")
+            try:
+                conn.execute("""
+                    INSERT INTO messages (conversation_id, role, content, thinking, aborted, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (conv_id, role, serialized_content, thinking, aborted_val, now))
+                
+                conn.execute("""
+                    UPDATE conversations 
+                    SET updated_at = ? 
+                    WHERE id = ?
+                """, (now, conv_id))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+
+    def add_assistant_message_and_update_tokens(self, conv_id, content, thinking=None, input_tokens=0, output_tokens=0, aborted=False):
+        """
+        [增量更新] 将 AI 响应内容及其 Token 消耗原子化写入数据库，
+        在首轮对话结束时自动生成标题，并更新对话的更新时间。
+        """
+        now = datetime.now().isoformat()
+        aborted_val = 1 if aborted else 0
+        serialized_content = serialize_content(content)
+        
+        with self.get_connection() as conn:
+            conn.execute("BEGIN EXCLUSIVE")
+            try:
+                # 1. 插入 assistant 消息
+                conn.execute("""
+                    INSERT INTO messages (conversation_id, role, content, thinking, aborted, created_at)
+                    VALUES (?, 'assistant', ?, ?, ?, ?)
+                """, (conv_id, serialized_content, thinking, aborted_val, now))
+                
+                # 2. 查询当前对话消息总数以判断是否触发自动标题生成
+                cursor = conn.execute("SELECT COUNT(*) FROM messages WHERE conversation_id = ?", (conv_id,))
+                msg_count = cursor.fetchone()[0]
+                
+                if msg_count == 2:
+                    # 自动截取前 30 个字符作为对话标题
+                    title_source = ""
+                    if isinstance(content, list):
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                title_source = block.get("text", "")
+                                if title_source:
+                                    break
+                    else:
+                        title_source = str(content)
+                        
+                    title = title_source[:30].replace("\n", " ")
+                    if not title.strip():
+                        title = "新对话"
+                    conn.execute("""
+                        UPDATE conversations 
+                        SET title = ?, input_tokens = ?, output_tokens = ?, updated_at = ? 
+                        WHERE id = ?
+                    """, (title, input_tokens, output_tokens, now, conv_id))
+                else:
+                    conn.execute("""
+                        UPDATE conversations 
+                        SET input_tokens = ?, output_tokens = ?, updated_at = ? 
+                        WHERE id = ?
+                    """, (input_tokens, output_tokens, now, conv_id))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+
+    def save_conversation_metadata(self, conv_data):
+        """
+        [增量更新] 仅保存对话表属性，不触碰消息表，
+        规避用户保存设置时与流式生成并发冲突导致的消息抹除。
+        """
+        conv_id = conv_data["id"]
+        title = conv_data.get("title", "新对话")
+        model = conv_data.get("model", "")
+        temperature = conv_data.get("temperature", 0.7)
+        max_tokens = conv_data.get("max_tokens", 4096)
+        thinking = json.dumps(conv_data.get("thinking")) if conv_data.get("thinking") is not None else None
+        created_at = conv_data.get("created_at") or datetime.now().isoformat()
+        updated_at = datetime.now().isoformat()
+        conv_data["updated_at"] = updated_at
+        
+        input_tokens = conv_data.get("input_tokens", 0)
+        output_tokens = conv_data.get("output_tokens", 0)
+        
+        with self.get_connection() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO conversations 
+                (id, title, model, temperature, max_tokens, thinking, created_at, updated_at, input_tokens, output_tokens)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (conv_id, title, model, temperature, max_tokens, thinking, created_at, updated_at, input_tokens, output_tokens))
             conn.commit()

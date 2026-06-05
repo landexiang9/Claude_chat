@@ -51,6 +51,31 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         logger.debug(f"HTTP 请求: {format % args}")
 
+    def _send_cors_headers(self):
+        """
+        根据请求中的 Origin 报头动态设置 CORS 响应头，
+        只允许来自本地信任环回地址 (localhost, 127.0.0.1, [::1]) 或相同 Origin 的局域网跨域请求，
+        彻底拒绝第三方恶意站点的跨域嗅探与 CSRF 代码执行漏洞。
+        """
+        origin = self.headers.get("Origin")
+        if origin:
+            from urllib.parse import urlparse
+            try:
+                parsed_origin = urlparse(origin)
+                hostname = parsed_origin.hostname
+                host_header = self.headers.get("Host", "")
+                
+                # 同源检查 (Host 匹配 Origin Netloc)
+                is_same_origin = (parsed_origin.netloc == host_header)
+                # 环回地址/本机信任域检查
+                is_loopback = hostname in ("localhost", "127.0.0.1", "[::1]", "::1")
+                
+                if is_same_origin or is_loopback:
+                    self.send_header("Access-Control-Allow-Origin", origin)
+                    self.send_header("Access-Control-Allow-Credentials", "true")
+            except Exception:
+                pass
+
     def get_mime_type(self, file_path):
         """
         根据文件后缀获取相应的 MIME Content-Type。
@@ -86,11 +111,11 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         try:
             file_path.relative_to(ui_dir.resolve())
         except ValueError:
-            self.send_error(403, "Access Denied / 拒绝访问")
+            self.send_error(403, "Access Denied")
             return
             
         if not file_path.exists() or not file_path.is_file():
-            self.send_error(404, "File Not Found / 文件不存在")
+            self.send_error(404, "File Not Found")
             return
             
         mime_type = self.get_mime_type(file_path)
@@ -102,12 +127,13 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", mime_type)
             self.send_header("Content-Length", str(len(data)))
             # 支持跨域以增强浏览器端调试灵活性
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._send_cors_headers()
+            self.send_header("Referrer-Policy", "same-origin")
             self.end_headers()
             self.wfile.write(data)
         except Exception as e:
             logger.error(f"渲染静态资源文件出错 {file_path}: {e}")
-            self.send_error(500, "Internal Server Error / 服务器内部错误")
+            self.send_error(500, "Internal Server Error")
 
     def read_json_body(self):
         """
@@ -131,7 +157,8 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(res_bytes)))
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._send_cors_headers()
+            self.send_header("Referrer-Policy", "same-origin")
             self.end_headers()
             self.wfile.write(res_bytes)
         except Exception as e:
@@ -142,10 +169,41 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         处理 CORS 跨域预检请求，使本地局域网其他设备能够平滑跨域调用本服务 API
         """
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._send_cors_headers()
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Security-Token, Authorization")
         self.end_headers()
+
+    def is_request_authorized(self):
+        """
+        验证请求是否已授权。
+        所有对 /api/ 接口的请求（包括本地环回）均须在 Header 中提供 X-Security-Token，
+        或在 URL 参数中传入 ?token=<token>，以此防御跨站请求伪造 (CSRF) 及未授权的本地命令执行 (RCE)。
+        """
+        server_token = self.server.app.config.get("security_token", "")
+        if not server_token:
+            return False
+            
+        # 1. 尝试从 Header 获取
+        token = self.headers.get("X-Security-Token")
+        if not token:
+            auth_header = self.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:]
+                
+        # 2. 尝试从 URL 查询参数获取
+        if not token:
+            match = re.search(r'[?&]token=([^&]+)', self.path)
+            if match:
+                token = match.group(1)
+                
+        return token == server_token
+
+    def send_unauthorized_response(self):
+        """
+        发送 401 未授权响应
+        """
+        self.send_json_response({"error": "Unauthorized / 未授权访问，请提供有效的安全 Token"}, status=401)
 
     def do_GET(self):
         """
@@ -154,6 +212,9 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         path = self.path.split('?')[0] # 剥离查询参数
         
         if path.startswith("/api/"):
+            if not self.is_request_authorized():
+                self.send_unauthorized_response()
+                return
             self.handle_api_get(path)
         else:
             self.serve_static(path)
@@ -164,6 +225,9 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         """
         path = self.path.split('?')[0]
         if path.startswith("/api/"):
+            if not self.is_request_authorized():
+                self.send_unauthorized_response()
+                return
             self.handle_api_post(path)
         else:
             self.send_error(404)
@@ -174,6 +238,9 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         """
         path = self.path.split('?')[0]
         if path.startswith("/api/"):
+            if not self.is_request_authorized():
+                self.send_unauthorized_response()
+                return
             self.handle_api_delete(path)
         else:
             self.send_error(404)
@@ -182,17 +249,18 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         """
         处理所有 GET 类型的 API 路由
         """
-        # GET /api/config -> 读取当前配置
+        # GET /api/config -> 读取当前配置 (已在 WebAPI 层完成 API Key 脱敏)
         if path == "/api/config":
             config_data = dict(self.server.api.get_config())
-            # 如果未开启跨端共享密钥，则向浏览器端脱敏 API Key
-            if not self.server.app.config.get("sync_config_to_web", True):
-                config_data["api_key"] = ""
             self.send_json_response(config_data)
             
         # GET /api/models -> 读取可用模型列表
         elif path == "/api/models":
             self.send_json_response(self.server.api.fetch_models())
+            
+        # GET /api/check_parsers -> 检查本地可选解析依赖库安装状态
+        elif path == "/api/check_parsers":
+            self.send_json_response(self.server.api.check_parsers())
             
         # GET /api/conversations -> 获取历史对话列表（无具体内容，仅展示列表）
         elif path == "/api/conversations":
@@ -211,7 +279,7 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                 index = int(parts[-1])
                 self.send_json_response(self.server.api.get_message_packet(conv_id, index))
             else:
-                self.send_error(400, "Bad Request / 参数错误")
+                self.send_error(400, "Bad Request")
                 
         # GET /api/get_logs -> 拉取本地最新的系统日志
         elif path == "/api/get_logs":
@@ -224,7 +292,7 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             self.handle_console_stream(proc_id)
             
         else:
-            self.send_error(404, "Endpoint Not Found / 接口不存在")
+            self.send_error(404, "Endpoint Not Found")
 
     def handle_api_post(self, path):
         """
@@ -234,8 +302,17 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         
         # POST /api/save_config -> 保存新配置
         if path == "/api/save_config":
+            # 禁止通过网络接口篡改 sync_config_to_web 本身的值，防止安全绕过
+            if "sync_config_to_web" in body:
+                body["sync_config_to_web"] = self.server.app.config.get("sync_config_to_web", True)
+                
             if not self.server.app.config.get("sync_config_to_web", True):
-                body["api_key"] = self.server.app.config.get("api_key")
+                # 隐藏保存通道：若关闭了向 Web 同步，网络端提交的全部敏感凭证在后端强制以本地现有数据覆盖，保证存储隔离
+                keys_to_preserve = ["api_key", "deepseek_api_key", "gemini_api_key", "tavily_api_key", "jina_api_key"]
+                for key in keys_to_preserve:
+                    body[key] = self.server.app.config.get(key)
+                    # 避免触发清除逻辑
+                    body.pop(f"clear_{key}", None)
             success = self.server.api.save_config(body)
             self.send_json_response({"success": success})
             
@@ -314,7 +391,7 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             self.send_json_response(txt)
             
         else:
-            self.send_error(404, "Endpoint Not Found / 接口不存在")
+            self.send_error(404, "Endpoint Not Found")
 
     def handle_api_delete(self, path):
         """
@@ -326,7 +403,7 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             success = self.server.api.delete_conversation(conv_id)
             self.send_json_response({"success": success})
         else:
-            self.send_error(404, "Endpoint Not Found / 接口不存在")
+            self.send_error(404, "Endpoint Not Found")
 
     def handle_streaming_generation(self, action, *args):
         """
@@ -337,6 +414,7 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         q = queue.Queue()
         
         # 触发对应的 WebAPI 接口函数在后台线程建立 Anthropic 生成流
+        conv_id = None
         if action == "send_message":
             conv_id, text, attachments = args
             success = self.server.api.send_message(conv_id, text, attachments, custom_queue=q)
@@ -347,7 +425,7 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             conv_id, msg_index = args
             success = self.server.api.retry_message(conv_id, msg_index, custom_queue=q)
         else:
-            self.send_error(400, "Invalid action / 无效操作")
+            self.send_error(400, "Invalid action")
             return
             
         if not success:
@@ -357,7 +435,8 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         # 发送流式 HTTP 响应头
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain; charset=utf-8')
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self._send_cors_headers()
+        self.send_header("Referrer-Policy", "same-origin")
         self.end_headers()
         
         streaming_text = ""
@@ -380,47 +459,52 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                 elif msg_type == "thinking":
                     streaming_thinking_text += msg_data
                 elif msg_type == "done":
-                    # 流接收成功，将最终结果及 Token 消耗统计数据序列化持久写入 SQLite 数据库
-                    if self.server.api._app.current_conv:
-                        self.server.api._app.current_conv["input_tokens"] = msg_data.get("input_tokens", 0)
-                        self.server.api._app.current_conv["output_tokens"] = msg_data.get("output_tokens", 0)
-                        self.server.api._app.current_conv["messages"].append({
-                            "role": "assistant",
-                            "content": streaming_text,
-                            "thinking": streaming_thinking_text if streaming_thinking_text else None
-                        })
-                        if len(self.server.api._app.current_conv["messages"]) == 2:
-                            title = streaming_text[:30].replace("\n", " ")
-                            self.server.api._app.current_conv["title"] = title or "新对话"
-                        self.server.api._app.current_conv["updated_at"] = datetime.now().isoformat()
-                        self.server.api._app.conv_manager.save_conversation(self.server.api._app.current_conv)
+                    # 增量安全写入 AI 响应及 Token，在首轮对话自动生成标题，规避并发覆盖冲突
+                    input_tokens = msg_data.get("input_tokens", 0)
+                    output_tokens = msg_data.get("output_tokens", 0)
+                    thinking = streaming_thinking_text if streaming_thinking_text else None
+                    self.server.api._app.conv_manager.add_assistant_message_and_update_tokens(
+                        conv_id, 
+                        streaming_text, 
+                        thinking, 
+                        input_tokens, 
+                        output_tokens
+                    )
+                    
+                    # 仅当内存中当前选中的对话 ID 仍匹配时才从 DB 重新加载进行同步，防状态污染
+                    curr = self.server.api._app.current_conv
+                    if curr and curr.get("id") == conv_id:
+                        self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
+                        
                     self.server.api._app.is_streaming = False
                     break
                 elif msg_type == "aborted":
-                    # 被强行中止，仍对已生成的内容作局部保存存档
-                    if self.server.api._app.current_conv:
-                        self.server.api._app.current_conv["messages"].append({
-                            "role": "assistant",
-                            "content": streaming_text,
-                            "thinking": streaming_thinking_text if streaming_thinking_text else None,
-                            "aborted": True
-                        })
-                        if len(self.server.api._app.current_conv["messages"]) == 2:
-                            title = streaming_text[:30].replace("\n", " ")
-                            self.server.api._app.current_conv["title"] = title or "新对话"
-                        self.server.api._app.current_conv["updated_at"] = datetime.now().isoformat()
-                        self.server.api._app.conv_manager.save_conversation(self.server.api._app.current_conv)
+                    # 被强行中止，增量对已生成的内容作局部保存存档
+                    thinking = streaming_thinking_text if streaming_thinking_text else None
+                    self.server.api._app.conv_manager.add_assistant_message_and_update_tokens(
+                        conv_id,
+                        streaming_text,
+                        thinking,
+                        aborted=True
+                    )
+                    
+                    curr = self.server.api._app.current_conv
+                    if curr and curr.get("id") == conv_id:
+                        self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
+                        
                     self.server.api._app.is_streaming = False
                     break
                 elif msg_type == "error":
-                    # 发生错误，将错误提示推回，并对当前已生成文本妥善存档
-                    if self.server.api._app.current_conv and streaming_text:
-                        self.server.api._app.current_conv["messages"].append({
-                            "role": "assistant",
-                            "content": streaming_text
-                        })
-                        self.server.api._app.current_conv["updated_at"] = datetime.now().isoformat()
-                        self.server.api._app.conv_manager.save_conversation(self.server.api._app.current_conv)
+                    # 发生错误，将当前已生成文本增量妥善存档
+                    if streaming_text:
+                        self.server.api._app.conv_manager.add_assistant_message_and_update_tokens(
+                            conv_id,
+                            streaming_text
+                        )
+                        curr = self.server.api._app.current_conv
+                        if curr and curr.get("id") == conv_id:
+                            self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
+                            
                     self.server.api._app.is_streaming = False
                     break
             except queue.Empty:
@@ -449,7 +533,8 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain; charset=utf-8')
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self._send_cors_headers()
+        self.send_header("Referrer-Policy", "same-origin")
         self.end_headers()
         
         try:
@@ -489,14 +574,65 @@ def start_server(app, api, host='0.0.0.0', start_port=8000):
             
     if not server:
         logger.error("在指定范围内的全部本地端口均无法成功绑定 HTTP 服务。")
-        return None
-        
+        return None, False
+
+    # 动态检测并配置 SSL 传输通道（可选）
+    enable_ssl = app.config.get("enable_ssl", False)
+    is_ssl = False
+    if enable_ssl:
+        try:
+            import ssl
+            import subprocess
+            import shutil
+            from claude_chat.config import BASE_DIR
+            
+            crt_path = BASE_DIR / "server.crt"
+            key_path = BASE_DIR / "server.key"
+            
+            # 若证书不存在，尝试使用系统 openssl CLI 工具自动生成
+            if not crt_path.exists() or not key_path.exists():
+                if shutil.which("openssl") is not None:
+                    try:
+                        logger.info("检测到系统存在 openssl 命令行工具，正在自动生成自签名 SSL 证书...")
+                        subprocess.run([
+                            "openssl", "req", "-new", "-x509", "-days", "365", "-nodes",
+                            "-out", str(crt_path),
+                            "-keyout", str(key_path),
+                            "-subj", "/C=CN/CN=localhost"
+                        ], check=True, capture_output=True)
+                        logger.info("自签名 SSL 证书 (server.crt/server.key) 生成成功。")
+                    except Exception as e:
+                        logger.warning(f"使用 openssl 工具生成证书失败: {e}")
+                else:
+                    logger.warning("系统未检测到 openssl 命令行工具，无法自动生成自签名证书。")
+            
+            if crt_path.exists() and key_path.exists():
+                context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                context.load_cert_chain(certfile=str(crt_path), keyfile=str(key_path))
+                server.socket = context.wrap_socket(server.socket, server_side=True)
+                is_ssl = True
+                logger.info("SSL/HTTPS 传输通道已成功启用！")
+            else:
+                logger.warning("由于缺失 SSL 证书文件且无法自动生成，将回退至普通 HTTP 模式。")
+        except Exception as ssl_err:
+            logger.error(f"启用 SSL 传输通道失败，回退至普通 HTTP 模式: {ssl_err}")
+         
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     
     local_ip = get_local_ip()
+    token = app.config.get("security_token", "")
+    protocol = "https" if is_ssl else "http"
+    token_masked = token[:4] + "***" + token[-4:] if len(token) > 8 else "***"
     logger.info(f"本地 HTTP Web 服务器成功开启并运行！")
-    logger.info(f" - 本地访问 URL: http://localhost:{port}")
-    logger.info(f" - 局域网访问 URL: http://{local_ip}:{port} (允许同网络内其他手机/电脑访问)")
+    logger.info(f" - 安全验证 Token: {token_masked} (完整 Token 仅输出至控制台，不写入日志文件)")
     
-    return port
+    # 完整访问地址使用 print() 仅输出到控制台，避免持久化存入日志文件泄露
+    print(f"===================================================")
+    print(f" - 完整安全 Token: {token}")
+    print(f" - 本地访问 URL: {protocol}://localhost:{port}/?token={token}")
+    print(f" - 局域网访问 URL: {protocol}://{local_ip}:{port}/?token={token} (允许同网络内其他手机/电脑访问)")
+    print(f"===================================================")
+    
+    return port, is_ssl
+
