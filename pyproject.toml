@@ -1,7 +1,7 @@
 [project]
 name = "claude-chat"
 version = "1.0.0"
-description = "Desktop GUI client for Anthropic Claude API, built with pywebview."
+description = "Multi-platform AI desktop GUI / web client for Claude, DeepSeek, and Gemini APIs, built with pywebview."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}

@@ -136,22 +136,38 @@ Claude_chat/
 ├── claude_chat/            # Core application source
 │   ├── __init__.py         # Module initialization
 │   ├── app.py              # PyWebView GUI & JS bridge API
-│   ├── client.py           # Multi-platform API client (Claude/DeepSeek/Gemini)
+│   ├── api_bridge.py       # HTTP API bridge for headless mode
 │   ├── config.py           # Configuration & secure storage manager
 │   ├── conversation.py     # Legacy conversation JSON reader
 │   ├── db.py               # SQLite database layer
 │   ├── search.py           # Web search engine integration
 │   ├── attachment_parser.py# File attachment parsing & OCR
 │   ├── server.py           # HTTP server for headless/web mode
+│   ├── clients/            # Multi-platform API clients
+│   │   ├── __init__.py     # Client module exports
+│   │   ├── base.py         # Shared utilities (HTTP client, error sanitization)
+│   │   ├── claude.py       # Anthropic Claude streaming client
+│   │   ├── deepseek.py     # DeepSeek (OpenAI-compatible) streaming client
+│   │   ├── gemini.py       # Google Gemini streaming client
+│   │   ├── dispatcher.py   # Platform router & unified stream entry
+│   │   └── models.py       # Dynamic model list fetching
 │   └── ui/                 # Web interface
 │       ├── index.html      # Application HTML layout
 │       ├── style.css       # Catppuccin Mocha styles
-│       ├── app.js          # Frontend logic & stream callbacks
+│       ├── fonts.css       # Font definitions
+│       ├── api.js          # API communication layer
+│       ├── chat.js         # Chat message management
+│       ├── dom.js          # DOM manipulation utilities
+│       ├── events.js       # Event handlers & shortcuts
+│       ├── main.js         # App initialization & stream callbacks
+│       ├── settings.js     # Settings panel logic
+│       ├── state.js        # Application state management
+│       ├── ui.js           # UI rendering & components
+│       ├── utils.js        # General utility functions
 │       └── libs/           # Localized JS libraries
 ├── config.json             # Runtime configuration (git-ignored)
 ├── claude_chat.db          # SQLite database (git-ignored)
-├── conversations_backup/   # Migrated legacy JSON files (git-ignored)
-└── test/                   # Test scripts and modules
+└── conversations_backup/   # Migrated legacy JSON files (git-ignored)
 ```
 
 ---

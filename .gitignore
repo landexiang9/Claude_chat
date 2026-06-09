@@ -13,4 +13,25 @@ dist/
 server.crt
 server.key
 AGENTS.md
+test_dialog.py
+test/
+scratch/
+test.db
+debug.txt
+*.png
+scratch_history.txt
+scratch_prev_history.txt
+app_js_mods*.txt
+split_app.py
+split_client.py
+AUDIT_REPORT.md
+LATEST_AUDIT_REPORT.md
+*.backup.py
+*.backup.js
+backup_extract_*.txt
+claude_chat/chat_database.db
+claude_chat/patch_app.py
+claude_chat/patch_deepseek_tool.py
+claude_chat/patch_index.py
+claude_chat/patch_model_sync.py
 

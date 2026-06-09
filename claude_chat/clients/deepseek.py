@@ -1,0 +1,372 @@
+import base64
+import json
+import logging
+from pathlib import Path
+import httpx
+from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestError
+
+logger = logging.getLogger("claude_chat.clients")
+
+from .base import extract_api_message, build_http_client, sanitize_error_message
+
+def convert_messages_to_openai(messages):
+    import json
+    openai_msgs = []
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content")
+        
+        if isinstance(content, list):
+            text_parts = []
+            thinking_parts = []
+            tool_calls = []
+            tool_results = []
+            
+            for block in content:
+                if isinstance(block, dict):
+                    btype = block.get("type")
+                    if btype == "text":
+                        text_parts.append(block.get("text", ""))
+                    elif btype == "image":
+                        text_parts.append("[图片]")
+                    elif btype == "document":
+                        text_parts.append("[文档]")
+                    elif btype == "thinking":
+                        thinking_parts.append(block.get("thinking", ""))
+                    elif btype in ("tool_use", "server_tool_use"):
+                        tool_calls.append({
+                            "id": block.get("id", ""),
+                            "type": "function",
+                            "function": {
+                                "name": block.get("name", ""),
+                                "arguments": json.dumps(block.get("input", {}))
+                            }
+                        })
+                    elif btype in ("tool_result", "web_search_tool_result"):
+                        tool_results.append({
+                            "role": "tool",
+                            "tool_call_id": block.get("tool_use_id", ""),
+                            "content": str(block.get("content", ""))
+                        })
+                else:
+                    text_parts.append(str(block))
+            
+            text_str = "".join(text_parts).strip()
+            thinking_str = "".join(thinking_parts).strip()
+            
+            if tool_results:
+                if text_str:
+                    openai_msgs.append({"role": role, "content": text_str})
+                for tr in tool_results:
+                    openai_msgs.append(tr)
+            elif tool_calls:
+                msg_dict = {
+                    "role": role,
+                    "content": text_str,
+                    "tool_calls": tool_calls
+                }
+                if thinking_str:
+                    msg_dict["reasoning_content"] = thinking_str
+                openai_msgs.append(msg_dict)
+            else:
+                msg_dict = {"role": role, "content": text_str}
+                if thinking_str:
+                    msg_dict["reasoning_content"] = thinking_str
+                openai_msgs.append(msg_dict)
+                
+        else:
+            text_str = str(content)
+            msg_dict = {"role": role, "content": text_str}
+            if msg.get("thinking"):
+                msg_dict["reasoning_content"] = msg["thinking"]
+            openai_msgs.append(msg_dict)
+            
+    return openai_msgs
+
+def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, previous_content_blocks=None, depth=0):
+    try:
+        if depth >= 5:
+            logger.warning(f"联网搜索已达最大深度限制 ({depth})，强制关闭此轮搜索。")
+            enable_search = False
+
+        from openai import OpenAI
+        http_client = build_http_client(proxy_mode, proxy_url)
+        client = OpenAI(api_key=api_key, base_url=api_url, http_client=http_client)
+        
+        openai_msgs = convert_messages_to_openai(messages)
+        if system and system.strip():
+            openai_msgs.insert(0, {"role": "system", "content": system.strip()})
+            
+        kwargs = {
+            "model": model,
+            "messages": openai_msgs,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+            "stream_options": {"include_usage": True}
+        }
+        
+        tools = None
+        if enable_search and "reasoner" not in model.lower():
+            tools = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_web",
+                        "description": "Search the web using Google/Bing/Tavily/Jina to get real-time information.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string", "description": "The search query to look up."}
+                            },
+                            "required": ["query"]
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "fetch_webpage",
+                        "description": "Fetch and read the full textual content of a specific webpage URL.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "url": {"type": "string", "description": "The URL of the webpage to fetch."}
+                            },
+                            "required": ["url"]
+                        }
+                    }
+                }
+            ]
+            kwargs["tools"] = tools
+
+        response_stream = client.chat.completions.create(**kwargs)
+        if on_stream_created:
+            on_stream_created(response_stream)
+            
+        full_text = ""
+        full_reasoning = ""
+        tool_calls_dict = {}
+        input_tokens = 0
+        output_tokens = 0
+        
+        for chunk in response_stream:
+            if abort_event and abort_event.is_set():
+                streaming_queue.put(("aborted", {}))
+                return
+                
+            if hasattr(chunk, "usage") and chunk.usage is not None:
+                usage = chunk.usage
+                if hasattr(usage, "prompt_tokens") and usage.prompt_tokens is not None:
+                    input_tokens = usage.prompt_tokens
+                if hasattr(usage, "completion_tokens") and usage.completion_tokens is not None:
+                    output_tokens = usage.completion_tokens
+
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            
+            reasoning = getattr(delta, "reasoning_content", None)
+            if reasoning:
+                full_reasoning += reasoning
+                streaming_queue.put(("thinking", reasoning))
+                
+            content = getattr(delta, "content", None)
+            if content:
+                full_text += content
+                streaming_queue.put(("text", content))
+                
+            tool_calls = getattr(delta, "tool_calls", None)
+            if tool_calls:
+                for tc in tool_calls:
+                    idx = tc.index
+                    if idx not in tool_calls_dict:
+                        tool_calls_dict[idx] = {
+                            "id": tc.id,
+                            "name": tc.function.name if tc.function and tc.function.name else "",
+                            "arguments": ""
+                        }
+                    if tc.function and tc.function.arguments:
+                        tool_calls_dict[idx]["arguments"] += tc.function.arguments
+
+        if tool_calls_dict and enable_search:
+            assistant_content = [{"type": "text", "text": full_text}]
+            if full_reasoning:
+                assistant_content.insert(0, {
+                    "type": "thinking",
+                    "thinking": full_reasoning,
+                    "signature": "omitted_for_display"
+                })
+            
+            openai_tool_calls = []
+            tool_uses = []
+            for idx, tc in sorted(tool_calls_dict.items()):
+                openai_tool_calls.append({
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": tc["arguments"]}
+                })
+                
+                try:
+                    args = json.loads(tc["arguments"])
+                except Exception:
+                    args = {}
+                    
+                if tc["name"] == "search_web":
+                    tool_uses.append({
+                        "type": "search_web",
+                        "id": tc["id"],
+                        "query": args.get("query", "")
+                    })
+                elif tc["name"] == "fetch_webpage":
+                    tool_uses.append({
+                        "type": "fetch_webpage",
+                        "id": tc["id"],
+                        "url": args.get("url", "")
+                    })
+            
+            if tool_uses:
+                from claude_chat.search import search_web, fetch_webpage_content
+                tool_result_content = []
+                
+                db_assistant_content = []
+                if full_reasoning:
+                    db_assistant_content.append({"type": "thinking", "thinking": full_reasoning, "signature": "omitted_for_display"})
+                db_assistant_content.append({"type": "text", "text": full_text})
+                
+                for tu in tool_uses:
+                    tu_type = tu["type"]
+                    tool_use_id = tu["id"]
+                    
+                    if tu_type == "search_web":
+                        tool_query = tu["query"]
+                        streaming_queue.put(("search_start", {"query": tool_query}))
+                        
+                        search_results, engine_used, usage_info = search_web(
+                            tool_query,
+                            engine=search_engine,
+                            proxy_mode=proxy_mode,
+                            proxy_url=proxy_url,
+                            tavily_api_key=tavily_api_key,
+                            jina_api_key=jina_api_key
+                        )
+                        
+                        streaming_queue.put(("search_done", {
+                            "query": tool_query,
+                            "results": search_results,
+                            "engine": engine_used,
+                            "usage": usage_info
+                        }))
+                        
+                        result_text = ""
+                        if search_results:
+                            for idx, r in enumerate(search_results):
+                                result_text += f"[{idx+1}] Title: {r['title']}\nURL: {r['url']}\nSnippet: {r['snippet']}\n\n"
+                        else:
+                            result_text = "No results found on the web."
+                        result_text += f"\n[Search Engine: {engine_used}]"
+                        if usage_info:
+                            result_text += f"\n[Usage: {json.dumps(usage_info)}]"
+                            
+                    elif tu_type == "fetch_webpage":
+                        tool_url = tu["url"]
+                        streaming_queue.put(("fetch_start", {"url": tool_url}))
+                        
+                        webpage_text, usage_info = fetch_webpage_content(
+                            tool_url,
+                            parser_type=web_page_parser,
+                            jina_api_key=jina_api_key,
+                            proxy_mode=proxy_mode,
+                            proxy_url=proxy_url
+                        )
+                        
+                        streaming_queue.put(("fetch_done", {
+                            "url": tool_url,
+                            "content_len": len(webpage_text),
+                            "parser": web_page_parser,
+                            "usage": usage_info
+                        }))
+                        
+                        result_text = webpage_text
+                        result_text += f"\n[Web Reader: {web_page_parser}]"
+                        if usage_info:
+                            result_text += f"\n[Usage: {json.dumps(usage_info)}]"
+                            
+                    db_assistant_content.append({
+                        "type": "tool_use",
+                        "id": tool_use_id,
+                        "name": tu_type,
+                        "input": {"query": tu["query"]} if tu_type == "search_web" else {"url": tu["url"]}
+                    })
+                    
+                    tool_result_content.append({
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": result_text
+                    })
+                
+                if conv_id and conv_manager:
+                    conv_manager.add_message(conv_id, "assistant", db_assistant_content, thinking=full_reasoning if full_reasoning else None)
+                    conv_manager.add_message(conv_id, "user", tool_result_content)
+                
+                messages.append({"role": "assistant", "content": db_assistant_content})
+                messages.append({"role": "user", "content": tool_result_content})
+                
+                
+                new_previous = []
+                if previous_content_blocks:
+                    new_previous.extend(previous_content_blocks)
+                new_previous.extend(db_assistant_content)
+
+                stream_deepseek_response(
+                    api_key=api_key,
+                    api_url=api_url,
+                    proxy_mode=proxy_mode,
+                    proxy_url=proxy_url,
+                    messages=messages,
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    streaming_queue=streaming_queue,
+                    abort_event=abort_event,
+                    on_stream_created=on_stream_created,
+                    system=system,
+                    enable_search=enable_search,
+                    search_engine=search_engine,
+                    tavily_api_key=tavily_api_key,
+                    jina_api_key=jina_api_key,
+                    web_page_parser=web_page_parser,
+                    conv_id=conv_id,
+                    conv_manager=conv_manager,
+                    previous_content_blocks=new_previous,
+                    depth=depth + 1
+                )
+                return
+
+        if input_tokens == 0:
+            input_tokens = len(str(openai_msgs)) // 4
+        if output_tokens == 0:
+            output_tokens = len(full_text) // 4
+        
+        content_blocks = [{"type": "text", "text": full_text}]
+        if full_reasoning:
+            content_blocks.insert(0, {
+                "type": "thinking",
+                "thinking": full_reasoning,
+                "signature": "omitted_for_display"
+            })
+            
+        if previous_content_blocks:
+            content_blocks = previous_content_blocks + content_blocks
+            
+        streaming_queue.put(("done", {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "content_blocks": content_blocks,
+            "thinking": full_reasoning
+        }))
+        
+    except Exception as e:
+        logger.exception(f"DeepSeek streaming error: {e}")
+        streaming_queue.put(("error", f"DeepSeek 错误: {sanitize_error_message(e)}"))
+

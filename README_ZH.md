@@ -143,22 +143,38 @@ Claude_chat/
 ├── claude_chat/            # 核心业务源码目录
 │   ├── __init__.py         # 包初始化
 │   ├── app.py              # PyWebView GUI 逻辑与 JS 桥接 API
-│   ├── client.py           # 多平台 API 客户端 (Claude/DeepSeek/Gemini)
+│   ├── api_bridge.py       # Headless 模式的 HTTP API 桥接层
 │   ├── config.py           # 配置与凭证安全管理器
 │   ├── conversation.py     # 历史 JSON 对话读取适配器
 │   ├── db.py               # SQLite 数据库持久化层
 │   ├── search.py           # 统一网页搜索引擎接口
 │   ├── attachment_parser.py# 附件解析器与 OCR 管道
 │   ├── server.py           # 局域网 Web 服务器实现 (Headless)
+│   ├── clients/            # 多平台 API 客户端模块
+│   │   ├── __init__.py     # 客户端模块导出
+│   │   ├── base.py         # 共享工具函数 (HTTP 客户端、错误脱敏)
+│   │   ├── claude.py       # Anthropic Claude 流式客户端
+│   │   ├── deepseek.py     # DeepSeek (OpenAI 兼容) 流式客户端
+│   │   ├── gemini.py       # Google Gemini 流式客户端
+│   │   ├── dispatcher.py   # 平台路由与统一流式入口
+│   │   └── models.py       # 动态模型列表获取
 │   └── ui/                 # Web 前端静态资源
 │       ├── index.html      # 主页面 HTML 布局
 │       ├── style.css       # Catppuccin Mocha 玻璃拟物主题样式
-│       ├── app.js          # 前端核心业务与流式输出回调逻辑
+│       ├── fonts.css       # 字体定义
+│       ├── api.js          # API 通信层
+│       ├── chat.js         # 聊天消息管理
+│       ├── dom.js          # DOM 操作工具
+│       ├── events.js       # 事件处理与快捷键
+│       ├── main.js         # 应用初始化与流式回调
+│       ├── settings.js     # 设置面板逻辑
+│       ├── state.js        # 应用状态管理
+│       ├── ui.js           # UI 渲染与组件
+│       ├── utils.js        # 通用工具函数
 │       └── libs/           # 离线打包 JS 依赖库
 ├── config.json             # 运行时配置 (Git 已忽略)
 ├── claude_chat.db          # SQLite 数据库 (Git 已忽略)
-├── conversations_backup/   # 已迁移的 JSON 对话备份 (Git 已忽略)
-└── test/                   # 测试脚本与用例目录
+└── conversations_backup/   # 已迁移的 JSON 对话备份 (Git 已忽略)
 ```
 
 ---
