@@ -159,6 +159,9 @@ function showSettings() {
     if (onlyServerInput) {
         onlyServerInput.checked = !!config.only_server;
     }
+    if (useCdnAssetsInput) {
+        useCdnAssetsInput.checked = !!config.use_cdn_assets;
+    }
     if (enableSslInput) {
         enableSslInput.checked = !!config.enable_ssl;
     }
@@ -653,6 +656,9 @@ saveSettingsBtn.onclick = async () => {
     }
     if (onlyServerInput) {
         config.only_server = onlyServerInput.checked;
+    }
+    if (useCdnAssetsInput) {
+        config.use_cdn_assets = useCdnAssetsInput.checked;
     }
     if (enableSslInput) {
         config.enable_ssl = enableSslInput.checked;

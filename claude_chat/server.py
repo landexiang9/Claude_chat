@@ -121,19 +121,49 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         mime_type = self.get_mime_type(file_path)
         
         try:
-            with open(file_path, "rb") as f:
-                data = f.read()
+            # 动态替换 index.html 中的本地库为 CDN
+            if file_path.name == "index.html" and self.server.app.config.get("use_cdn_assets", False):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                content = content.replace('src="libs/marked.min.js"', 'src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"')
+                content = content.replace('src="libs/purify.min.js"', 'src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"')
+                content = content.replace('src="libs/highlight.min.js"', 'src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"')
+                content = content.replace('src="libs/mermaid.min.js"', 'src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"')
+                content = content.replace('href="libs/github-dark.min.css"', 'href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"')
+                
+                data = content.encode('utf-8')
+                self.send_response(200)
+                self.send_header("Content-Type", mime_type)
+                self.send_header("Content-Length", str(len(data)))
+                self._send_cors_headers()
+                self.send_header("Referrer-Policy", "same-origin")
+                self.end_headers()
+                self.wfile.write(data)
+                return
+
+            file_size = file_path.stat().st_size
             self.send_response(200)
             self.send_header("Content-Type", mime_type)
-            self.send_header("Content-Length", str(len(data)))
-            # 支持跨域以增强浏览器端调试灵活性
+            self.send_header("Content-Length", str(file_size))
             self._send_cors_headers()
             self.send_header("Referrer-Policy", "same-origin")
             self.end_headers()
-            self.wfile.write(data)
+            
+            # 流式分块发送，避免内存飙升，提高弱网环境传输稳定性
+            with open(file_path, "rb") as f:
+                while True:
+                    chunk = f.read(64 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+        except ConnectionError as e:
+            logger.debug(f"客户端提前断开连接，取消发送资源 {file_path}: {e}")
         except Exception as e:
             logger.error(f"渲染静态资源文件出错 {file_path}: {e}")
-            self.send_error(500, "Internal Server Error")
+            try:
+                self.send_error(500, "Internal Server Error")
+            except Exception:
+                pass
 
     def read_json_body(self):
         """

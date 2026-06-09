@@ -132,9 +132,32 @@ class WebAPI:
 
     def fetch_models(self):
         """
-        前端请求在线模型列表。先异步拉取缓存备用模型列表，直接立刻返回备用缓存以防止前端白屏等待。
+        前端请求在线模型列表。改为同步获取并返回最新结果，以支持 headless server 模式。
         """
-        self._app._refresh_models_async()
+        active_platform = self._app.config.get("active_platform", "claude")
+        if active_platform == "deepseek":
+            api_key = self._app.config.get("deepseek_api_key", "")
+            platform_api_url = self._app.config.get("deepseek_api_url", "https://api.deepseek.com")
+        elif active_platform == "gemini":
+            api_key = self._app.config.get("gemini_api_key", "")
+            platform_api_url = self._app.config.get("gemini_api_url", "")
+        else:
+            api_key = self._app.config.get("api_key", "")
+            platform_api_url = None
+
+        proxy_mode = self._app.config.get("proxy_mode", "system")
+        proxy_url = self._app.config.get("proxy_url", "")
+        
+        model_ids = fetch_available_models(api_key, proxy_mode, proxy_url, active_platform=active_platform, platform_api_url=platform_api_url)
+        if model_ids:
+            self._app.available_models = model_ids
+            # 在 GUI 模式下为了兼容性依然尝试推送一次回调，但不再是必须
+            if self._app.window:
+                js_code = f"if (window.onModelsUpdated) window.onModelsUpdated({json.dumps(model_ids)});"
+                try:
+                    self._app.window.evaluate_js(js_code)
+                except Exception:
+                    pass
         return self._app.available_models
 
     def paste_from_clipboard(self):

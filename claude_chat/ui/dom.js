@@ -66,6 +66,7 @@ const fontModeSelect = document.getElementById("font-mode-select");
 const enableServerInput = document.getElementById("enable-server-input");
 const syncConfigInput = document.getElementById("sync-config-input");
 const onlyServerInput = document.getElementById("only-server-input");
+const useCdnAssetsInput = document.getElementById("use-cdn-assets-input");
 const enableSslInput = document.getElementById("enable-ssl-input");
 const serverPortInput = document.getElementById("server-port-input");
 const webSearchBtn = document.getElementById("web-search-btn");

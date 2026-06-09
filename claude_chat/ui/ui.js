@@ -155,7 +155,10 @@ if (platformSelect) {
         }
         await apiBridge.save_config({ active_platform: config.active_platform });
         updateLedStatus();
-        await apiBridge.fetch_models();
+        const models = await apiBridge.fetch_models();
+        if (models && window.onModelsUpdated) {
+            window.onModelsUpdated(models);
+        }
     });
 }
 // 加载历史会话列表数据
