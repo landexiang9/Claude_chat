@@ -89,7 +89,13 @@ TEXT_EXTENSIONS = {
 # ==========================================
 # 加密混淆工具函数 (用于安全保存 API Key 备用副本)
 # ==========================================
+_MACHINE_KEY_CACHE = None
+
 def _get_machine_key() -> bytes:
+    global _MACHINE_KEY_CACHE
+    if _MACHINE_KEY_CACHE is not None:
+        return _MACHINE_KEY_CACHE
+        
     import uuid
     import platform
     import os
@@ -109,7 +115,8 @@ def _get_machine_key() -> bytes:
     
     fingerprint = f"{node}_{machine}_{user}".encode('utf-8')
     salt = b"ClaudeChatSecretSalt_GCM_2026"
-    return hashlib.pbkdf2_hmac('sha256', fingerprint, salt, 100000)
+    _MACHINE_KEY_CACHE = hashlib.pbkdf2_hmac('sha256', fingerprint, salt, 100000)
+    return _MACHINE_KEY_CACHE
 
 
 def aes_encrypt(data: str) -> str:
@@ -263,6 +270,7 @@ class ConfigManager:
                                     key_val = aes_decrypt(obf) if ":" in obf else xor_decrypt(obf)
                             except Exception as e:
                                 logger.warning(f"从 keyring 中读取 {key} 失败，降级采用本地加密副本: {e}")
+                                self._keyring_available = False
                                 if obf:
                                     key_val = aes_decrypt(obf) if ":" in obf else xor_decrypt(obf)
                         elif storage in ("aes", "xor"):
@@ -300,13 +308,18 @@ class ConfigManager:
                 to_save[f"{key}_obfuscated"] = ""
                 
                 if key_val:
-                    try:
-                        import keyring
-                        keyring.set_password("ClaudeChat", key, key_val)
-                        to_save[f"{key}_storage"] = "keyring"
-                        to_save[f"{key}_obfuscated"] = ""
-                    except Exception as e:
-                        logger.warning(f"保存 {key} 至 keyring 失败，将自动降级为本地加密存储 (AES): {e}")
+                    if getattr(self, "_keyring_available", True):
+                        try:
+                            import keyring
+                            keyring.set_password("ClaudeChat", key, key_val)
+                            to_save[f"{key}_storage"] = "keyring"
+                            to_save[f"{key}_obfuscated"] = ""
+                        except Exception as e:
+                            logger.warning(f"保存 {key} 至 keyring 失败，将自动降级为本地加密存储 (AES): {e}")
+                            self._keyring_available = False
+                            to_save[f"{key}_storage"] = "aes"
+                            to_save[f"{key}_obfuscated"] = aes_encrypt(key_val)
+                    else:
                         to_save[f"{key}_storage"] = "aes"
                         to_save[f"{key}_obfuscated"] = aes_encrypt(key_val)
 
