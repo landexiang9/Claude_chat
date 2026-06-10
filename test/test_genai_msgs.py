@@ -1,6 +1,6 @@
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from claude_chat.client import convert_messages_to_gemini
+from claude_chat.clients import convert_messages_to_gemini
 
 messages = [
     {"role": "user", "content": [{"type": "text", "text": "Hello, Gemini!"}]},

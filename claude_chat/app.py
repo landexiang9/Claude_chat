@@ -269,6 +269,12 @@ class ClaudeChatApp:
             proxy_url = self.config.get("proxy_url", "")
             
             model_ids = fetch_available_models(api_key, proxy_mode, proxy_url, active_platform=active_platform, platform_api_url=platform_api_url)
+            
+            # 校验平台是否在拉取期间发生切换，防止旧请求覆盖新平台的模型列表
+            current_platform = self.config.get("active_platform", "claude")
+            if current_platform != active_platform:
+                return
+                
             if model_ids:
                 self.available_models = model_ids
                 if self.window:
