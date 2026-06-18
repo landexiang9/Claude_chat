@@ -97,6 +97,11 @@ def convert_messages_to_gemini(messages):
         else:
             parts.append({"text": str(content)})
             
+        if gemini_role == "model":
+            for part in parts:
+                if isinstance(part, dict):
+                    part["thought_signature"] = "skip_thought_signature_validator"
+            
         gemini_msgs.append({"role": gemini_role, "parts": parts})
     return gemini_msgs
 
