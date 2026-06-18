@@ -36,7 +36,62 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
     def __init__(self, server_address, RequestHandlerClass, app, api):
         self.app = app
         self.api = api
+        self.ssl_context = None
         super().__init__(server_address, RequestHandlerClass)
+
+    def finish_request(self, request, client_address):
+        """
+        在工作线程中处理请求。如果启用了 SSL/HTTPS：
+        1. 使用 MSG_PEEK 探测首个字节，如果不是 0x16（TLS ClientHello），则认为是普通 HTTP 或恶意扫描，直接丢弃。
+        2. 如果是合法 TLS，则在工作线程中进行 wrap_socket 握手，规避主线程 accept 阻塞。
+        3. 对所有连接设置合理的 socket 超时时间，防止 slowloris 等攻击挂起线程。
+        """
+        if getattr(self, 'ssl_context', None):
+            try:
+                # 设置握手探测短期超时
+                request.settimeout(10.0)
+                
+                # 使用 MSG_PEEK 探测首个字节
+                # TLS ClientHello 必须以 0x16 (Handshake 记录类型) 开头
+                try:
+                    first_byte = request.recv(1, socket.MSG_PEEK)
+                except Exception as peek_err:
+                    logger.debug(f"探测来自 {client_address} 的连接首字节失败: {peek_err}")
+                    first_byte = b""
+                
+                if not first_byte or first_byte[0] != 0x16:
+                    logger.debug(f"来自 {client_address} 的非 TLS/SSL 连接（可能是普通 HTTP 或扫描器），直接丢弃该请求。")
+                    try:
+                        request.shutdown(socket.SHUT_RDWR)
+                    except Exception:
+                        pass
+                    try:
+                        request.close()
+                    except Exception:
+                        pass
+                    return
+                
+                # 开始进行 SSL/TLS 握手
+                wrapped_socket = self.ssl_context.wrap_socket(request, server_side=True)
+                # 握手成功，设置 HTTP 请求处理的超时时间
+                wrapped_socket.settimeout(30.0)
+                request = wrapped_socket
+            except Exception as e:
+                logger.debug(f"与 {client_address} 进行 SSL 握手失败: {e}")
+                try:
+                    request.shutdown(socket.SHUT_RDWR)
+                except Exception:
+                    pass
+                try:
+                    request.close()
+                except Exception:
+                    pass
+                return
+        else:
+            # 普通 HTTP 模式，设置超时时间防止线程卡死在 recv() 上
+            request.settimeout(30.0)
+            
+        super().finish_request(request, client_address)
 
 
 class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
@@ -167,11 +222,16 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
 
     def read_json_body(self):
         """
-        解析 POST 请求中的 JSON 请求体数据
+        解析 POST 请求中的 JSON 请求体数据，带有请求大小上限检查，防御 OOM 攻击
         """
         content_length = int(self.headers.get('Content-Length', 0))
         if content_length == 0:
             return {}
+            
+        # 限制请求体最大为 50MB，防御超大 payload 导致的 OOM 攻击
+        if content_length > 50 * 1024 * 1024:
+            raise ValueError("Payload too large")
+            
         body = self.rfile.read(content_length).decode('utf-8')
         try:
             return json.loads(body)
@@ -227,7 +287,9 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             if match:
                 token = match.group(1)
                 
-        return token == server_token
+        # 使用 hmac.compare_digest 进行常量时间比较，防止计时攻击
+        import hmac
+        return isinstance(token, str) and hmac.compare_digest(token, server_token)
 
     def send_unauthorized_response(self):
         """
@@ -258,7 +320,13 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             if not self.is_request_authorized():
                 self.send_unauthorized_response()
                 return
-            self.handle_api_post(path)
+            try:
+                self.handle_api_post(path)
+            except ValueError as ve:
+                if str(ve) == "Payload too large":
+                    self.send_error(413, "Payload Too Large")
+                else:
+                    self.send_error(400, "Bad Request")
         else:
             self.send_error(404)
 
@@ -639,7 +707,7 @@ def start_server(app, api, host='0.0.0.0', start_port=8000):
             if crt_path.exists() and key_path.exists():
                 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
                 context.load_cert_chain(certfile=str(crt_path), keyfile=str(key_path))
-                server.socket = context.wrap_socket(server.socket, server_side=True)
+                server.ssl_context = context
                 is_ssl = True
                 logger.info("SSL/HTTPS 传输通道已成功启用！")
             else:

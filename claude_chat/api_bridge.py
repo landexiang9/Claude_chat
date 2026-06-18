@@ -918,9 +918,11 @@ class WebAPI:
             
         try:
             data = base64.b64decode(encoded)
-            stem = Path(name).stem
-            suffix = Path(name).suffix
-            dest_path = temp_dir / name
+            # 强制提取文件名，阻止路径穿越 (../../)
+            safe_name = Path(name).name
+            stem = Path(safe_name).stem
+            suffix = Path(safe_name).suffix
+            dest_path = temp_dir / safe_name
             counter = 1
             # 重名冲突预防
             while dest_path.exists():

@@ -75,6 +75,7 @@ body {
     height: 100dvh;
     width: 100vw;
     width: 100dvw;
+    overflow-x: hidden;
 }
 
 /* Compact Sidebar */
@@ -223,6 +224,8 @@ body {
     flex-direction: column;
     background-color: var(--base);
     position: relative;
+    min-width: 0;
+    overflow-x: hidden;
 }
 
 /* Top bar styles */
@@ -242,6 +245,10 @@ body {
     display: flex;
     align-items: center;
     gap: 16px;
+}
+
+.platform-select-wrapper {
+    margin-right: 8px;
 }
 
 .model-select-wrapper {
@@ -1529,14 +1536,57 @@ input[type="range"]::-webkit-slider-thumb:hover {
     }
 }
 
-/* Very narrow portrait screens compaction */
-@media (max-width: 480px) {
+/* Hide system prompt on medium-small mobile screens to avoid overflow */
+@media (max-width: 560px) {
     .system-prompt-wrapper {
         display: none !important;
     }
+}
+
+/* Very narrow portrait screens compaction */
+@media (max-width: 480px) {
+    .platform-select-wrapper {
+        margin-right: 0 !important;
+    }
     
     .select-menu {
-        max-width: 140px; /* give more space to the model selector if system prompt is hidden */
+        max-width: 80px;
+        padding: 4px 6px;
+        font-size: 11px;
+    }
+    
+    #model-select {
+        max-width: 90px;
+    }
+    
+    .top-bar {
+        padding: 0 6px;
+        gap: 2px;
+    }
+    
+    .top-bar-left {
+        gap: 4px;
+    }
+    
+    .top-bar-right {
+        gap: 4px;
+    }
+    
+    .sidebar-toggle-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 16px;
+    }
+    
+    .icon-btn {
+        width: 26px;
+        height: 26px;
+        font-size: 14px;
+    }
+    
+    .status-led {
+        width: 6px;
+        height: 6px;
     }
 }
 

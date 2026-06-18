@@ -12,8 +12,85 @@ from .deepseek import stream_deepseek_response
 from .gemini import stream_gemini_response
 from .base import sanitize_error_message
 
+def parse_markdown_images_to_blocks(text):
+    import re
+    
+    # Matches markdown base64 images: ![alt](data:image/png;base64,...)
+    pattern = re.compile(
+        r'!\[.*?\]\(data:(image/[a-zA-Z0-9\-\+\.]+);base64,([a-zA-Z0-9\/\+=\s\n\r]+)\)'
+    )
+    
+    blocks = []
+    last_end = 0
+    text_str = str(text)
+    
+    for match in pattern.finditer(text_str):
+        start, end = match.span()
+        # Add preceding text block
+        if start > last_end:
+            preceding = text_str[last_end:start]
+            if preceding:
+                blocks.append({"type": "text", "text": preceding})
+                
+        mime_type = match.group(1)
+        # Clean up whitespace/newlines from base64 data
+        b64_data = match.group(2).strip().replace("\n", "").replace("\r", "").replace(" ", "")
+        
+        blocks.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": mime_type,
+                "data": b64_data
+            }
+        })
+        
+        last_end = end
+        
+    if last_end < len(text_str):
+        remaining = text_str[last_end:]
+        if remaining:
+            blocks.append({"type": "text", "text": remaining})
+            
+    # If no blocks were created (no image matched), return list with single text block if not empty, or original text
+    if not blocks:
+        return [{"type": "text", "text": text_str}]
+        
+    return blocks
+
+def preprocess_message_content(content):
+    if isinstance(content, list):
+        new_blocks = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text", "")
+                if "![" in text and "data:image/" in text and ";base64," in text:
+                    parsed = parse_markdown_images_to_blocks(text)
+                    new_blocks.extend(parsed)
+                else:
+                    new_blocks.append(block)
+            else:
+                new_blocks.append(block)
+        return new_blocks
+    elif isinstance(content, str):
+        if "![" in content and "data:image/" in content and ";base64," in content:
+            return parse_markdown_images_to_blocks(content)
+        return content
+    return content
+
 def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None, enable_search=False, enable_web_fetch=True, web_fetch_limit=15000, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, **kwargs):
     try:
+        # Preprocess messages to extract and structure any base64 markdown images
+        processed_messages = []
+        for msg in messages:
+            role = msg.get("role")
+            content = msg.get("content")
+            processed_content = preprocess_message_content(content)
+            processed_msg = dict(msg)
+            processed_msg["content"] = processed_content
+            processed_messages.append(processed_msg)
+        messages = processed_messages
+
         active_platform = kwargs.get("active_platform", "claude")
         depth = kwargs.get("depth", 0)
         previous_content_blocks = kwargs.get("previous_content_blocks")
