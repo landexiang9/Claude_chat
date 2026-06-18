@@ -223,6 +223,14 @@ const menuSelectAll = document.getElementById("menu-selectall");
 let contextMenuTarget = null;
 
 window.addEventListener("contextmenu", (e) => {
+    // 移动端/触摸设备通常依靠原生菜单选择和修改文本，自定义菜单容易干扰操作且无法在 HTTP 协议下访问系统剪贴板
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                     (navigator.maxTouchPoints > 0);
+    if (isMobile) {
+        hideContextMenu();
+        return;
+    }
+
     const target = e.target;
     
     // Check if target is a text editable field
@@ -230,6 +238,12 @@ window.addEventListener("contextmenu", (e) => {
                         (target.tagName === "INPUT" && 
                          ["text", "password", "number", "url"].includes(target.type));
     
+    // 浏览器环境下（非 Native 模式），输入框建议使用原生上下文菜单，以便顺畅且安全地使用浏览器原生剪贴板机制
+    if (isTextInput && !checkIsNative()) {
+        hideContextMenu();
+        return;
+    }
+
     // Check if there is selected text anywhere on the page
     const selection = window.getSelection();
     const selectedText = selection.toString();

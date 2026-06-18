@@ -66,7 +66,8 @@ def convert_messages_to_gemini(messages):
                         else:
                             parts.append({"text": f"[{btype} attachment unavailable]"})
                     elif btype == "thinking":
-                        parts.append({"text": f"[Thinking: {block.get('thinking', '')}]"})
+                        # Skip thinking blocks in multi-turn history to avoid Gemini API thought_signature verification errors
+                        pass
                     elif btype in ("tool_use", "server_tool_use"):
                         parts.append({
                             "function_call": {
@@ -134,6 +135,8 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
                             btype = block.get("type")
                             if btype == "text":
                                 parts.append(block.get("text", ""))
+                            elif btype == "thinking":
+                                pass
                             else:
                                 parts.append(f"[{btype}]")
                         else:
