@@ -81,7 +81,11 @@ class WebAPI:
         """
         with self._app.lock:
             cfg = dict(self._app.config.data)
-            api_keys = ["api_key", "tavily_api_key", "jina_api_key", "deepseek_api_key", "gemini_api_key"]
+            api_keys = [
+                "api_key", "tavily_api_key", "jina_api_key", 
+                "deepseek_api_key", "gemini_api_key",
+                "deepseek_tavily_api_key", "deepseek_jina_api_key"
+            ]
             for key in api_keys:
                 cfg[f"has_{key}"] = bool(cfg.get(key, "").strip())
                 cfg[key] = ""
@@ -94,20 +98,25 @@ class WebAPI:
         with self._app.lock:
             logger.info(f"保存系统配置，键名列表: {list(new_config.keys())}")
             
+            sensitive_keys = [
+                "api_key", "deepseek_api_key", "gemini_api_key", 
+                "tavily_api_key", "jina_api_key",
+                "deepseek_tavily_api_key", "deepseek_jina_api_key"
+            ]
+            
             # 1. 过滤并保存常规字段，跳过 has_xxx / clear_xxx 标志
             for k, v in new_config.items():
                 if k.startswith("has_") or k.startswith("clear_"):
                     continue
                 # 对于敏感 Key 字段，仅当其有值时才保存；空值由 clear_xxx 逻辑处理，防止前端空值覆盖
-                if k in ["api_key", "deepseek_api_key", "gemini_api_key", "tavily_api_key", "jina_api_key"]:
+                if k in sensitive_keys:
                     if v:
                         self._app.config.set(k, v)
                 else:
                     self._app.config.set(k, v)
             
             # 2. 显式处理清除敏感 Key 的请求
-            api_keys = ["api_key", "deepseek_api_key", "gemini_api_key", "tavily_api_key", "jina_api_key"]
-            for key in api_keys:
+            for key in sensitive_keys:
                 if new_config.get(f"clear_{key}"):
                     self._app.config.set(key, "")
                 
@@ -418,19 +427,10 @@ class WebAPI:
                 
             api_messages = [extract_api_message(msg) for msg in self._app.current_conv["messages"]]
             
-            # 组装思考推理 Extended Thinking 字段
-            thinking_config = None
-            output_config = None
-            if self._app.config.get("thinking_enabled"):
-                ttype = self._app.config.get("thinking_type", "adaptive")
-                if ttype == "adaptive":
-                    thinking_config = {"type": "adaptive"}
-                    effort_val = self._app.config.get("thinking_level", "high")
-                    if effort_val:
-                        output_config = {"effort": effort_val}
-                elif ttype == "enabled":
-                    thinking_config = {"type": "enabled", "budget_tokens": self._app.config.get("thinking_budget", 16000)}
-                    
+            # 获取活跃平台与投影映射后的扁平配置
+            active_platform = self._app.config.get("active_platform", "claude")
+            mapped = PlatformParamMapper.map_params(active_platform, self._app.config.data)
+            
             # 挂载流通道队列
             active_queue = custom_queue if custom_queue is not None else queue.Queue()
             if custom_queue is None:
@@ -449,42 +449,59 @@ class WebAPI:
             def on_stream_created(stream):
                 self._app.active_stream = stream
 
-            # 后台线程异步发起 API 通信，放置阻塞主 GUI 事件循环导致卡死
+            # 解析特定于平台的思维信息传入
+            thinking_enabled = False
+            thinking_budget = 16000
+            thinking_level = "high"
+            if active_platform == "claude" and mapped["thinking_config"]:
+                thinking_enabled = True
+                if "budget_tokens" in mapped["thinking_config"]:
+                    thinking_budget = mapped["thinking_config"]["budget_tokens"]
+                if mapped["output_config"] and "effort" in mapped["output_config"]:
+                    thinking_level = mapped["output_config"]["effort"]
+            elif active_platform == "gemini" and mapped["thinking_config"]:
+                thinking_enabled = True
+                thinking_budget = mapped["thinking_config"]["budget_tokens"]
+                thinking_level = mapped["thinking_config"]["effort"]
+
+            # 后台线程异步发起 API 通信，防止阻塞主 GUI 事件循环导致卡死
             thread = threading.Thread(
                 target=stream_claude_response,
                 args=(
-                    self._app.config.get("api_key"),
+                    mapped["api_key"],
                     self._app.config.get("proxy_mode", "system"),
                     self._app.config.get("proxy_url", ""),
                     api_messages,
                     self._app.current_conv.get("model", self._app.config.get("model")),
-                    self._app.config.get("max_tokens", 4096),
-                    self._app.config.get("temperature", 0.7),
-                    thinking_config,
+                    mapped["max_tokens"],
+                    mapped["temperature"],
+                    mapped["thinking_config"] if active_platform == "claude" else None,
                     active_queue,
                     self._app.abort_event,
                     on_stream_created
                 ),
                 kwargs={
                     "system": system_prompt_val,
-                    "output_config": output_config,
-                    "enable_search": self._app.config.get("enable_web_search", False),
-                    "enable_web_fetch": self._app.config.get("enable_web_fetch", True),
-                    "web_fetch_limit": self._app.config.get("web_fetch_limit", 15000),
-                    "search_engine": self._app.config.get("web_search_engine", "google"),
-                    "tavily_api_key": self._app.config.get("tavily_api_key", ""),
-                    "jina_api_key": self._app.config.get("jina_api_key", ""),
-                    "web_page_parser": self._app.config.get("web_page_parser", "local"),
+                    "output_config": mapped["output_config"] if active_platform == "claude" else None,
+                    "enable_search": mapped["enable_search"],
+                    "enable_web_fetch": mapped["enable_web_fetch"],
+                    "web_fetch_limit": mapped["web_fetch_limit"],
+                    "search_engine": mapped["search_engine"],
+                    "tavily_api_key": mapped["tavily_api_key"],
+                    "jina_api_key": mapped["jina_api_key"],
+                    "web_page_parser": mapped["web_page_parser"],
                     "conv_id": conv_id,
                     "conv_manager": self._app.conv_manager,
-                    "active_platform": self._app.config.get("active_platform", "claude"),
-                    "deepseek_api_key": self._app.config.get("deepseek_api_key", ""),
-                    "deepseek_api_url": self._app.config.get("deepseek_api_url", "https://api.deepseek.com"),
-                    "gemini_api_key": self._app.config.get("gemini_api_key", ""),
-                    "gemini_api_url": self._app.config.get("gemini_api_url", ""),
-                    "thinking_enabled": self._app.config.get("thinking_enabled", False),
-                    "thinking_budget": self._app.config.get("thinking_budget", 1024),
-                    "thinking_level": self._app.config.get("thinking_level", "high"),
+                    "active_platform": active_platform,
+                    "deepseek_api_key": mapped["api_key"] if active_platform == "deepseek" else "",
+                    "deepseek_api_url": mapped["api_url"],
+                    "gemini_api_key": mapped["api_key"] if active_platform == "gemini" else "",
+                    "gemini_api_url": mapped["api_url"],
+                    "gemini_enable_code_sandbox": mapped["enable_code_sandbox"],
+                    "gemini_code_sandbox_type": mapped["code_sandbox_type"],
+                    "thinking_enabled": thinking_enabled,
+                    "thinking_budget": thinking_budget,
+                    "thinking_level": thinking_level,
                     "depth": 0
                 },
                 daemon=True
@@ -970,3 +987,84 @@ class WebAPI:
         except Exception as e:
             logger.error(f"清空日志失败: {e}")
             return False
+
+
+class PlatformParamMapper:
+    @staticmethod
+    def map_params(active_platform, config):
+        """
+        根据当前 active_platform 映射出一致化的扁平参数集传递给底层的 stream 派发和 clients。
+        """
+        # 默认取值
+        params = {
+            "api_key": "",
+            "max_tokens": 4096,
+            "temperature": 0.7,
+            "enable_search": False,
+            "enable_web_fetch": True,
+            "web_fetch_limit": 15000,
+            "search_engine": "google",
+            "tavily_api_key": "",
+            "jina_api_key": "",
+            "web_page_parser": "local",
+            "thinking_config": None,
+            "output_config": None,
+            "api_url": "",
+            "enable_code_sandbox": False,
+            "code_sandbox_type": "local"
+        }
+
+        if active_platform == "claude":
+            params["api_key"] = config.get("api_key", "")
+            params["max_tokens"] = int(config.get("max_tokens", 4096))
+            params["temperature"] = float(config.get("temperature", 0.7))
+            params["enable_search"] = bool(config.get("enable_web_search", False))
+            params["enable_web_fetch"] = bool(config.get("enable_web_fetch", True))
+            params["web_fetch_limit"] = int(config.get("web_fetch_limit", 15000))
+            params["search_engine"] = config.get("web_search_engine", "google")
+            params["tavily_api_key"] = config.get("tavily_api_key", "")
+            params["jina_api_key"] = config.get("jina_api_key", "")
+            params["web_page_parser"] = config.get("web_page_parser", "local")
+
+            # 组装思考推理 Extended Thinking 字段
+            if config.get("thinking_enabled"):
+                ttype = config.get("thinking_type", "adaptive")
+                if ttype == "adaptive":
+                    params["thinking_config"] = {"type": "adaptive"}
+                    effort_val = config.get("thinking_level", "high")
+                    if effort_val:
+                        params["output_config"] = {"effort": effort_val}
+                elif ttype == "enabled":
+                    params["thinking_config"] = {"type": "enabled", "budget_tokens": int(config.get("thinking_budget", 16000))}
+
+        elif active_platform == "deepseek":
+            params["api_key"] = config.get("deepseek_api_key", "")
+            params["api_url"] = config.get("deepseek_api_url", "https://api.deepseek.com")
+            params["max_tokens"] = int(config.get("deepseek_max_tokens", 4096))
+            params["temperature"] = float(config.get("deepseek_temperature", 0.7))
+            params["enable_search"] = bool(config.get("deepseek_enable_web_search", False))
+            params["enable_web_fetch"] = bool(config.get("deepseek_enable_web_fetch", True))
+            params["web_fetch_limit"] = int(config.get("deepseek_web_fetch_limit", 15000))
+            params["search_engine"] = config.get("deepseek_web_search_engine", "google")
+            params["tavily_api_key"] = config.get("deepseek_tavily_api_key", "")
+            params["jina_api_key"] = config.get("deepseek_jina_api_key", "")
+            params["web_page_parser"] = config.get("deepseek_web_page_parser", "local")
+
+        elif active_platform == "gemini":
+            params["api_key"] = config.get("gemini_api_key", "")
+            params["api_url"] = config.get("gemini_api_url", "")
+            params["max_tokens"] = int(config.get("gemini_max_tokens", 4096))
+            params["temperature"] = float(config.get("gemini_temperature", 0.7))
+            params["enable_search"] = bool(config.get("gemini_enable_web_search", False))
+            params["enable_code_sandbox"] = bool(config.get("gemini_enable_code_sandbox", False))
+            params["code_sandbox_type"] = config.get("gemini_code_sandbox_type", "local")
+
+            # Gemini 思维配置
+            if config.get("gemini_thinking_enabled"):
+                params["thinking_config"] = {
+                    "enabled": True,
+                    "budget_tokens": int(config.get("gemini_thinking_budget", 1024)),
+                    "effort": config.get("gemini_thinking_level", "high")
+                }
+
+        return params
