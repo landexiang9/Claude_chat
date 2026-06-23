@@ -34,50 +34,28 @@ function updateOcrNotices(platform) {
 }
 
 function showSettings() {
-    clearApiKeyPending = false; // 重置清除标记
-    clearDeepseekKeyPending = false;
-    clearGeminiKeyPending = false;
-    
-    // 渲染 Claude API Key 已绑定或未绑定状态的面板
-    if (config.has_api_key) {
-        apiKeyInputContainer.classList.add("hidden");
-        apiKeyStatusContainer.classList.remove("hidden");
-        apiKeyInput.value = "";
-    } else {
-        apiKeyInputContainer.classList.remove("hidden");
-        apiKeyStatusContainer.classList.add("hidden");
-        apiKeyInput.value = "";
-    }
-    
-    // 渲染 DeepSeek API Key 已绑定或未绑定状态的面板
-    if (config.has_deepseek_api_key) {
-        if (deepseekApiKeyInputContainer) deepseekApiKeyInputContainer.classList.add("hidden");
-        if (deepseekApiKeyStatusContainer) deepseekApiKeyStatusContainer.classList.remove("hidden");
-        if (deepseekApiKeyInput) deepseekApiKeyInput.value = "";
-    } else {
-        if (deepseekApiKeyInputContainer) deepseekApiKeyInputContainer.classList.remove("hidden");
-        if (deepseekApiKeyStatusContainer) deepseekApiKeyStatusContainer.classList.add("hidden");
-        if (deepseekApiKeyInput) deepseekApiKeyInput.value = "";
-    }
-    if (deepseekApiUrlInput) {
-        deepseekApiUrlInput.value = config.deepseek_api_url || "https://api.deepseek.com";
+    // 渲染各平台 API Key 已绑定或未绑定状态的面板
+    for (const [key, item] of Object.entries(keyConfigs)) {
+        item.setPending(false); // 重置 pending
+        const hasKey = config[`has_${key}`];
+        if (hasKey) {
+            if (item.container) item.container.classList.add("hidden");
+            if (item.statusContainer) item.statusContainer.classList.remove("hidden");
+            if (item.input) item.input.value = "";
+        } else {
+            if (item.container) item.container.classList.remove("hidden");
+            if (item.statusContainer) item.statusContainer.classList.add("hidden");
+            if (item.input) item.input.value = "";
+        }
     }
 
-    // 渲染 Gemini API Key 已绑定或未绑定状态的面板
-    if (config.has_gemini_api_key) {
-        if (geminiApiKeyInputContainer) geminiApiKeyInputContainer.classList.add("hidden");
-        if (geminiApiKeyStatusContainer) geminiApiKeyStatusContainer.classList.remove("hidden");
-        if (geminiApiKeyInput) geminiApiKeyInput.value = "";
-    } else {
-        if (geminiApiKeyInputContainer) geminiApiKeyInputContainer.classList.remove("hidden");
-        if (geminiApiKeyStatusContainer) geminiApiKeyStatusContainer.classList.add("hidden");
-        if (geminiApiKeyInput) geminiApiKeyInput.value = "";
+    if (deepseekApiUrlInput) {
+        deepseekApiUrlInput.value = config.deepseek_api_url || "https://api.deepseek.com";
     }
     if (geminiApiUrlInput) {
         geminiApiUrlInput.value = config.gemini_api_url || "";
     }
 
-    // 默认展示当前 active 平台的 Tab 和面板
     // 默认展示当前 active 平台的 Tab 和面板
     const currentPlatform = config.active_platform || "claude";
     updateOcrNotices(currentPlatform);
@@ -130,22 +108,120 @@ function showSettings() {
         }).catch(err => console.error("Error checking parsers status:", err));
     }
     
-    tempSlider.value = config.temperature;
-    tempLabelTitle.textContent = `Temperature: ${parseFloat(config.temperature).toFixed(2)}`;
-    maxTokensInput.value = config.max_tokens;
-    
-    const mode = config.thinking_enabled ? config.thinking_type : "disabled";
-    document.querySelectorAll("input[name='thinking-mode']").forEach(radio => {
-        radio.checked = (radio.value === mode);
-    });
-    
-    budgetTokensInput.value = config.thinking_budget;
-    if (thinkingLevelSelect) {
-        thinkingLevelSelect.value = config.thinking_level || "high";
+    // 加载各平台参数值
+    if (claudeTempSlider) {
+        claudeTempSlider.value = config.temperature !== undefined ? config.temperature : 0.7;
+        claudeTempLabelTitle.textContent = `Temperature: ${parseFloat(claudeTempSlider.value).toFixed(2)}`;
     }
+    if (claudeMaxTokensInput) {
+        claudeMaxTokensInput.value = config.max_tokens || 4096;
+    }
+
+    if (deepseekTempSlider) {
+        deepseekTempSlider.value = config.deepseek_temperature !== undefined ? config.deepseek_temperature : 0.7;
+        deepseekTempLabelTitle.textContent = `Temperature: ${parseFloat(deepseekTempSlider.value).toFixed(2)}`;
+    }
+    if (deepseekMaxTokensInput) {
+        deepseekMaxTokensInput.value = config.deepseek_max_tokens || 4096;
+    }
+
+    if (geminiTempSlider) {
+        geminiTempSlider.value = config.gemini_temperature !== undefined ? config.gemini_temperature : 0.7;
+        geminiTempLabelTitle.textContent = `Temperature: ${parseFloat(geminiTempSlider.value).toFixed(2)}`;
+    }
+    if (geminiMaxTokensInput) {
+        geminiMaxTokensInput.value = config.gemini_max_tokens || 4096;
+    }
+
+    // Claude 思维模式设置
+    const claudeMode = config.thinking_enabled ? config.thinking_type : "disabled";
+    document.querySelectorAll("input[name='claude-thinking-mode']").forEach(radio => {
+        radio.checked = (radio.value === claudeMode);
+    });
+    if (claudeBudgetTokensInput) {
+        claudeBudgetTokensInput.value = config.thinking_budget || 16000;
+    }
+    if (claudeThinkingLevelSelect) {
+        claudeThinkingLevelSelect.value = config.thinking_level || "high";
+    }
+
+    // Gemini 思维模式设置
+    if (geminiThinkingEnabledInput) {
+        geminiThinkingEnabledInput.checked = !!config.gemini_thinking_enabled;
+    }
+    if (geminiBudgetTokensInput) {
+        geminiBudgetTokensInput.value = config.gemini_thinking_budget || 1024;
+    }
+    if (geminiThinkingLevelSelect) {
+        geminiThinkingLevelSelect.value = config.gemini_thinking_level || "high";
+    }
+
+    // Claude 网页搜索
+    if (claudeEnableSearchInput) {
+        claudeEnableSearchInput.checked = !!config.enable_web_search;
+        if (claudeSearchGroup) {
+            if (claudeEnableSearchInput.checked) {
+                claudeSearchGroup.classList.remove("hidden");
+            } else {
+                claudeSearchGroup.classList.add("hidden");
+            }
+        }
+    }
+    if (claudeEnableFetchInput) {
+        claudeEnableFetchInput.checked = config.enable_web_fetch !== false;
+    }
+    if (claudeSearchEngineSelect) {
+        claudeSearchEngineSelect.value = config.web_search_engine || "google";
+    }
+    if (claudeWebPageParserSelect) {
+        claudeWebPageParserSelect.value = config.web_page_parser || "local";
+    }
+    if (claudeWebFetchLimitInput) {
+        claudeWebFetchLimitInput.value = config.web_fetch_limit || 15000;
+    }
+    toggleSearchKeyGroups("claude", claudeSearchEngineSelect ? claudeSearchEngineSelect.value : "google", claudeWebPageParserSelect ? claudeWebPageParserSelect.value : "local");
+
+    // DeepSeek 网页搜索
+    if (deepseekEnableSearchInput) {
+        deepseekEnableSearchInput.checked = !!config.deepseek_enable_web_search;
+        if (deepseekSearchGroup) {
+            if (deepseekEnableSearchInput.checked) {
+                deepseekSearchGroup.classList.remove("hidden");
+            } else {
+                deepseekSearchGroup.classList.add("hidden");
+            }
+        }
+    }
+    if (deepseekEnableFetchInput) {
+        deepseekEnableFetchInput.checked = config.deepseek_enable_web_fetch !== false;
+    }
+    if (deepseekSearchEngineSelect) {
+        deepseekSearchEngineSelect.value = config.deepseek_web_search_engine || "google";
+    }
+    if (deepseekWebPageParserSelect) {
+        deepseekWebPageParserSelect.value = config.deepseek_web_page_parser || "local";
+    }
+    if (deepseekWebFetchLimitInput) {
+        deepseekWebFetchLimitInput.value = config.deepseek_web_fetch_limit || 15000;
+    }
+    toggleSearchKeyGroups("deepseek", deepseekSearchEngineSelect ? deepseekSearchEngineSelect.value : "google", deepseekWebPageParserSelect ? deepseekWebPageParserSelect.value : "local");
+
+    // Gemini 联网搜索
+    if (geminiEnableSearchInput) {
+        geminiEnableSearchInput.checked = !!config.gemini_enable_web_search;
+    }
+
+    // Gemini 代码沙盒
+    if (geminiEnableCodeSandboxInput) {
+        geminiEnableCodeSandboxInput.checked = !!config.gemini_enable_code_sandbox;
+    }
+    if (geminiCodeSandboxTypeSelect) {
+        geminiCodeSandboxTypeSelect.value = config.gemini_code_sandbox_type || "local";
+    }
+
+    // 全局与服务器配置
     if (autoRunCodeInput) {
         autoRunCodeInput.checked = !!config.auto_run_code;
-        if (enableCodeSandboxInput) enableCodeSandboxInput.checked = !!config.enable_code_sandbox;
     }
     if (fontModeSelect) {
         fontModeSelect.value = config.font_mode || "custom";
@@ -175,85 +251,210 @@ function showSettings() {
     if (serverTokenInput) {
         serverTokenInput.value = config.security_token || "";
     }
-    clearTavilyKeyPending = false;
-    clearJinaKeyPending = false;
 
-    if (searchEngineSelect) {
-        searchEngineSelect.value = config.web_search_engine || "google";
-    }
-    const enableSearchInput = document.getElementById("enable-search-input");
-    if (enableSearchInput) {
-        enableSearchInput.checked = !!config.enable_web_search;
-    }
-    const enableFetchInput = document.getElementById("enable-fetch-input");
-    if (enableFetchInput) {
-        enableFetchInput.checked = config.enable_web_fetch !== false; // 默认开启
-    }
-    const webFetchLimitInput = document.getElementById("web-fetch-limit-input");
-    if (webFetchLimitInput) {
-        webFetchLimitInput.value = config.web_fetch_limit || 15000;
-    }
-    if (webPageParserSelect) {
-        webPageParserSelect.value = config.web_page_parser || "local";
-    }
-    
-    // 初始化 Tavily Key 状态与输入显示
-    if (config.has_tavily_api_key) {
-        if (tavilyKeyInputContainer) tavilyKeyInputContainer.classList.add("hidden");
-        if (tavilyKeyStatusContainer) tavilyKeyStatusContainer.classList.remove("hidden");
-        if (tavilyKeyInput) tavilyKeyInput.value = "";
-    } else {
-        if (tavilyKeyInputContainer) tavilyKeyInputContainer.classList.remove("hidden");
-        if (tavilyKeyStatusContainer) tavilyKeyStatusContainer.classList.add("hidden");
-        if (tavilyKeyInput) tavilyKeyInput.value = "";
-    }
-
-    // 初始化 Jina Key 状态与输入显示
-    if (config.has_jina_api_key) {
-        if (jinaKeyInputContainer) jinaKeyInputContainer.classList.add("hidden");
-        if (jinaKeyStatusContainer) jinaKeyStatusContainer.classList.remove("hidden");
-        if (jinaKeyInput) jinaKeyInput.value = "";
-    } else {
-        if (jinaKeyInputContainer) jinaKeyInputContainer.classList.remove("hidden");
-        if (jinaKeyStatusContainer) jinaKeyStatusContainer.classList.add("hidden");
-        if (jinaKeyInput) jinaKeyInput.value = "";
-    }
-
-    toggleSearchKeyGroups(config.web_search_engine || "google", config.web_page_parser || "local");
-    
-    // Update settings UI components dynamically based on model capabilities
     updateThinkingSettingsUI();
-    
-    // Render custom system prompts presets inside Settings dialog
     renderPresetsList();
-    
     showModal(settingsModal);
 }
 
-// 监听 Extended Thinking 推理模式切换以动态控制 UI 显隐
-document.querySelectorAll("input[name='thinking-mode']").forEach(radio => {
-    radio.onchange = (e) => {
+// 密钥控件映射字典，用于统一进行加载、状态渲染、保存和清除
+const keyConfigs = {
+    "api_key": {
+        input: apiKeyInput,
+        toggle: toggleKeyVisibility,
+        container: apiKeyInputContainer,
+        statusContainer: apiKeyStatusContainer,
+        changeBtn: changeKeyBtn,
+        disconnectBtn: disconnectKeyBtn,
+        getPending: () => clearApiKeyPending,
+        setPending: (v) => { clearApiKeyPending = v; }
+    },
+    "tavily_api_key": {
+        input: claudeTavilyKeyInput,
+        toggle: toggleClaudeTavilyVisibility,
+        container: claudeTavilyKeyInputContainer,
+        statusContainer: claudeTavilyKeyStatusContainer,
+        changeBtn: changeClaudeTavilyBtn,
+        disconnectBtn: disconnectClaudeTavilyBtn,
+        getPending: () => clearTavilyKeyPending,
+        setPending: (v) => { clearTavilyKeyPending = v; }
+    },
+    "jina_api_key": {
+        input: claudeJinaKeyInput,
+        toggle: toggleClaudeJinaVisibility,
+        container: claudeJinaKeyInputContainer,
+        statusContainer: claudeJinaKeyStatusContainer,
+        changeBtn: changeClaudeJinaBtn,
+        disconnectBtn: disconnectClaudeJinaBtn,
+        getPending: () => config.clear_jina_api_key || clearJinaKeyPending,
+        setPending: (v) => { clearJinaKeyPending = v; }
+    },
+    "deepseek_api_key": {
+        input: deepseekApiKeyInput,
+        toggle: toggleDeepseekKeyVisibility,
+        container: deepseekApiKeyInputContainer,
+        statusContainer: deepseekApiKeyStatusContainer,
+        changeBtn: changeDeepseekKeyBtn,
+        disconnectBtn: disconnectDeepseekKeyBtn,
+        getPending: () => clearDeepseekKeyPending,
+        setPending: (v) => { clearDeepseekKeyPending = v; }
+    },
+    "deepseek_tavily_api_key": {
+        input: deepseekTavilyKeyInput,
+        toggle: toggleDeepseekTavilyVisibility,
+        container: deepseekTavilyKeyInputContainer,
+        statusContainer: deepseekTavilyKeyStatusContainer,
+        changeBtn: changeDeepseekTavilyBtn,
+        disconnectBtn: disconnectDeepseekTavilyBtn,
+        getPending: () => clearDeepseekTavilyKeyPending,
+        setPending: (v) => { clearDeepseekTavilyKeyPending = v; }
+    },
+    "deepseek_jina_api_key": {
+        input: deepseekJinaKeyInput,
+        toggle: toggleDeepseekJinaVisibility,
+        container: deepseekJinaKeyInputContainer,
+        statusContainer: deepseekJinaKeyStatusContainer,
+        changeBtn: changeDeepseekJinaBtn,
+        disconnectBtn: disconnectDeepseekJinaBtn,
+        getPending: () => clearDeepseekJinaKeyPending,
+        setPending: (v) => { clearDeepseekJinaKeyPending = v; }
+    },
+    "gemini_api_key": {
+        input: geminiApiKeyInput,
+        toggle: toggleGeminiKeyVisibility,
+        container: geminiApiKeyInputContainer,
+        statusContainer: geminiApiKeyStatusContainer,
+        changeBtn: changeGeminiKeyBtn,
+        disconnectBtn: disconnectGeminiKeyBtn,
+        getPending: () => clearGeminiKeyPending,
+        setPending: (v) => { clearGeminiKeyPending = v; }
+    }
+};
+
+// API Key 状态与操作的局部状态 (已移至 state.js 中统一定义)
+
+// 统一初始化所有密钥控件事件
+function initAllKeyControls() {
+    for (const [key, item] of Object.entries(keyConfigs)) {
+        if (!item.input) continue;
+        if (item.toggle) {
+            item.toggle.onclick = () => {
+                if (item.input.type === "password") {
+                    item.input.type = "text";
+                    item.toggle.textContent = "🔒";
+                } else {
+                    item.input.type = "password";
+                    item.toggle.textContent = "👁";
+                }
+            };
+        }
+        if (item.changeBtn) {
+            item.changeBtn.onclick = () => {
+                if (item.container) item.container.classList.remove("hidden");
+                if (item.statusContainer) item.statusContainer.classList.add("hidden");
+            };
+        }
+        if (item.disconnectBtn) {
+            item.disconnectBtn.onclick = () => {
+                item.setPending(true);
+                if (item.container) item.container.classList.remove("hidden");
+                if (item.statusContainer) item.statusContainer.classList.add("hidden");
+                item.input.value = "";
+            };
+        }
+    }
+}
+
+// 平台温度滑块初始化
+function initPlatformSliders() {
+    const platforms = ["claude", "deepseek", "gemini"];
+    platforms.forEach(plat => {
+        const slider = document.getElementById(`${plat}-temp-slider`);
+        const label = document.getElementById(`${plat}-temp-label-title`);
+        if (slider && label) {
+            slider.oninput = (e) => {
+                label.textContent = `Temperature: ${parseFloat(e.target.value).toFixed(2)}`;
+            };
+        }
+    });
+}
+
+// 网页搜索 Key 显示切换
+function toggleSearchKeyGroups(platform, engine, parser) {
+    if (platform === "claude") {
+        if (claudeTavilyKeyGroup) {
+            claudeTavilyKeyGroup.style.display = (engine === "tavily") ? "block" : "none";
+        }
+        if (claudeJinaKeyGroup) {
+            claudeJinaKeyGroup.style.display = (engine === "jina" || parser === "jina") ? "block" : "none";
+        }
+    } else if (platform === "deepseek") {
+        if (deepseekTavilyKeyGroup) {
+            deepseekTavilyKeyGroup.style.display = (engine === "tavily") ? "block" : "none";
+        }
+        if (deepseekJinaKeyGroup) {
+            deepseekJinaKeyGroup.style.display = (engine === "jina" || parser === "jina") ? "block" : "none";
+        }
+    }
+}
+
+// 初始化绑定事件监听器
+initAllKeyControls();
+initPlatformSliders();
+
+// Claude Web Search Events
+if (claudeEnableSearchInput) {
+    claudeEnableSearchInput.onchange = () => {
+        if (claudeEnableSearchInput.checked) {
+            claudeSearchGroup.classList.remove("hidden");
+        } else {
+            claudeSearchGroup.classList.add("hidden");
+        }
+    };
+}
+if (claudeSearchEngineSelect) {
+    claudeSearchEngineSelect.onchange = () => {
+        toggleSearchKeyGroups("claude", claudeSearchEngineSelect.value, claudeWebPageParserSelect ? claudeWebPageParserSelect.value : "local");
+    };
+}
+if (claudeWebPageParserSelect) {
+    claudeWebPageParserSelect.onchange = () => {
+        toggleSearchKeyGroups("claude", claudeSearchEngineSelect ? claudeSearchEngineSelect.value : "google", claudeWebPageParserSelect.value);
+    };
+}
+
+// DeepSeek Web Search Events
+if (deepseekEnableSearchInput) {
+    deepseekEnableSearchInput.onchange = () => {
+        if (deepseekEnableSearchInput.checked) {
+            deepseekSearchGroup.classList.remove("hidden");
+        } else {
+            deepseekSearchGroup.classList.add("hidden");
+        }
+    };
+}
+if (deepseekSearchEngineSelect) {
+    deepseekSearchEngineSelect.onchange = () => {
+        toggleSearchKeyGroups("deepseek", deepseekSearchEngineSelect.value, deepseekWebPageParserSelect ? deepseekWebPageParserSelect.value : "local");
+    };
+}
+if (deepseekWebPageParserSelect) {
+    deepseekWebPageParserSelect.onchange = () => {
+        toggleSearchKeyGroups("deepseek", deepseekSearchEngineSelect ? deepseekSearchEngineSelect.value : "google", deepseekWebPageParserSelect.value);
+    };
+}
+
+// Claude Thinking Mode Events
+document.querySelectorAll("input[name='claude-thinking-mode']").forEach(radio => {
+    radio.onchange = () => {
         updateThinkingSettingsUI();
     };
 });
 
-function toggleSearchKeyGroups(engine, parser) {
-    if (tavilyKeyGroup) {
-        tavilyKeyGroup.style.display = (engine === "tavily") ? "block" : "none";
-    }
-    if (jinaKeyGroup) {
-        jinaKeyGroup.style.display = (engine === "jina" || parser === "jina") ? "block" : "none";
-    }
-}
-
-if (searchEngineSelect) {
-    searchEngineSelect.onchange = () => {
-        toggleSearchKeyGroups(searchEngineSelect.value, webPageParserSelect ? webPageParserSelect.value : "local");
-    };
-}
-if (webPageParserSelect) {
-    webPageParserSelect.onchange = () => {
-        toggleSearchKeyGroups(searchEngineSelect ? searchEngineSelect.value : "google", webPageParserSelect.value);
+// Gemini Thinking Enabled Event
+if (geminiThinkingEnabledInput) {
+    geminiThinkingEnabledInput.onchange = () => {
+        updateThinkingSettingsUI();
     };
 }
 
@@ -268,54 +469,81 @@ function updateThinkingSettingsUI() {
         effort_levels: []
     };
     
-    const thinkingSection = document.querySelector("input[name='thinking-mode']").closest(".form-group");
-    if (!caps.thinking_supported) {
-        thinkingSection.classList.add("hidden");
-        budgetGroup.classList.add("hidden");
-        thinkingLevelGroup.classList.add("hidden");
-        return;
-    }
+    const activePlatform = config.active_platform || "claude";
     
-    thinkingSection.classList.remove("hidden");
+    // 首先隐藏所有平台思维设置区域
+    const claudeThinkingSection = document.querySelector("input[name='claude-thinking-mode']")?.closest(".form-group");
+    if (claudeThinkingSection) claudeThinkingSection.classList.add("hidden");
+    if (claudeBudgetGroup) claudeBudgetGroup.classList.add("hidden");
+    if (claudeThinkingLevelGroup) claudeThinkingLevelGroup.classList.add("hidden");
     
-    const adaptiveRadio = document.querySelector("input[name='thinking-mode'][value='adaptive']");
-    const enabledRadio = document.querySelector("input[name='thinking-mode'][value='enabled']");
+    const geminiThinkingSection = geminiThinkingEnabledInput?.closest(".form-group");
+    if (geminiThinkingSection) geminiThinkingSection.classList.add("hidden");
+    if (geminiBudgetGroup) geminiBudgetGroup.classList.add("hidden");
+    if (geminiThinkingLevelGroup) geminiThinkingLevelGroup.classList.add("hidden");
     
-    if (adaptiveRadio) {
-        adaptiveRadio.disabled = !caps.adaptive_supported;
-        adaptiveRadio.closest(".radio-label").style.opacity = caps.adaptive_supported ? "1" : "0.5";
-    }
-    if (enabledRadio) {
-        enabledRadio.disabled = !caps.enabled_supported;
-        enabledRadio.closest(".radio-label").style.opacity = caps.enabled_supported ? "1" : "0.5";
-    }
-    
-    let checkedRadio = document.querySelector("input[name='thinking-mode']:checked");
-    if (checkedRadio && checkedRadio.disabled) {
-        document.querySelector("input[name='thinking-mode'][value='disabled']").checked = true;
-        checkedRadio = document.querySelector("input[name='thinking-mode'][value='disabled']");
-    }
-    
-    const mode = checkedRadio ? checkedRadio.value : "disabled";
-    
-    if (mode === "disabled") {
-        budgetGroup.classList.add("hidden");
-        thinkingLevelGroup.classList.add("hidden");
-    } else if (mode === "adaptive") {
-        budgetGroup.classList.add("hidden");
-        if (caps.effort_levels && caps.effort_levels.length > 0) {
-            thinkingLevelGroup.classList.remove("hidden");
-            populateThinkingLevels(caps.effort_levels);
-        } else {
-            thinkingLevelGroup.classList.add("hidden");
+    if (activePlatform === "claude") {
+        if (!caps.thinking_supported) return;
+        if (claudeThinkingSection) claudeThinkingSection.classList.remove("hidden");
+        
+        const adaptiveRadio = document.querySelector("input[name='claude-thinking-mode'][value='adaptive']");
+        const enabledRadio = document.querySelector("input[name='claude-thinking-mode'][value='enabled']");
+        
+        if (adaptiveRadio) {
+            adaptiveRadio.disabled = !caps.adaptive_supported;
+            adaptiveRadio.closest(".radio-label").style.opacity = caps.adaptive_supported ? "1" : "0.5";
         }
-    } else if (mode === "enabled") {
-        budgetGroup.classList.remove("hidden");
-        thinkingLevelGroup.classList.add("hidden");
+        if (enabledRadio) {
+            enabledRadio.disabled = !caps.enabled_supported;
+            enabledRadio.closest(".radio-label").style.opacity = caps.enabled_supported ? "1" : "0.5";
+        }
+        
+        let checkedRadio = document.querySelector("input[name='claude-thinking-mode']:checked");
+        if (checkedRadio && checkedRadio.disabled) {
+            const disabledRadio = document.querySelector("input[name='claude-thinking-mode'][value='disabled']");
+            if (disabledRadio) disabledRadio.checked = true;
+            checkedRadio = disabledRadio;
+        }
+        
+        const mode = checkedRadio ? checkedRadio.value : "disabled";
+        
+        if (mode === "disabled") {
+            if (claudeBudgetGroup) claudeBudgetGroup.classList.add("hidden");
+            if (claudeThinkingLevelGroup) claudeThinkingLevelGroup.classList.add("hidden");
+        } else if (mode === "adaptive") {
+            if (claudeBudgetGroup) claudeBudgetGroup.classList.add("hidden");
+            if (caps.effort_levels && caps.effort_levels.length > 0) {
+                if (claudeThinkingLevelGroup) claudeThinkingLevelGroup.classList.remove("hidden");
+                populateThinkingLevels(claudeThinkingLevelSelect, caps.effort_levels, config.thinking_level);
+            } else {
+                if (claudeThinkingLevelGroup) claudeThinkingLevelGroup.classList.add("hidden");
+            }
+        } else if (mode === "enabled") {
+            if (claudeBudgetGroup) claudeBudgetGroup.classList.remove("hidden");
+            if (claudeThinkingLevelGroup) claudeThinkingLevelGroup.classList.add("hidden");
+        }
+    } else if (activePlatform === "gemini") {
+        if (!caps.thinking_supported) return;
+        if (geminiThinkingSection) geminiThinkingSection.classList.remove("hidden");
+        
+        if (geminiThinkingEnabledInput && geminiThinkingEnabledInput.checked) {
+            if (caps.effort_levels && caps.effort_levels.length > 0) {
+                if (geminiThinkingLevelGroup) geminiThinkingLevelGroup.classList.remove("hidden");
+                if (geminiBudgetGroup) geminiBudgetGroup.classList.add("hidden");
+                populateThinkingLevels(geminiThinkingLevelSelect, caps.effort_levels, config.gemini_thinking_level || "high");
+            } else {
+                if (geminiThinkingLevelGroup) geminiThinkingLevelGroup.classList.add("hidden");
+                if (geminiBudgetGroup) geminiBudgetGroup.classList.remove("hidden");
+            }
+        } else {
+            if (geminiBudgetGroup) geminiBudgetGroup.classList.add("hidden");
+            if (geminiThinkingLevelGroup) geminiThinkingLevelGroup.classList.add("hidden");
+        }
     }
 }
 
-function populateThinkingLevels(levels) {
+function populateThinkingLevels(selectEl, levels, currentVal) {
+    if (!selectEl) return;
     const levelLabels = {
         "low": "Low (低 - 快速且经济)",
         "medium": "Medium (中 - 平衡)",
@@ -324,108 +552,23 @@ function populateThinkingLevels(levels) {
         "max": "Max (最大级 - 最深思考)"
     };
     
-    const currentVal = thinkingLevelSelect.value || config.thinking_level || "high";
-    thinkingLevelSelect.innerHTML = "";
+    selectEl.innerHTML = "";
     
     levels.forEach(lvl => {
         const option = document.createElement("option");
         option.value = lvl;
         option.textContent = levelLabels[lvl] || lvl.toUpperCase();
         if (lvl === currentVal) option.selected = true;
-        thinkingLevelSelect.appendChild(option);
+        selectEl.appendChild(option);
     });
     
     if (!levels.includes(currentVal)) {
         if (levels.includes("high")) {
-            thinkingLevelSelect.value = "high";
+            selectEl.value = "high";
         } else if (levels.length > 0) {
-            thinkingLevelSelect.value = levels[levels.length - 1];
+            selectEl.value = levels[levels.length - 1];
         }
     }
-}
-
-tempSlider.addEventListener("input", (e) => {
-    tempLabelTitle.textContent = `Temperature: ${parseFloat(e.target.value).toFixed(2)}`;
-});
-
-toggleKeyVisibility.onclick = () => {
-    if (apiKeyInput.type === "password") {
-        apiKeyInput.type = "text";
-        toggleKeyVisibility.textContent = "🔒";
-    } else {
-        apiKeyInput.type = "password";
-        toggleKeyVisibility.textContent = "👁";
-    }
-};
-
-if (changeKeyBtn) {
-    changeKeyBtn.onclick = () => {
-        apiKeyInputContainer.classList.remove("hidden");
-        apiKeyStatusContainer.classList.add("hidden");
-    };
-}
-
-if (disconnectKeyBtn) {
-    disconnectKeyBtn.onclick = () => {
-        clearApiKeyPending = true;
-        apiKeyInputContainer.classList.remove("hidden");
-        apiKeyStatusContainer.classList.add("hidden");
-        apiKeyInput.value = "";
-    };
-}
-
-// DeepSeek Key 控件事件绑定
-if (toggleDeepseekKeyVisibility && deepseekApiKeyInput) {
-    toggleDeepseekKeyVisibility.onclick = () => {
-        if (deepseekApiKeyInput.type === "password") {
-            deepseekApiKeyInput.type = "text";
-            toggleDeepseekKeyVisibility.textContent = "🔒";
-        } else {
-            deepseekApiKeyInput.type = "password";
-            toggleDeepseekKeyVisibility.textContent = "👁";
-        }
-    };
-}
-if (changeDeepseekKeyBtn) {
-    changeDeepseekKeyBtn.onclick = () => {
-        if (deepseekApiKeyInputContainer) deepseekApiKeyInputContainer.classList.remove("hidden");
-        if (deepseekApiKeyStatusContainer) deepseekApiKeyStatusContainer.classList.add("hidden");
-    };
-}
-if (disconnectDeepseekKeyBtn) {
-    disconnectDeepseekKeyBtn.onclick = () => {
-        clearDeepseekKeyPending = true;
-        if (deepseekApiKeyInputContainer) deepseekApiKeyInputContainer.classList.remove("hidden");
-        if (deepseekApiKeyStatusContainer) deepseekApiKeyStatusContainer.classList.add("hidden");
-        if (deepseekApiKeyInput) deepseekApiKeyInput.value = "";
-    };
-}
-
-// Gemini Key 控件事件绑定
-if (toggleGeminiKeyVisibility && geminiApiKeyInput) {
-    toggleGeminiKeyVisibility.onclick = () => {
-        if (geminiApiKeyInput.type === "password") {
-            geminiApiKeyInput.type = "text";
-            toggleGeminiKeyVisibility.textContent = "🔒";
-        } else {
-            geminiApiKeyInput.type = "password";
-            toggleGeminiKeyVisibility.textContent = "👁";
-        }
-    };
-}
-if (changeGeminiKeyBtn) {
-    changeGeminiKeyBtn.onclick = () => {
-        if (geminiApiKeyInputContainer) geminiApiKeyInputContainer.classList.remove("hidden");
-        if (geminiApiKeyStatusContainer) geminiApiKeyStatusContainer.classList.add("hidden");
-    };
-}
-if (disconnectGeminiKeyBtn) {
-    disconnectGeminiKeyBtn.onclick = () => {
-        clearGeminiKeyPending = true;
-        if (geminiApiKeyInputContainer) geminiApiKeyInputContainer.classList.remove("hidden");
-        if (geminiApiKeyStatusContainer) geminiApiKeyStatusContainer.classList.add("hidden");
-        if (geminiApiKeyInput) geminiApiKeyInput.value = "";
-    };
 }
 
 // 绑定设置弹窗内部的平台标签卡切换逻辑
@@ -467,138 +610,26 @@ if (toggleTokenVisibility && serverTokenInput) {
     };
 }
 
-// Tavily Key 控件事件绑定
-if (toggleTavilyVisibility && tavilyKeyInput) {
-    toggleTavilyVisibility.onclick = () => {
-        if (tavilyKeyInput.type === "password") {
-            tavilyKeyInput.type = "text";
-            toggleTavilyVisibility.textContent = "🔒";
-        } else {
-            tavilyKeyInput.type = "password";
-            toggleTavilyVisibility.textContent = "👁";
-        }
-    };
-}
-if (changeTavilyBtn) {
-    changeTavilyBtn.onclick = () => {
-        if (tavilyKeyInputContainer) tavilyKeyInputContainer.classList.remove("hidden");
-        if (tavilyKeyStatusContainer) tavilyKeyStatusContainer.classList.add("hidden");
-    };
-}
-if (disconnectTavilyBtn) {
-    disconnectTavilyBtn.onclick = () => {
-        clearTavilyKeyPending = true;
-        if (tavilyKeyInputContainer) tavilyKeyInputContainer.classList.remove("hidden");
-        if (tavilyKeyStatusContainer) tavilyKeyStatusContainer.classList.add("hidden");
-        if (tavilyKeyInput) tavilyKeyInput.value = "";
-    };
-}
-
-// Jina Key 控件事件绑定
-if (toggleJinaVisibility && jinaKeyInput) {
-    toggleJinaVisibility.onclick = () => {
-        if (jinaKeyInput.type === "password") {
-            jinaKeyInput.type = "text";
-            toggleJinaVisibility.textContent = "🔒";
-        } else {
-            jinaKeyInput.type = "password";
-            toggleJinaVisibility.textContent = "👁";
-        }
-    };
-}
-if (changeJinaBtn) {
-    changeJinaBtn.onclick = () => {
-        if (jinaKeyInputContainer) jinaKeyInputContainer.classList.remove("hidden");
-        if (jinaKeyStatusContainer) jinaKeyStatusContainer.classList.add("hidden");
-    };
-}
-if (disconnectJinaBtn) {
-    disconnectJinaBtn.onclick = () => {
-        clearJinaKeyPending = true;
-        if (jinaKeyInputContainer) jinaKeyInputContainer.classList.remove("hidden");
-        if (jinaKeyStatusContainer) jinaKeyStatusContainer.classList.add("hidden");
-        if (jinaKeyInput) jinaKeyInput.value = "";
-    };
-}
-
 saveSettingsBtn.onclick = async () => {
-    // 1. 处理 API Key 封包保存与清除逻辑 (写唯一)
-    if (clearApiKeyPending) {
-        config.clear_api_key = true;
-        config.api_key = "";
-        clearApiKeyPending = false; // 重置标记
-    } else {
-        delete config.clear_api_key;
-        const newKey = apiKeyInput.value.trim();
-        if (newKey) {
-            config.api_key = newKey;
+    // 1. 保存/清除各个 API Key 相关的配置（采用数据驱动的自动化机制）
+    for (const [key, item] of Object.entries(keyConfigs)) {
+        if (item.getPending()) {
+            config[`clear_${key}`] = true;
+            config[key] = "";
+            item.setPending(false);
         } else {
-            // 如果输入框为空且没有清除标记，不传送该字段，由后端保持原状
-            delete config.api_key;
-        }
-    }
-    
-    // Tavily API Key 保存与清除
-    if (clearTavilyKeyPending) {
-        config.clear_tavily_api_key = true;
-        config.tavily_api_key = "";
-        clearTavilyKeyPending = false;
-    } else {
-        delete config.clear_tavily_api_key;
-        const newKey = tavilyKeyInput ? tavilyKeyInput.value.trim() : "";
-        if (newKey) {
-            config.tavily_api_key = newKey;
-        } else {
-            delete config.tavily_api_key;
+            delete config[`clear_${key}`];
+            const val = item.input ? item.input.value.trim() : "";
+            if (val) {
+                config[key] = val;
+            } else {
+                delete config[key];
+            }
         }
     }
 
-    // Jina API Key 保存与清除
-    if (clearJinaKeyPending) {
-        config.clear_jina_api_key = true;
-        config.jina_api_key = "";
-        clearJinaKeyPending = false;
-    } else {
-        delete config.clear_jina_api_key;
-        const newKey = jinaKeyInput ? jinaKeyInput.value.trim() : "";
-        if (newKey) {
-            config.jina_api_key = newKey;
-        } else {
-            delete config.jina_api_key;
-        }
-    }
-
-    // DeepSeek API Key 保存与清除
-    if (clearDeepseekKeyPending) {
-        config.clear_deepseek_api_key = true;
-        config.deepseek_api_key = "";
-        clearDeepseekKeyPending = false;
-    } else {
-        delete config.clear_deepseek_api_key;
-        const newKey = deepseekApiKeyInput ? deepseekApiKeyInput.value.trim() : "";
-        if (newKey) {
-            config.deepseek_api_key = newKey;
-        } else {
-            delete config.deepseek_api_key;
-        }
-    }
     if (deepseekApiUrlInput) {
         config.deepseek_api_url = deepseekApiUrlInput.value.trim() || "https://api.deepseek.com";
-    }
-
-    // Gemini API Key 保存与清除
-    if (clearGeminiKeyPending) {
-        config.clear_gemini_api_key = true;
-        config.gemini_api_key = "";
-        clearGeminiKeyPending = false;
-    } else {
-        delete config.clear_gemini_api_key;
-        const newKey = geminiApiKeyInput ? geminiApiKeyInput.value.trim() : "";
-        if (newKey) {
-            config.gemini_api_key = newKey;
-        } else {
-            delete config.gemini_api_key;
-        }
     }
     if (geminiApiUrlInput) {
         config.gemini_api_url = geminiApiUrlInput.value.trim() || "";
@@ -612,41 +643,109 @@ saveSettingsBtn.onclick = async () => {
         config.ocr_cloud_model = ocrCloudModelSelect.value || "gemini";
     }
     
-    // 2. 保存 Token 验证字段
+    // 保存 Token 验证字段
     if (serverTokenInput) {
         config.security_token = serverTokenInput.value.trim();
     }
     
-    config.temperature = parseFloat(tempSlider.value);
-    config.max_tokens = parseInt(maxTokensInput.value) || 4096;
-    
-    const thinkingMode = document.querySelector("input[name='thinking-mode']:checked").value;
-    config.thinking_enabled = (thinkingMode !== "disabled");
-    config.thinking_type = thinkingMode;
-    config.thinking_budget = parseInt(budgetTokensInput.value) || 16000;
-    
-    if (thinkingLevelSelect) {
-        config.thinking_level = thinkingLevelSelect.value || "high";
+    // 保存各平台温度滑块与 Max Tokens
+    if (claudeTempSlider) {
+        config.temperature = parseFloat(claudeTempSlider.value);
     }
+    if (claudeMaxTokensInput) {
+        config.max_tokens = parseInt(claudeMaxTokensInput.value) || 4096;
+    }
+
+    if (deepseekTempSlider) {
+        config.deepseek_temperature = parseFloat(deepseekTempSlider.value);
+    }
+    if (deepseekMaxTokensInput) {
+        config.deepseek_max_tokens = parseInt(deepseekMaxTokensInput.value) || 4096;
+    }
+
+    if (geminiTempSlider) {
+        config.gemini_temperature = parseFloat(geminiTempSlider.value);
+    }
+    if (geminiMaxTokensInput) {
+        config.gemini_max_tokens = parseInt(geminiMaxTokensInput.value) || 4096;
+    }
+
+    // Claude 思维模式保存
+    const claudeThinkingModeRadio = document.querySelector("input[name='claude-thinking-mode']:checked");
+    const claudeThinkingMode = claudeThinkingModeRadio ? claudeThinkingModeRadio.value : "disabled";
+    config.thinking_enabled = (claudeThinkingMode !== "disabled");
+    config.thinking_type = claudeThinkingMode;
+    if (claudeBudgetTokensInput) {
+        config.thinking_budget = parseInt(claudeBudgetTokensInput.value) || 16000;
+    }
+    if (claudeThinkingLevelSelect) {
+        config.thinking_level = claudeThinkingLevelSelect.value || "high";
+    }
+
+    // Gemini 思维模式保存
+    if (geminiThinkingEnabledInput) {
+        config.gemini_thinking_enabled = geminiThinkingEnabledInput.checked;
+    }
+    if (geminiBudgetTokensInput) {
+        config.gemini_thinking_budget = parseInt(geminiBudgetTokensInput.value) || 1024;
+    }
+    if (geminiThinkingLevelSelect) {
+        config.gemini_thinking_level = geminiThinkingLevelSelect.value || "high";
+    }
+
+    // Claude 网页搜索
+    if (claudeEnableSearchInput) {
+        config.enable_web_search = claudeEnableSearchInput.checked;
+    }
+    if (claudeSearchEngineSelect) {
+        config.web_search_engine = claudeSearchEngineSelect.value || "google";
+    }
+    if (claudeEnableFetchInput) {
+        config.enable_web_fetch = claudeEnableFetchInput.checked;
+    }
+    if (claudeWebPageParserSelect) {
+        config.web_page_parser = claudeWebPageParserSelect.value || "local";
+    }
+    if (claudeWebFetchLimitInput) {
+        config.web_fetch_limit = parseInt(claudeWebFetchLimitInput.value) || 15000;
+    }
+
+    // DeepSeek 网页搜索
+    if (deepseekEnableSearchInput) {
+        config.deepseek_enable_web_search = deepseekEnableSearchInput.checked;
+    }
+    if (deepseekSearchEngineSelect) {
+        config.deepseek_web_search_engine = deepseekSearchEngineSelect.value || "google";
+    }
+    if (deepseekEnableFetchInput) {
+        config.deepseek_enable_web_fetch = deepseekEnableFetchInput.checked;
+    }
+    if (deepseekWebPageParserSelect) {
+        config.deepseek_web_page_parser = deepseekWebPageParserSelect.value || "local";
+    }
+    if (deepseekWebFetchLimitInput) {
+        config.deepseek_web_fetch_limit = parseInt(deepseekWebFetchLimitInput.value) || 15000;
+    }
+
+    // Gemini 联网搜索
+    if (geminiEnableSearchInput) {
+        config.gemini_enable_web_search = geminiEnableSearchInput.checked;
+    }
+
+    // Gemini 代码沙盒
+    if (geminiEnableCodeSandboxInput) {
+        config.gemini_enable_code_sandbox = geminiEnableCodeSandboxInput.checked;
+    }
+    if (geminiCodeSandboxTypeSelect) {
+        config.gemini_code_sandbox_type = geminiCodeSandboxTypeSelect.value || "local";
+    }
+
+    // 全局与服务器设置保存
     if (autoRunCodeInput) {
         config.auto_run_code = autoRunCodeInput.checked;
-        if (enableCodeSandboxInput) config.enable_code_sandbox = enableCodeSandboxInput.checked;
     }
     if (fontModeSelect) {
         config.font_mode = fontModeSelect.value || "custom";
-    }
-    const enableSearchCheckbox = document.getElementById("enable-search-input");
-    if (enableSearchCheckbox) {
-        config.enable_web_search = enableSearchCheckbox.checked;
-        if (typeof updateSearchBtnUI === "function") updateSearchBtnUI();
-    }
-    const enableFetchCheckbox = document.getElementById("enable-fetch-input");
-    if (enableFetchCheckbox) {
-        config.enable_web_fetch = enableFetchCheckbox.checked;
-    }
-    const webFetchLimitInput = document.getElementById("web-fetch-limit-input");
-    if (webFetchLimitInput) {
-        config.web_fetch_limit = parseInt(webFetchLimitInput.value) || 15000;
     }
     if (enableServerInput) {
         config.enable_server = enableServerInput.checked;
@@ -666,12 +765,7 @@ saveSettingsBtn.onclick = async () => {
     if (serverPortInput) {
         config.server_port = parseInt(serverPortInput.value) || 8000;
     }
-    if (searchEngineSelect) {
-        config.web_search_engine = searchEngineSelect.value || "google";
-    }
-    if (webPageParserSelect) {
-        config.web_page_parser = webPageParserSelect.value || "local";
-    }
+
     applyFontMode();
     updateSearchBtnUI();
     

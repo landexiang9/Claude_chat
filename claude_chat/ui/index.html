@@ -135,9 +135,9 @@
                 <button class="close-modal-btn">&times;</button>
             </div>
             <div class="modal-body">
-                <!-- Group 1: Base Parameters Settings -->
+                <!-- Group 1: Base Parameters & Platform Settings -->
                 <div class="settings-section-card">
-                    <div class="settings-section-title">💬 基础参数与密钥设置 (Base & API Keys Settings)</div>
+                    <div class="settings-section-title">💬 API 密钥与平台参数设置 (Platform Settings)</div>
                     
                     <div class="platform-tabs" style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--surface0); padding-bottom: 8px;">
                         <button type="button" class="tab-btn active" data-platform-tab="claude" style="padding: 6px 12px; border-radius: 6px; border: none; background: var(--surface0); color: var(--text); cursor: pointer; font-size: 12px;">Claude</button>
@@ -162,6 +162,112 @@
                                     <button type="button" id="change-key-btn" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 3px 8px;">更换</button>
                                     <button type="button" id="disconnect-key-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 11px; padding: 3px 8px;">断开/清除</button>
                                 </div>
+                            </div>
+                        </div>
+                        <!-- Claude Parameters -->
+                        <div class="form-group" style="margin-top: 12px;">
+                            <label for="claude-temp-slider" id="claude-temp-label-title">Temperature: 0.70</label>
+                            <input type="range" id="claude-temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
+                        </div>
+                        <div class="form-group">
+                            <label for="claude-max-tokens-input">Max Tokens:</label>
+                            <input type="number" id="claude-max-tokens-input" value="4096">
+                        </div>
+                        <!-- Claude Extended Thinking -->
+                        <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px;">
+                            <label>Extended Thinking (深度思考):</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="claude-thinking-mode" value="disabled" checked> Disabled
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="claude-thinking-mode" value="adaptive"> Adaptive
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="claude-thinking-mode" value="enabled"> Enabled
+                                </label>
+                            </div>
+                        </div>
+                        <div id="claude-budget-group" class="form-group hidden">
+                            <label for="claude-budget-tokens-input">Budget Tokens:</label>
+                            <input type="number" id="claude-budget-tokens-input" value="16000">
+                        </div>
+                        <div id="claude-thinking-level-group" class="form-group hidden">
+                            <label for="claude-thinking-level-select">Thinking Level (思考等级 / Effort):</label>
+                            <select id="claude-thinking-level-select">
+                                <option value="low">Low (低 - 快速且经济)</option>
+                                <option value="medium">Medium (中 - 平衡)</option>
+                                <option value="high">High (高 - 默认推荐)</option>
+                                <option value="xhigh">X-High (极高)</option>
+                                <option value="max">Max (最大级 - 最深思考)</option>
+                            </select>
+                        </div>
+                        <!-- Claude Web Search -->
+                        <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                                <input type="checkbox" id="claude-enable-search-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用网页检索服务
+                            </label>
+                        </div>
+                        <div id="claude-search-group" class="hidden">
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                                    <input type="checkbox" id="claude-enable-fetch-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 深度抓取网页正文
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="claude-search-engine-select">联网搜索引擎 (Search Engine):</label>
+                                <select id="claude-search-engine-select" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--surface0); background: var(--surface0); color: var(--text); font-size: 12px; width: 100%;">
+                                    <option value="google">Google (内置谷歌搜索)</option>
+                                    <option value="bing">Bing (内置必应搜索)</option>
+                                    <option value="duckduckgo">DuckDuckGo HTML (免验证搜索引擎)</option>
+                                    <option value="tavily">Tavily Search API (免翻代理，需 Key)</option>
+                                    <option value="jina">Jina Search API (免翻代理，需 Key)</option>
+                                    <option value="claude">Claude 官方原生搜索 (需账户有额度)</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="claude-tavily-key-group" style="display: none;">
+                                <label for="claude-tavily-key-input">Tavily API Key:</label>
+                                <div id="claude-tavily-key-input-container" class="input-row">
+                                    <input type="password" id="claude-tavily-key-input" placeholder="输入您的 Tavily Key">
+                                    <button type="button" id="toggle-claude-tavily-visibility" class="btn btn-secondary">👁</button>
+                                </div>
+                                <div class="form-group hidden" id="claude-tavily-key-status-container" style="margin-top: 6px;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;">
+                                        <span style="color: var(--green); font-size: 11px;">🔒 Tavily Key 已配置在服务端</span>
+                                        <div style="display: flex; gap: 4px;">
+                                            <button type="button" id="change-claude-tavily-btn" class="btn btn-secondary btn-sm" style="font-size: 10px; padding: 2px 6px;">更换</button>
+                                            <button type="button" id="disconnect-claude-tavily-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 10px; padding: 2px 6px;">清除</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group" id="claude-jina-key-group" style="display: none;">
+                                <label for="claude-jina-key-input">Jina API Key:</label>
+                                <div id="claude-jina-key-input-container" class="input-row">
+                                    <input type="password" id="claude-jina-key-input" placeholder="输入您的 Jina Key">
+                                    <button type="button" id="toggle-claude-jina-visibility" class="btn btn-secondary">👁</button>
+                                </div>
+                                <div class="form-group hidden" id="claude-jina-key-status-container" style="margin-top: 6px;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;">
+                                        <span style="color: var(--green); font-size: 11px;">🔒 Jina Key 已配置在服务端</span>
+                                        <div style="display: flex; gap: 4px;">
+                                            <button type="button" id="change-claude-jina-btn" class="btn btn-secondary btn-sm" style="font-size: 10px; padding: 2px 6px;">更换</button>
+                                            <button type="button" id="disconnect-claude-jina-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 10px; padding: 2px 6px;">清除</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="claude-web-page-parser-select">网页正文读取方式:</label>
+                                <select id="claude-web-page-parser-select" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--surface0); background: var(--surface0); color: var(--text); font-size: 12px; width: 100%;">
+                                    <option value="local">本地精简解析器 (Local Reader)</option>
+                                    <option value="jina">Jina Reader API (转为干净 Markdown，需 Jina Key)</option>
+                                    <option value="local_raw">原始 HTML 源码 (Raw HTML)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="claude-web-fetch-limit-input">抓取最大字符数:</label>
+                                <input type="number" id="claude-web-fetch-limit-input" placeholder="默认 15000">
                             </div>
                         </div>
                     </div>
@@ -189,6 +295,82 @@
                             <label for="deepseek-api-url-input">DeepSeek API URL (可选自定义代理):</label>
                             <input type="text" id="deepseek-api-url-input" placeholder="https://api.deepseek.com" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text);">
                         </div>
+                        <!-- DeepSeek Parameters -->
+                        <div class="form-group" style="margin-top: 12px;">
+                            <label for="deepseek-temp-slider" id="deepseek-temp-label-title">Temperature: 0.70</label>
+                            <input type="range" id="deepseek-temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
+                        </div>
+                        <div class="form-group">
+                            <label for="deepseek-max-tokens-input">Max Tokens:</label>
+                            <input type="number" id="deepseek-max-tokens-input" value="4096">
+                        </div>
+                        <!-- DeepSeek Web Search -->
+                        <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                                <input type="checkbox" id="deepseek-enable-search-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用网页检索服务
+                            </label>
+                        </div>
+                        <div id="deepseek-search-group" class="hidden">
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                                    <input type="checkbox" id="deepseek-enable-fetch-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 深度抓取网页正文
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="deepseek-search-engine-select">联网搜索引擎 (Search Engine):</label>
+                                <select id="deepseek-search-engine-select" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--surface0); background: var(--surface0); color: var(--text); font-size: 12px; width: 100%;">
+                                    <option value="google">Google (内置谷歌搜索)</option>
+                                    <option value="bing">Bing (内置必应搜索)</option>
+                                    <option value="duckduckgo">DuckDuckGo HTML (免验证搜索引擎)</option>
+                                    <option value="tavily">Tavily Search API (免翻代理，需 Key)</option>
+                                    <option value="jina">Jina Search API (免翻代理，需 Key)</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="deepseek-tavily-key-group" style="display: none;">
+                                <label for="deepseek-tavily-key-input">Tavily API Key:</label>
+                                <div id="deepseek-tavily-key-input-container" class="input-row">
+                                    <input type="password" id="deepseek-tavily-key-input" placeholder="输入您的 Tavily Key">
+                                    <button type="button" id="toggle-deepseek-tavily-visibility" class="btn btn-secondary">👁</button>
+                                </div>
+                                <div class="form-group hidden" id="deepseek-tavily-key-status-container" style="margin-top: 6px;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;">
+                                        <span style="color: var(--green); font-size: 11px;">🔒 Tavily Key 已配置在服务端</span>
+                                        <div style="display: flex; gap: 4px;">
+                                            <button type="button" id="change-deepseek-tavily-btn" class="btn btn-secondary btn-sm" style="font-size: 10px; padding: 2px 6px;">更换</button>
+                                            <button type="button" id="disconnect-deepseek-tavily-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 10px; padding: 2px 6px;">清除</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group" id="deepseek-jina-key-group" style="display: none;">
+                                <label for="deepseek-jina-key-input">Jina API Key:</label>
+                                <div id="deepseek-jina-key-input-container" class="input-row">
+                                    <input type="password" id="deepseek-jina-key-input" placeholder="输入您的 Jina Key">
+                                    <button type="button" id="toggle-deepseek-jina-visibility" class="btn btn-secondary">👁</button>
+                                </div>
+                                <div class="form-group hidden" id="deepseek-jina-key-status-container" style="margin-top: 6px;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;">
+                                        <span style="color: var(--green); font-size: 11px;">🔒 Jina Key 已配置在服务端</span>
+                                        <div style="display: flex; gap: 4px;">
+                                            <button type="button" id="change-deepseek-jina-btn" class="btn btn-secondary btn-sm" style="font-size: 10px; padding: 2px 6px;">更换</button>
+                                            <button type="button" id="disconnect-deepseek-jina-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 10px; padding: 2px 6px;">清除</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="deepseek-web-page-parser-select">网页正文读取方式:</label>
+                                <select id="deepseek-web-page-parser-select" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--surface0); background: var(--surface0); color: var(--text); font-size: 12px; width: 100%;">
+                                    <option value="local">本地精简解析器 (Local Reader)</option>
+                                    <option value="jina">Jina Reader API (转为干净 Markdown，需 Jina Key)</option>
+                                    <option value="local_raw">原始 HTML 源码 (Raw HTML)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="deepseek-web-fetch-limit-input">抓取最大字符数:</label>
+                                <input type="number" id="deepseek-web-fetch-limit-input" placeholder="默认 15000">
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Gemini Panel -->
@@ -214,90 +396,80 @@
                             <label for="gemini-api-url-input">Gemini API URL (可选自定义代理):</label>
                             <input type="text" id="gemini-api-url-input" placeholder="留空为默认" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text);">
                         </div>
-                    </div>
-
-                    <div class="form-group" style="margin-top: 12px;">
-                        <label for="temp-slider" id="temp-label-title">Temperature: 0.70</label>
-                        <input type="range" id="temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="max-tokens-input">Max Tokens:</label>
-                        <input type="number" id="max-tokens-input" value="4096">
-                    </div>
-                </div>
-
-                <!-- Group 2: Extended Thinking Settings -->
-                <div class="settings-section-card">
-                    <div class="settings-section-title">🧠 深度思考设置 (Extended Thinking)</div>
-                    <div class="form-group">
-                        <label>Extended Thinking (深度思考):</label>
-                        <div class="radio-group">
-                            <label class="radio-label">
-                                <input type="radio" name="thinking-mode" value="disabled" checked> Disabled
-                            </label>
-                            <label class="radio-label">
-                                <input type="radio" name="thinking-mode" value="adaptive"> Adaptive
-                            </label>
-                            <label class="radio-label">
-                                <input type="radio" name="thinking-mode" value="enabled"> Enabled
+                        <!-- Gemini Parameters -->
+                        <div class="form-group" style="margin-top: 12px;">
+                            <label for="gemini-temp-slider" id="gemini-temp-label-title">Temperature: 0.70</label>
+                            <input type="range" id="gemini-temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
+                        </div>
+                        <div class="form-group">
+                            <label for="gemini-max-tokens-input">Max Tokens:</label>
+                            <input type="number" id="gemini-max-tokens-input" value="4096">
+                        </div>
+                        <!-- Gemini Extended Thinking -->
+                        <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px; display: flex; align-items: center; gap: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                                <input type="checkbox" id="gemini-thinking-enabled-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用思维模式 (Thinking Mode)
                             </label>
                         </div>
-                    </div>
-
-                    <div id="budget-group" class="form-group hidden">
-                        <label for="budget-tokens-input">Budget Tokens:</label>
-                        <input type="number" id="budget-tokens-input" value="16000">
-                    </div>
-
-                    <div id="thinking-level-group" class="form-group hidden">
-                        <label for="thinking-level-select">Thinking Level (思考等级 / Effort):</label>
-                        <select id="thinking-level-select">
-                            <option value="low">Low (低 - 快速且经济)</option>
-                            <option value="medium">Medium (中 - 平衡)</option>
-                            <option value="high">High (高 - 默认推荐)</option>
-                            <option value="xhigh">X-High (极高)</option>
-                            <option value="max">Max (最大级 - 最深思考)</option>
-                        </select>
+                        <div id="gemini-budget-group" class="form-group hidden">
+                            <label for="gemini-budget-tokens-input">思维 Token 预算 (Thinking Budget):</label>
+                            <input type="number" id="gemini-budget-tokens-input" value="1024">
+                        </div>
+                        <div id="gemini-thinking-level-group" class="form-group hidden">
+                            <label for="gemini-thinking-level-select">思维深度等级 (Thinking Level / Effort):</label>
+                            <select id="gemini-thinking-level-select">
+                                <option value="low">Low (低 - 快速且经济)</option>
+                                <option value="medium">Medium (中 - 平衡)</option>
+                                <option value="high">High (高 - 默认推荐)</option>
+                            </select>
+                        </div>
+                        <!-- Gemini Web Search Grounding -->
+                        <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px; display: flex; align-items: center; gap: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                                <input type="checkbox" id="gemini-enable-search-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用谷歌原生联网搜索 (Search Grounding)
+                            </label>
+                        </div>
+                        <!-- Gemini Code Sandbox -->
+                        <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                                <input type="checkbox" id="gemini-enable-code-sandbox-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用代码执行沙盒
+                            </label>
+                            <div id="gemini-code-sandbox-type-group" style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text);">
+                                <span>沙盒执行模式:</span>
+                                <select id="gemini-code-sandbox-type-select" style="padding: 2px 4px; border-radius: 4px; border: 1px solid var(--border, #ccc); background: var(--surface0); color: var(--text); font-size: 12px;">
+                                    <option value="local">本地执行 (Local)</option>
+                                    <option value="cloud">云端执行 (Cloud)</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Group 3: Function & Network Settings -->
+                <!-- Group 2: Global and Server Settings -->
                 <div class="settings-section-card">
-                    <div class="settings-section-title">🌐 功能与服务端设置 (Function & Server)</div>
-                    <div class="form-group" style="display: flex; gap: 16px;">
+                    <div class="settings-section-title">🌐 全局与客户端设置 (Global & Server)</div>
+                    <div class="form-group" style="display: flex; gap: 16px; flex-wrap: wrap;">
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
                             <input type="checkbox" id="auto-run-code-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 自动运行代码 (Auto-run)
                         </label>
-                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="enable-code-sandbox-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用本地代码执行沙盒
-                        </label>
-                    </div>
-
-                    <div class="form-group" style="display: flex; gap: 16px;">
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
                             <input type="checkbox" id="enable-server-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用局域网 Web 服务
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
                             <input type="checkbox" id="sync-config-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 同步 APIKey/配置
                         </label>
-                    </div>
-
-                    <div class="form-group" style="display: flex; gap: 16px;">
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="only-server-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 仅运行服务端 (无本地窗口)
+                            <input type="checkbox" id="only-server-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 仅运行服务端
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="use-cdn-assets-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 使用外部 CDN 加载库文件 (加速弱网)
+                            <input type="checkbox" id="use-cdn-assets-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 使用外部 CDN 加载库
                         </label>
-                    </div>
-                    <div class="form-group" style="display: flex; gap: 16px; margin-top: -6px;">
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="enable-ssl-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用 SSL/HTTPS 传输 (自签名证书可能需浏览器手动信任)
+                            <input type="checkbox" id="enable-ssl-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用 SSL/HTTPS 传输
                         </label>
                     </div>
                     
-                    <div class="form-group">
+                    <div class="form-group" style="margin-top: 12px;">
                         <label for="server-port-input">服务端端口 (Server Port):</label>
                         <input type="number" id="server-port-input" min="1024" max="65535" value="8000" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100px;">
                     </div>
@@ -311,83 +483,6 @@
                     </div>
                 </div>
 
-                <!-- Group 4: Web Search Settings -->
-                <div class="settings-section-card">
-                    <div class="settings-section-title">🔍 联网搜索设置 (Web Search)</div>
-                    <div class="form-group" style="display: flex; gap: 16px; margin-bottom: 12px;">
-                        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; user-select: none; font-weight: 500;">
-                            <input type="checkbox" id="enable-search-input" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--blue);"> 全局启用联网搜索功能 (支持所有 AI 平台)
-                        </label>
-                    </div>
-                    
-                    <div class="form-group" style="display: flex; gap: 16px; margin-bottom: 12px;">
-                        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; user-select: none; font-weight: 500;">
-                            <input type="checkbox" id="enable-fetch-input" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--blue);"> 全局启用网页正文深度抓取
-                        </label>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="search-engine-select">联网搜索默认引擎 (Search Engine):</label>
-                        <select id="search-engine-select" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
-                            <option value="google">Google (默认谷歌，带智能备用)</option>
-                            <option value="bing">Bing (微软必应，带智能备用)</option>
-                            <option value="duckduckgo">DuckDuckGo HTML (极致防屏蔽，免翻/免验证)</option>
-                            <option value="tavily">Tavily Search API (专为 AI 设计，免代理防屏蔽，需 Key)</option>
-                            <option value="jina">Jina Search API (专为 AI 设计，免代理防屏蔽，需 Key)</option>
-                            <option value="claude">Claude 官方原生搜索 (仅支持 claude-3-7 等最新模型，按量收费)</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group" id="tavily-key-group" style="display: none;">
-                        <label for="tavily-key-input">Tavily API Key (免费 1000 次/月):</label>
-                        <div id="tavily-key-input-container" class="input-row" style="display: flex; gap: 8px;">
-                            <input type="password" id="tavily-key-input" placeholder="输入您的 Tavily API Key (tvly-...)" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
-                            <button type="button" id="toggle-tavily-visibility" class="btn btn-secondary" style="padding: 6px 12px;">👁</button>
-                        </div>
-                        <div class="form-group hidden" id="tavily-key-status-container" style="margin-top: 6px;">
-                            <label>Tavily API Key 状态:</label>
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;">
-                                <span style="color: var(--green); font-size: 12px; font-weight: 500;">🔒 Tavily Key 已加密配置在服务端</span>
-                                <div style="display: flex; gap: 6px;">
-                                    <button type="button" id="change-tavily-btn" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 3px 8px;">更换</button>
-                                    <button type="button" id="disconnect-tavily-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 11px; padding: 3px 8px;">断开/清除</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-group" id="jina-key-group" style="display: none;">
-                        <label for="jina-key-input">Jina API Key (获取更高额度速率):</label>
-                        <div id="jina-key-input-container" class="input-row" style="display: flex; gap: 8px;">
-                            <input type="password" id="jina-key-input" placeholder="输入您的 Jina API Key (jina_...)" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
-                            <button type="button" id="toggle-jina-visibility" class="btn btn-secondary" style="padding: 6px 12px;">👁</button>
-                        </div>
-                        <div class="form-group hidden" id="jina-key-status-container" style="margin-top: 6px;">
-                            <label>Jina API Key 状态:</label>
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;">
-                                <span style="color: var(--green); font-size: 12px; font-weight: 500;">🔒 Jina Key 已加密配置在服务端</span>
-                                <div style="display: flex; gap: 6px;">
-                                    <button type="button" id="change-jina-btn" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 3px 8px;">更换</button>
-                                    <button type="button" id="disconnect-jina-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 11px; padding: 3px 8px;">断开/清除</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="web-page-parser-select">网页内容读取方式 (Web Page Parser):</label>
-                        <select id="web-page-parser-select" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
-                            <option value="local">本地精简解析器 (Local Reader - 自动剔除多余标签)</option>
-                            <option value="jina">Jina Reader API (极速转换为干净 Markdown，需 Jina Key)</option>
-                            <option value="local_raw">原始 HTML 源码 (Raw HTML - 完整保留不过滤)</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="web-fetch-limit-input">第三方接口网页抓取最大字符数 (防溢出):</label>
-                        <input type="number" id="web-fetch-limit-input" placeholder="默认 15000" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
-                    </div>
-                </div>
 
                 <!-- Group 5: Fonts & System Prompts Presets -->
                 <div class="settings-section-card">

@@ -37,9 +37,15 @@ def convert_messages_to_gemini(messages):
                     btype = block.get("type")
                     if btype == "text":
                         parts.append({"text": block.get("text", "")})
-                    elif btype in ("image", "document"):
+                    elif btype in ("image", "document", "file", "audio", "video"):
                         source = block.get("source", {})
                         mime_type = source.get("media_type")
+                        
+                        # Use standard mimetypes guess for file path
+                        if not mime_type and "file_path" in source:
+                            import mimetypes
+                            mime_type, _ = mimetypes.guess_type(source["file_path"])
+                            
                         if not mime_type:
                             mime_type = "application/pdf" if btype == "document" else "image/png"
                         
@@ -105,7 +111,7 @@ def convert_messages_to_gemini(messages):
         gemini_msgs.append({"role": gemini_role, "parts": parts})
     return gemini_msgs
 
-def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_enabled, thinking_budget, thinking_level, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, conv_id=None, conv_manager=None, previous_content_blocks=None):
+def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_enabled, thinking_budget, thinking_level, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, conv_id=None, conv_manager=None, previous_content_blocks=None, enable_code_sandbox=False, code_sandbox_type="local", **kwargs):
     try:
         import sys
         use_legacy = False
@@ -232,11 +238,20 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
             }
             if system and system.strip():
                 config_args["system_instruction"] = system.strip()
+            
+            # Setup tools (Google search grounding & native cloud execution sandbox)
+            tools = []
             if enable_search:
-                config_args["tools"] = [types.Tool(google_search=types.GoogleSearch())]
+                tools.append(types.Tool(google_search=types.GoogleSearch()))
+            if enable_code_sandbox and code_sandbox_type == "cloud":
+                tools.append(types.Tool(code_execution=types.CodeExecution()))
+                
+            if tools:
+                config_args["tools"] = tools
+                
             if thinking_enabled:
                 budget_val = thinking_budget if thinking_budget else 1024
-                if "gemini-3" in model.lower():
+                if "gemini-3" in model.lower() or "thinking" in model.lower() or "level" in model.lower():
                     config_args["thinking_config"] = types.ThinkingConfig(thinking_level=thinking_level)
                 else:
                     config_args["thinking_config"] = types.ThinkingConfig(thinking_budget=budget_val)
@@ -257,6 +272,12 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
                 
             grounding_meta = None
             
+            # Code execution sandbox state tracking variables
+            in_code_block = False
+            in_result_block = False
+            last_code = ""
+            last_result = ""
+            
             for chunk in response_stream:
                 if abort_event and abort_event.is_set():
                     streaming_queue.put(("aborted", {}))
@@ -266,36 +287,91 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
                     parts = chunk.candidates[0].content.parts
                     if parts:
                         for part in parts:
+                            executable_code = getattr(part, "executable_code", None)
+                            code_execution_result = getattr(part, "code_execution_result", None)
                             text = getattr(part, "text", "")
                             is_thought = getattr(part, "thought", False)
                             inline_data = getattr(part, "inline_data", None)
                             
-                            if inline_data and hasattr(inline_data, "data") and inline_data.data:
-                                import base64
-                                b64_data = base64.b64encode(inline_data.data).decode("utf-8")
-                                mime_type = getattr(inline_data, "mime_type", "image/png")
-                                # Render as markdown image directly
-                                img_md = f"\n\n![Generated Image](data:{mime_type};base64,{b64_data})\n\n"
-                                full_text += img_md
-                                streaming_queue.put(("text", img_md))
-                            elif is_thought:
-                                if text:
-                                    full_reasoning += text
-                                    streaming_queue.put(("thinking", text))
-                            else:
-                                if text:
-                                    full_text += text
-                                    streaming_queue.put(("text", text))
+                            if executable_code:
+                                if in_result_block:
+                                    streaming_queue.put(("text", "\n```\n"))
+                                    in_result_block = False
                                     
+                                code = getattr(executable_code, "code", "")
+                                if code:
+                                    if not in_code_block:
+                                        streaming_queue.put(("text", "\n```python\n# [云端沙盒执行]\n"))
+                                        in_code_block = True
+                                        
+                                    if code.startswith(last_code):
+                                        new_code = code[len(last_code):]
+                                    else:
+                                        new_code = code
+                                    last_code = code
+                                    if new_code:
+                                        full_text += new_code
+                                        streaming_queue.put(("text", new_code))
+                                        
+                            elif code_execution_result:
+                                if in_code_block:
+                                    streaming_queue.put(("text", "\n```\n"))
+                                    in_code_block = False
+                                    
+                                output = getattr(code_execution_result, "output", "")
+                                if output:
+                                    if not in_result_block:
+                                        streaming_queue.put(("text", "\n**[沙盒执行结果]**\n```text\n"))
+                                        in_result_block = True
+                                        
+                                    if output.startswith(last_result):
+                                        new_output = output[len(last_result):]
+                                    else:
+                                        new_output = output
+                                    last_result = output
+                                    if new_output:
+                                        full_text += new_output
+                                        streaming_queue.put(("text", new_output))
+                                        
+                            else:
+                                # Normal content blocks (close any active code execution markdown fences)
+                                if in_code_block:
+                                    streaming_queue.put(("text", "\n```\n"))
+                                    in_code_block = False
+                                if in_result_block:
+                                    streaming_queue.put(("text", "\n```\n"))
+                                    in_result_block = False
+                                    
+                                if inline_data and hasattr(inline_data, "data") and inline_data.data:
+                                    b64_data = base64.b64encode(inline_data.data).decode("utf-8")
+                                    mime_type = getattr(inline_data, "mime_type", "image/png")
+                                    img_md = f"\n\n![Generated Image](data:{mime_type};base64,{b64_data})\n\n"
+                                    full_text += img_md
+                                    streaming_queue.put(("text", img_md))
+                                elif is_thought:
+                                    if text:
+                                        full_reasoning += text
+                                        streaming_queue.put(("thinking", text))
+                                else:
+                                    if text:
+                                        full_text += text
+                                        streaming_queue.put(("text", text))
+                                        
                 if hasattr(chunk, "usage_metadata") and chunk.usage_metadata:
                     um = chunk.usage_metadata
                     if hasattr(um, "prompt_token_count") and um.prompt_token_count:
                         input_tokens = um.prompt_token_count
                     if hasattr(um, "candidates_token_count") and um.candidates_token_count:
                         output_tokens = um.candidates_token_count
-
+ 
                 if chunk.candidates and chunk.candidates[0].grounding_metadata:
                     grounding_meta = chunk.candidates[0].grounding_metadata
+            
+            # Safely close any un-fenced markdown code/result block at stream termination
+            if in_code_block:
+                streaming_queue.put(("text", "\n```\n"))
+            if in_result_block:
+                streaming_queue.put(("text", "\n```\n"))
 
             if grounding_meta and enable_search:
                 queries = getattr(grounding_meta, "web_search_queries", [])
@@ -347,4 +423,3 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
     except Exception as e:
         logger.exception(f"Gemini streaming error: {e}")
         streaming_queue.put(("error", f"Gemini 错误: {sanitize_error_message(e)}"))
-

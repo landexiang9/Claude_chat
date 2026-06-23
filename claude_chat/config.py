@@ -200,14 +200,38 @@ class ConfigManager:
             "ocr_mode": "auto",
             "ocr_cloud_model": "gemini",
             "model": "claude-3-7-sonnet-latest",
+            # Claude settings (legacy flat keys)
             "temperature": 0.7,
             "max_tokens": 4096,
             "thinking_enabled": False,
             "thinking_type": "adaptive",
             "thinking_budget": 16000,
             "thinking_level": "high",
+            "enable_web_search": False,
+            "web_search_engine": "google",
+            "tavily_api_key": "",
+            "jina_api_key": "",
+            "web_page_parser": "local",
             "enable_code_sandbox": False,
             "auto_run_code": False,
+            # DeepSeek settings
+            "deepseek_temperature": 0.7,
+            "deepseek_max_tokens": 4096,
+            "deepseek_enable_web_search": False,
+            "deepseek_web_search_engine": "google",
+            "deepseek_tavily_api_key": "",
+            "deepseek_jina_api_key": "",
+            "deepseek_web_page_parser": "local",
+            # Gemini settings
+            "gemini_temperature": 0.7,
+            "gemini_max_tokens": 4096,
+            "gemini_thinking_enabled": False,
+            "gemini_thinking_budget": 1024,
+            "gemini_thinking_level": "high",
+            "gemini_enable_web_search": False,
+            "gemini_enable_code_sandbox": False,
+            "gemini_code_sandbox_type": "local",
+            # Global settings
             "font_mode": "custom",
             "enable_server": True,
             "server_port": 8000,
@@ -221,14 +245,8 @@ class ConfigManager:
                 {"id": "default_helper", "name": "AI 助手", "content": "You are a helpful, respectful and honest assistant."},
                 {"id": "translator", "name": "专业翻译官", "content": "你是一个专业的翻译官，请将我输入的所有内容翻译成地道的英文，如果本身就是英文则翻译成中文。无需解释。"},
                 {"id": "programmer", "name": "高级程序员", "content": "你是一位拥有20年开发经验的资深软件架构师。请以严谨、结构化、注重性能与安全性的视角回答编程问题，并提供符合最佳实践的完整代码段。"}
-
             ],
-            "selected_system_prompt_id": "",
-            "enable_web_search": False,
-            "web_search_engine": "google",
-            "tavily_api_key": "",
-            "jina_api_key": "",
-            "web_page_parser": "local"
+            "selected_system_prompt_id": ""
         }
         self.load()
         
@@ -252,7 +270,11 @@ class ConfigManager:
                     self.data.update(loaded)
                     
                     # 定义所有需要安全加密保存的 API Key 列表
-                    api_keys = ["api_key", "tavily_api_key", "jina_api_key", "deepseek_api_key", "gemini_api_key"]
+                    api_keys = [
+                        "api_key", "tavily_api_key", "jina_api_key", 
+                        "deepseek_api_key", "gemini_api_key",
+                        "deepseek_tavily_api_key", "deepseek_jina_api_key"
+                    ]
                     
                     for key in api_keys:
                         storage = loaded.get(f"{key}_storage", "none")
@@ -297,7 +319,11 @@ class ConfigManager:
             to_save = dict(self.data)
 
             # 定义所有需要安全加密保存的 API Key 列表
-            api_keys = ["api_key", "tavily_api_key", "jina_api_key", "deepseek_api_key", "gemini_api_key"]
+            api_keys = [
+                "api_key", "tavily_api_key", "jina_api_key", 
+                "deepseek_api_key", "gemini_api_key",
+                "deepseek_tavily_api_key", "deepseek_jina_api_key"
+            ]
             
             for key in api_keys:
                 key_val = to_save.get(key, "").strip()

@@ -153,6 +153,8 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
             thinking_enabled = kwargs.get("thinking_enabled", False)
             thinking_budget = kwargs.get("thinking_budget", 1024)
             thinking_level = kwargs.get("thinking_level", "high")
+            enable_code_sandbox = kwargs.get("gemini_enable_code_sandbox", False)
+            code_sandbox_type = kwargs.get("gemini_code_sandbox_type", "local")
             return stream_gemini_response(
                 api_key=gemini_api_key,
                 api_url=gemini_api_url,
@@ -165,6 +167,8 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 thinking_enabled=thinking_enabled,
                 thinking_budget=thinking_budget,
                 thinking_level=thinking_level,
+                enable_code_sandbox=enable_code_sandbox,
+                code_sandbox_type=code_sandbox_type,
                 streaming_queue=streaming_queue,
                 abort_event=abort_event,
                 on_stream_created=on_stream_created,
