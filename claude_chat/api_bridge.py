@@ -9,7 +9,6 @@ from pathlib import Path
 logger = logging.getLogger("claude_chat")
 
 from claude_chat.config import FALLBACK_MODELS, IMAGE_EXTENSIONS, PDF_EXTENSIONS, TEXT_EXTENSIONS, ConfigManager
-from claude_chat.conversation import read_text_file
 from claude_chat.db import DatabaseManager, deserialize_content
 from claude_chat.clients import extract_api_message, stream_claude_response, fetch_available_models
 
@@ -31,6 +30,23 @@ def get_mime_type(file_path):
         return mime_map[ext]
     mime, _ = mimetypes.guess_type(file_path)
     return mime or "application/octet-stream"
+
+
+def read_text_file(file_path):
+    """
+    尝试以不同的编码格式读取文本文件。
+    优先采用 UTF-8 编码，失败时尝试 GBK，最后使用 UTF-8（对无法解码的字符进行替换）。
+    """
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except UnicodeDecodeError:
+        try:
+            with open(file_path, "r", encoding="gbk") as f:
+                return f.read()
+        except UnicodeDecodeError:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                return f.read()
 
 
 class WebAPI:

@@ -34,4 +34,5 @@ claude_chat/patch_app.py
 claude_chat/patch_deepseek_tool.py
 claude_chat/patch_index.py
 claude_chat/patch_model_sync.py
+test_mcp_output.txt
 
