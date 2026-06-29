@@ -275,7 +275,7 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
                 messages.append({"role": "user", "content": tool_result_content})
                 
                 # 递归发起下一轮 API 生成
-                stream_claude_response(
+                stream_claude_response_native(
                     api_key=api_key,
                     proxy_mode=proxy_mode,
                     proxy_url=proxy_url,
@@ -298,7 +298,8 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
                     web_page_parser=web_page_parser,
                     conv_id=conv_id,
                     conv_manager=conv_manager,
-                    active_platform="claude",
+                    # M-fix#3: 签名无 active_platform 形参,此 kwarg 会抛 TypeError 被外层吞掉,
+                    # 导致每次工具回合都失败、tool_use/tool_result 配对孤立。移除之。
                     depth=depth + 1
                 )
                 return

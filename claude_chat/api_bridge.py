@@ -3,14 +3,16 @@ import threading
 import json
 import mimetypes
 import logging
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger("claude_chat")
 
-from claude_chat.config import FALLBACK_MODELS, IMAGE_EXTENSIONS, PDF_EXTENSIONS, TEXT_EXTENSIONS, ConfigManager
+from claude_chat.config import FALLBACK_MODELS, IMAGE_EXTENSIONS, PDF_EXTENSIONS, TEXT_EXTENSIONS, ConfigManager, get_sensitive_api_keys, find_custom_provider, custom_platform_id, sanitize_provider_id
 from claude_chat.db import DatabaseManager, deserialize_content
 from claude_chat.clients import extract_api_message, stream_claude_response, fetch_available_models
+import webview
 
 def get_mime_type(file_path):
     """
@@ -97,11 +99,7 @@ class WebAPI:
         """
         with self._app.lock:
             cfg = dict(self._app.config.data)
-            api_keys = [
-                "api_key", "tavily_api_key", "jina_api_key", 
-                "deepseek_api_key", "gemini_api_key",
-                "deepseek_tavily_api_key", "deepseek_jina_api_key"
-            ]
+            api_keys = get_sensitive_api_keys(self._app.config.data)
             for key in api_keys:
                 cfg[f"has_{key}"] = bool(cfg.get(key, "").strip())
                 cfg[key] = ""
@@ -110,36 +108,47 @@ class WebAPI:
     def save_config(self, new_config):
         """
         更新并存储系统配置信息
+        M6: 通过 config.set_many() 批量写入，持有 config._lock 保证线程安全，
+        避免直接操作 config.data 字典时与并发 config.get() 产生竞态。
         """
         with self._app.lock:
             logger.info(f"保存系统配置，键名列表: {list(new_config.keys())}")
             
-            sensitive_keys = [
-                "api_key", "deepseek_api_key", "gemini_api_key", 
-                "tavily_api_key", "jina_api_key",
-                "deepseek_tavily_api_key", "deepseek_jina_api_key"
-            ]
+            sensitive_keys = get_sensitive_api_keys(self._app.config.data)
             
-            # 1. 过滤并保存常规字段，跳过 has_xxx / clear_xxx 标志
+            # custom_providers 只能由专用 CRUD 端点管理，绝不允许 save_config 覆盖，
+            # 否则前端旧快照会把后端刚新增的供应商整体清空。
+            PROTECTED_KEYS = {"custom_providers"}
+            
+            # 1. 构造批量更新字典，跳过 has_xxx / clear_xxx 标志和受保护字段
+            updates = {}
             for k, v in new_config.items():
                 if k.startswith("has_") or k.startswith("clear_"):
+                    continue
+                if k in PROTECTED_KEYS:
                     continue
                 # 对于敏感 Key 字段，仅当其有值时才保存；空值由 clear_xxx 逻辑处理，防止前端空值覆盖
                 if k in sensitive_keys:
                     if v:
-                        self._app.config.set(k, v)
+                        updates[k] = v
                 else:
-                    self._app.config.set(k, v)
+                    updates[k] = v
             
             # 2. 显式处理清除敏感 Key 的请求
             for key in sensitive_keys:
                 if new_config.get(f"clear_{key}"):
-                    self._app.config.set(key, "")
-                
+                    updates[key] = ""
+            
+            # 通过 ConfigManager.set_many 一次性加锁写入 + 持久化
+            self._app.config.set_many(updates)
+            
             # 刷新可用的模型列表以更新凭证
             self._app._refresh_models_async()
             
-            # 联调：如果存在活跃的对话且属于全局配置范畴，同步修改对话内置的模型参数以防数据割裂
+            # 联调:如果存在活跃的对话且属于全局配置范畴,同步修改对话内置的模型参数以防数据割裂
+            # M-fix#2:使用 save_conversation_metadata(仅 UPDATE)而非 save_conversation,
+            # 后者会 INSERT OR REPLACE 触发 ON DELETE CASCADE + 显式 DELETE messages,
+            # 与流式 reader 线程并发时会抹除刚写入的助手消息并重置 token 计数。
             if self._app.current_conv:
                 self._app.current_conv["model"] = self._app.config.get("model")
                 self._app.current_conv["temperature"] = self._app.config.get("temperature", 0.7)
@@ -152,7 +161,7 @@ class WebAPI:
                     }
                 else:
                     self._app.current_conv["thinking"] = None
-                self._app.conv_manager.save_conversation(self._app.current_conv)
+                self._app.conv_manager.save_conversation_metadata(self._app.current_conv)
             return True
 
     def fetch_models(self):
@@ -166,19 +175,31 @@ class WebAPI:
         elif active_platform == "gemini":
             api_key = self._app.config.get("gemini_api_key", "")
             platform_api_url = self._app.config.get("gemini_api_url", "")
+        elif active_platform.startswith("custom:"):
+            provider = find_custom_provider(self._app.config.data, active_platform) or {}
+            pid = custom_platform_id(active_platform)
+            api_key = self._app.config.get(f"custom_{pid}_api_key", "") if pid else ""
+            platform_api_url = provider.get("api_url", "")
         else:
             api_key = self._app.config.get("api_key", "")
             platform_api_url = None
 
         proxy_mode = self._app.config.get("proxy_mode", "system")
         proxy_url = self._app.config.get("proxy_url", "")
-        
-        model_ids = fetch_available_models(api_key, proxy_mode, proxy_url, active_platform=active_platform, platform_api_url=platform_api_url)
+
+        custom_fallback = None
+        custom_models_api_url = None
+        if active_platform.startswith("custom:"):
+            provider = find_custom_provider(self._app.config.data, active_platform) or {}
+            custom_fallback = provider.get("models", [])
+            custom_models_api_url = provider.get("models_api_url", "")
+
+        model_ids = fetch_available_models(api_key, proxy_mode, proxy_url, active_platform=active_platform, platform_api_url=platform_api_url, custom_fallback_models=custom_fallback, custom_models_api_url=custom_models_api_url)
         
         # 校验平台是否在拉取期间发生切换，防止旧请求覆盖新平台的模型列表
         current_platform = self._app.config.get("active_platform", "claude")
         if current_platform != active_platform:
-            return self._app.available_models
+            return []
             
         if model_ids:
             self._app.available_models = model_ids
@@ -189,7 +210,10 @@ class WebAPI:
                     self._app.window.evaluate_js(js_code)
                 except Exception:
                     pass
-        return self._app.available_models
+            return model_ids
+        # 加载失败/返回空：不保留旧模型列表，明确返回空让前端显示加载失败提示
+        self._app.available_models = []
+        return []
 
     def paste_from_clipboard(self):
         """
@@ -256,8 +280,13 @@ class WebAPI:
     def load_conversation(self, conv_id):
         """
         根据 ID 从 SQLite 数据库读取指定对话的详情记录并缓存至内存中
+        M-fix#5/#6:流式生成进行中时拒绝切换 current_conv,否则 reader 线程会把
+        响应写进被切换到的新对话,导致原始对话丢失回复、新对话混入错误消息。
         """
         with self._app.lock:
+            if self._app.is_streaming:
+                logger.warning(f"流式生成进行中,拒绝切换对话,返回当前对话。请求 ID: {conv_id}")
+                return self._app.current_conv
             logger.info(f"正在加载对话记录，ID: {conv_id}")
             conv = self._app.conv_manager.load_conversation(conv_id)
             if conv:
@@ -272,6 +301,7 @@ class WebAPI:
             logger.info("正在创建新会话...")
             conv_data = self._app.conv_manager.new_conversation()
             conv_data["model"] = self._app.config.get("model", FALLBACK_MODELS[0])
+            conv_data["platform"] = self._app.config.get("active_platform", "claude")
             conv_data["temperature"] = self._app.config.get("temperature", 0.7)
             conv_data["max_tokens"] = self._app.config.get("max_tokens", 4096)
             if self._app.config.get("thinking_enabled"):
@@ -438,7 +468,7 @@ class WebAPI:
             
             self._app.current_conv = self._app.conv_manager.load_conversation(conv_id)
             if not self._app.current_conv:
-                self._app.is_streaming = False
+                self._app.set_streaming_done()
                 return False
                 
             api_messages = [extract_api_message(msg) for msg in self._app.current_conv["messages"]]
@@ -515,6 +545,8 @@ class WebAPI:
                     "gemini_api_url": mapped["api_url"],
                     "gemini_enable_code_sandbox": mapped["enable_code_sandbox"],
                     "gemini_code_sandbox_type": mapped["code_sandbox_type"],
+                    "custom_api_key": mapped["api_key"] if active_platform.startswith("custom:") else "",
+                    "custom_api_url": mapped["api_url"],
                     "thinking_enabled": thinking_enabled,
                     "thinking_budget": thinking_budget,
                     "thinking_level": thinking_level,
@@ -534,7 +566,7 @@ class WebAPI:
             return True
         except Exception as e:
             logger.exception(f"启动流生成线程发生错误: {e}")
-            self._app.is_streaming = False
+            self._app.set_streaming_done()
             return False
 
     def send_message(self, conv_id, text, attachments, custom_queue=None):
@@ -747,13 +779,14 @@ class WebAPI:
             executable = "node"
             
         proc_id = str(uuid.uuid4())
-        
+        temp_path = None
+
         try:
             # 写入临时文件
             with tempfile.NamedTemporaryFile(mode='w', suffix=suffix, delete=False, encoding='utf-8') as temp_file:
+                temp_path = temp_file.name  # M-fix#18: 在 write 前记录路径,write 抛错时仍可清理
                 temp_file.write(code)
-                temp_path = temp_file.name
-                
+
             def cleanup_temp_file(path):
                 try:
                     if os.path.exists(path):
@@ -879,6 +912,13 @@ class WebAPI:
             return {"error": err_msg}
         except Exception as e:
             logger.exception(f"启动沙盒代码执行模块错误: {e}")
+            # M-fix#18: write 失败时 atexit 可能尚未注册,这里显式清理已落盘的临时文件,避免泄漏
+            if temp_path:
+                try:
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                except Exception:
+                    pass
             return {"error": str(e)}
 
     def send_console_input(self, process_id, text):
@@ -1004,6 +1044,128 @@ class WebAPI:
             logger.error(f"清空日志失败: {e}")
             return False
 
+    # ===================== 自定义模型提供商管理 =====================
+
+    def list_custom_providers(self):
+        """返回当前已注册的自定义提供商列表（API Key 以 has_ 标志替代明文）。"""
+        with self._app.lock:
+            providers = self._app.config.get("custom_providers", []) or []
+            result = []
+            for p in providers:
+                item = dict(p)
+                pid = sanitize_provider_id(p.get("id", ""))
+                key_name = f"custom_{pid}_api_key"
+                item["has_api_key"] = bool(self._app.config.get(key_name, "").strip())
+                item["api_key"] = ""
+                item["platform_id"] = f"custom:{pid}"
+                result.append(item)
+            return result
+
+    def add_custom_provider(self, name, api_url, api_key="", models=None, temperature=0.7, max_tokens=4096, models_api_url=""):
+        """
+        新增一个自定义 OpenAI 兼容提供商并持久化保存到服务器配置。
+        自动生成唯一 id（基于名称规整 + 短随机后缀以避免冲突）。
+        models_api_url 可单独指定模型列表获取地址，留空则回退到 api_url。
+        """
+        with self._app.lock:
+            import secrets as _secrets
+            providers = list(self._app.config.get("custom_providers", []) or [])
+            base_id = sanitize_provider_id(name) or "provider"
+            # 生成唯一 id
+            new_id = base_id
+            existing_ids = {sanitize_provider_id(p.get("id", "")) for p in providers}
+            while new_id in existing_ids:
+                new_id = f"{base_id}_{_secrets.token_hex(2)}"
+            provider = {
+                "id": new_id,
+                "name": name,
+                "api_url": api_url,
+                "models_api_url": models_api_url or "",
+                "models": [m for m in (models or []) if isinstance(m, str) and m.strip()],
+                "temperature": float(temperature),
+                "max_tokens": int(max_tokens)
+            }
+            providers.append(provider)
+            self._app.config.set("custom_providers", providers)
+            if api_key:
+                self._app.config.set(f"custom_{new_id}_api_key", api_key)
+            logger.info(f"新增自定义提供商: {name} (id={new_id})")
+            return self._provider_view(new_id)
+
+    def update_custom_provider(self, provider_id, name=None, api_url=None, api_key=None, models=None, temperature=None, max_tokens=None, models_api_url=None, clear_api_key=False):
+        """更新已有自定义提供商的元数据；api_key 仅在非空时覆盖；clear_api_key=True 时清除 Key。models_api_url 传 None 表示不修改，传空串表示清空。"""
+        with self._app.lock:
+            pid = sanitize_provider_id(provider_id)
+            providers = list(self._app.config.get("custom_providers", []) or [])
+            updated = False
+            for p in providers:
+                if sanitize_provider_id(p.get("id", "")) == pid:
+                    if name is not None:
+                        p["name"] = name
+                    if api_url is not None:
+                        p["api_url"] = api_url
+                    if models_api_url is not None:
+                        p["models_api_url"] = models_api_url
+                    if models is not None:
+                        p["models"] = [m for m in models if isinstance(m, str) and m.strip()]
+                    if temperature is not None:
+                        p["temperature"] = float(temperature)
+                    if max_tokens is not None:
+                        p["max_tokens"] = int(max_tokens)
+                    updated = True
+                    break
+            if not updated:
+                return {"error": f"未找到提供商: {pid}"}
+            self._app.config.set("custom_providers", providers)
+            # API Key 处理：clear_api_key 优先；否则非空才覆盖；都不动则保持原值
+            if clear_api_key:
+                self._app.config.set(f"custom_{pid}_api_key", "")
+            elif api_key:
+                self._app.config.set(f"custom_{pid}_api_key", api_key)
+            logger.info(f"更新自定义提供商: id={pid}, clear_key={clear_api_key}")
+            return self._provider_view(pid)
+
+    def remove_custom_provider(self, provider_id):
+        """删除自定义提供商，并清理其加密存储的 API Key 及 Keyring 中的孤立条目。"""
+        with self._app.lock:
+            pid = sanitize_provider_id(provider_id)
+            providers = list(self._app.config.get("custom_providers", []) or [])
+            new_providers = [p for p in providers if sanitize_provider_id(p.get("id", "")) != pid]
+            if len(new_providers) == len(providers):
+                return {"error": f"未找到提供商: {pid}"}
+            self._app.config.set("custom_providers", new_providers)
+            # 清理 API Key（置空触发 save 写入空值）
+            key_name = f"custom_{pid}_api_key"
+            self._app.config.set(key_name, "")
+            # M12: 清理系统 Keyring 中的孤立密钥条目，防止安全残留
+            try:
+                import keyring
+                keyring.delete_password("ClaudeChat", key_name)
+            except Exception:
+                pass  # Keyring 中不存在该项时静默忽略
+            # 同时清理 config.data 中的 storage/obfuscated 元数据字段
+            self._app.config.data.pop(f"{key_name}_storage", None)
+            self._app.config.data.pop(f"{key_name}_obfuscated", None)
+            self._app.config.save()
+            # 若当前激活平台正是被删除的提供商，回退到 claude
+            if self._app.config.get("active_platform", "") == f"custom:{pid}":
+                self._app.config.set("active_platform", "claude")
+            logger.info(f"删除自定义提供商: id={pid}")
+            return {"success": True, "removed": pid}
+
+    def _provider_view(self, pid):
+        """构造单个提供商的安全视图（不含明文 Key）返回给前端。"""
+        providers = self._app.config.get("custom_providers", []) or []
+        for p in providers:
+            if sanitize_provider_id(p.get("id", "")) == pid:
+                item = dict(p)
+                key_name = f"custom_{pid}_api_key"
+                item["has_api_key"] = bool(self._app.config.get(key_name, "").strip())
+                item["api_key"] = ""
+                item["platform_id"] = f"custom:{pid}"
+                return item
+        return {"error": f"未找到提供商: {pid}"}
+
 
 class PlatformParamMapper:
     @staticmethod
@@ -1082,5 +1244,15 @@ class PlatformParamMapper:
                     "budget_tokens": int(config.get("gemini_thinking_budget", 1024)),
                     "effort": config.get("gemini_thinking_level", "high")
                 }
+
+        elif active_platform.startswith("custom:"):
+            provider = find_custom_provider(config, active_platform) or {}
+            pid = custom_platform_id(active_platform)
+            params["api_key"] = config.get(f"custom_{pid}_api_key", "") if pid else ""
+            params["api_url"] = provider.get("api_url", "")
+            params["max_tokens"] = int(provider.get("max_tokens", 4096))
+            params["temperature"] = float(provider.get("temperature", 0.7))
+            params["enable_search"] = False
+            params["enable_web_fetch"] = False
 
         return params

@@ -49,6 +49,9 @@ function showSettings() {
         }
     }
 
+    // 刷新自定义提供商管理列表
+    onSettingsOpenRefreshCustomProviders();
+
     if (deepseekApiUrlInput) {
         deepseekApiUrlInput.value = config.deepseek_api_url || "https://api.deepseek.com";
     }
@@ -72,13 +75,33 @@ function showSettings() {
             btn.style.color = "var(--subtext0)";
         }
     });
+    // 自定义平台没有内置 panel：隐藏全部内置面板，并自动进入该供应商的编辑界面
+    const isCustom = currentPlatform.startsWith("custom:");
     tabPanels.forEach(panel => {
-        if (panel.id === `platform-panel-${currentPlatform}`) {
+        if (!isCustom && panel.id === `platform-panel-${currentPlatform}`) {
             panel.classList.remove("hidden");
         } else {
             panel.classList.add("hidden");
         }
     });
+    if (isCustom) {
+        // 取消所有内置 tab 的高亮（自定义平台不属于任何内置 tab）
+        tabButtons.forEach(btn => {
+            btn.classList.remove("active");
+            btn.style.background = "transparent";
+            btn.style.color = "var(--subtext0)";
+        });
+        const customPid = currentPlatform.split(":")[1];
+        // 等待供应商列表刷新完成后自动进入编辑
+        onSettingsOpenRefreshCustomProviders().then(() => {
+            startEditCustomProvider(customPid);
+            // 滚动到自定义提供商管理区
+            const cpSection = document.querySelector("#custom-providers-list");
+            if (cpSection && cpSection.scrollIntoView) {
+                cpSection.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+        });
+    }
 
     // 初始化 OCR 配置项
     if (ocrModeSelect) {
@@ -775,6 +798,9 @@ saveSettingsBtn.onclick = async () => {
         (enableSslInput && enableSslInput.checked !== initialEnableSsl)
     );
     
+    // 关键：删除 custom_providers，防止前端旧快照回写覆盖后端由 CRUD 端点维护的供应商列表
+    delete config.custom_providers;
+    
     await apiBridge.save_config(config);
     const fetchedConfig = await apiBridge.get_config();
     config = fetchedConfig;
@@ -786,3 +812,189 @@ saveSettingsBtn.onclick = async () => {
         alert("检测到服务端、端口或 SSL 传输设置已被修改。\n\n请手动关闭本程序并重新启动，新设置才能生效！");
     }
 };
+
+// ===================== 自定义模型提供商管理 =====================
+
+const cpList = document.getElementById("custom-providers-list");
+const cpForm = document.getElementById("custom-provider-form");
+const cpNameInput = document.getElementById("cp-name-input");
+const cpApiUrlInput = document.getElementById("cp-api-url-input");
+const cpModelsApiUrlInput = document.getElementById("cp-models-api-url-input");
+const cpApiKeyInput = document.getElementById("cp-api-key-input");
+const cpApiKeyInputContainer = document.getElementById("cp-api-key-input-container");
+const cpKeyStatusContainer = document.getElementById("cp-api-key-status-container");
+const cpChangeKeyBtn = document.getElementById("cp-change-key-btn");
+const cpDisconnectKeyBtn = document.getElementById("cp-disconnect-key-btn");
+const cpModelsInput = document.getElementById("cp-models-input");
+const cpTempInput = document.getElementById("cp-temperature-input");
+const cpMaxTokensInput = document.getElementById("cp-max-tokens-input");
+const cpSaveBtn = document.getElementById("cp-save-btn");
+const cpCancelBtn = document.getElementById("cp-cancel-btn");
+const cpEditId = document.getElementById("cp-edit-id");
+const addCustomProviderBtn = document.getElementById("add-custom-provider-btn");
+
+let customProvidersCache = [];
+let cpClearKeyPending = false;
+
+async function refreshCustomProvidersUI() {
+    if (!cpList) return;
+    const providers = await apiBridge.list_custom_providers();
+    customProvidersCache = providers || [];
+    // 同步到全局 config 缓存，避免后续 saveSettings 回写时把后端供应商列表覆盖
+    config.custom_providers = customProvidersCache;
+    cpList.innerHTML = "";
+    if (customProvidersCache.length === 0) {
+        cpList.innerHTML = '<div style="font-size: 12px; color: var(--subtext0); padding: 8px;">暂无自定义提供商，点击上方"新增提供商"添加。</div>';
+        return;
+    }
+    customProvidersCache.forEach(p => {
+        const row = document.createElement("div");
+        row.style.cssText = "display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;";
+        const keyBadge = p.has_api_key
+            ? '<span style="color: var(--green); font-size: 11px;">🔒 Key 已配置</span>'
+            : '<span style="color: var(--red); font-size: 11px;">⚠ 未配置 Key</span>';
+        const modelsUrlLine = p.models_api_url
+            ? ` · 模型地址: ${escapeHtml(p.models_api_url)}`
+            : "";
+        row.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 13px; color: var(--text); font-weight: 500;">${escapeHtml(p.name || p.id)} <span style="color: var(--subtext0); font-size: 11px;">(${escapeHtml(p.platform_id || "")})</span></span>
+                <span style="font-size: 11px; color: var(--subtext0);">${escapeHtml(p.api_url || "")}${modelsUrlLine} · ${keyBadge}</span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn btn-secondary btn-sm cp-edit-btn" data-cp-id="${escapeHtml(p.id)}" style="font-size: 11px; padding: 3px 8px;">编辑</button>
+                <button type="button" class="btn btn-secondary btn-sm cp-del-btn" data-cp-id="${escapeHtml(p.id)}" style="color: var(--red); font-size: 11px; padding: 3px 8px;">删除</button>
+            </div>`;
+        cpList.appendChild(row);
+    });
+    cpList.querySelectorAll(".cp-edit-btn").forEach(b => b.onclick = () => startEditCustomProvider(b.dataset.cpId));
+    cpList.querySelectorAll(".cp-del-btn").forEach(b => b.onclick = () => removeCustomProvider(b.dataset.cpId));
+}
+
+function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function resetCustomProviderForm() {
+    cpNameInput.value = "";
+    cpApiUrlInput.value = "";
+    cpModelsApiUrlInput.value = "";
+    cpApiKeyInput.value = "";
+    cpApiKeyInput.placeholder = "必填";
+    cpModelsInput.value = "";
+    cpTempInput.value = "0.7";
+    cpMaxTokensInput.value = "4096";
+    cpEditId.textContent = "";
+    cpClearKeyPending = false;
+    // 新增模式：显示输入框，隐藏状态
+    if (cpApiKeyInputContainer) cpApiKeyInputContainer.classList.remove("hidden");
+    if (cpKeyStatusContainer) cpKeyStatusContainer.classList.add("hidden");
+}
+
+function startEditCustomProvider(id) {
+    const p = customProvidersCache.find(x => x.id === id);
+    if (!p) return;
+    cpNameInput.value = p.name || "";
+    cpApiUrlInput.value = p.api_url || "";
+    cpModelsApiUrlInput.value = p.models_api_url || "";
+    cpApiKeyInput.value = "";
+    cpApiKeyInput.placeholder = "输入新 Key 以更换";
+    cpModelsInput.value = (p.models || []).join(", ");
+    cpTempInput.value = p.temperature != null ? p.temperature : 0.7;
+    cpMaxTokensInput.value = p.max_tokens != null ? p.max_tokens : 4096;
+    cpEditId.textContent = id;
+    cpClearKeyPending = false;
+    // 编辑模式：参考内置 apikey 形式，已配置则显示状态+更换/断开，未配置则显示输入框
+    if (p.has_api_key) {
+        if (cpApiKeyInputContainer) cpApiKeyInputContainer.classList.add("hidden");
+        if (cpKeyStatusContainer) cpKeyStatusContainer.classList.remove("hidden");
+    } else {
+        if (cpApiKeyInputContainer) cpApiKeyInputContainer.classList.remove("hidden");
+        if (cpKeyStatusContainer) cpKeyStatusContainer.classList.add("hidden");
+    }
+    cpForm.classList.remove("hidden");
+}
+
+async function removeCustomProvider(id) {
+    if (!confirm(`确认删除自定义提供商 "${id}"？\n其 API Key 也将被清除。`)) return;
+    const res = await apiBridge.remove_custom_provider(id);
+    if (res && res.error) { alert(res.error); return; }
+    await refreshCustomProvidersUI();
+    refreshPlatformSelect();
+    statusLabel.textContent = `已删除提供商: ${id}`;
+}
+
+if (addCustomProviderBtn) {
+    addCustomProviderBtn.onclick = () => {
+        resetCustomProviderForm();
+        cpForm.classList.remove("hidden");
+    };
+}
+
+if (cpCancelBtn) {
+    cpCancelBtn.onclick = () => { cpForm.classList.add("hidden"); };
+}
+
+// 自定义提供商 API Key 状态控制：复刻内置 apikey 的"更换/断开"形式
+if (cpChangeKeyBtn) {
+    cpChangeKeyBtn.onclick = () => {
+        if (cpApiKeyInputContainer) cpApiKeyInputContainer.classList.remove("hidden");
+        if (cpKeyStatusContainer) cpKeyStatusContainer.classList.add("hidden");
+        cpApiKeyInput.focus();
+    };
+}
+if (cpDisconnectKeyBtn) {
+    cpDisconnectKeyBtn.onclick = () => {
+        cpClearKeyPending = true;
+        if (cpApiKeyInputContainer) cpApiKeyInputContainer.classList.remove("hidden");
+        if (cpKeyStatusContainer) cpKeyStatusContainer.classList.add("hidden");
+        cpApiKeyInput.value = "";
+        cpApiKeyInput.placeholder = "已标记清除，保存后生效（可留空）";
+    };
+}
+
+if (cpSaveBtn) {
+    cpSaveBtn.onclick = async () => {
+        const name = cpNameInput.value.trim();
+        const apiUrl = cpApiUrlInput.value.trim();
+        if (!name || !apiUrl) { alert("名称和 API Base URL 不能为空"); return; }
+        const modelsApiUrl = cpModelsApiUrlInput.value.trim();
+        const models = cpModelsInput.value.split(",").map(s => s.trim()).filter(Boolean);
+        const temperature = parseFloat(cpTempInput.value) || 0.7;
+        const maxTokens = parseInt(cpMaxTokensInput.value) || 4096;
+        const apiKey = cpApiKeyInput.value.trim();
+        const editId = cpEditId.textContent.trim();
+        let res;
+        if (editId) {
+            // 编辑模式：参考内置 apikey 保存逻辑
+            // - 标记清除 → clear_api_key: true
+            // - 输入了新值 → api_key: 新值
+            // - 都没有 → 不传 api_key，保持原值
+            const updateData = {
+                id: editId, name, api_url: apiUrl, models_api_url: modelsApiUrl,
+                models, temperature, max_tokens: maxTokens
+            };
+            if (cpClearKeyPending) {
+                updateData.clear_api_key = true;
+            } else if (apiKey) {
+                updateData.api_key = apiKey;
+            }
+            res = await apiBridge.update_custom_provider(updateData);
+        } else {
+            if (!apiKey) { alert("新增提供商时 API Key 不能为空"); return; }
+            res = await apiBridge.add_custom_provider({
+                name, api_url: apiUrl, models_api_url: modelsApiUrl, api_key: apiKey, models, temperature, max_tokens: maxTokens
+            });
+        }
+        if (res && res.error) { alert(res.error); return; }
+        cpForm.classList.add("hidden");
+        await refreshCustomProvidersUI();
+        refreshPlatformSelect();
+        statusLabel.textContent = editId ? `已更新提供商: ${name}` : `已新增提供商: ${name}`;
+    };
+}
+
+// 供 main.js 调用：打开设置时刷新自定义提供商列表
+function onSettingsOpenRefreshCustomProviders() {
+    return refreshCustomProvidersUI();
+}

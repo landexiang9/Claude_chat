@@ -30,6 +30,30 @@ def parse_docx(file_path):
     try:
         doc = docx.Document(file_path)
         markdown_lines = []
+
+        # M-fix#24: 递归渲染表格,捕获单元格内的嵌套表格。
+        # doc.tables 与 cell.text 均不包含嵌套表,旧实现会整段丢失其内容。
+        W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+        def render_table(table):
+            tbl_lines = []
+            for i, row in enumerate(table.rows):
+                row_cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
+                tbl_lines.append("| " + " | ".join(row_cells) + " |")
+                if i == 0:
+                    tbl_lines.append("| " + " | ".join(["---"] * len(row_cells)) + " |")
+                # 查找该行单元格内的嵌套 <w:tbl> 并递归渲染为缩进子表
+                for cell in row.cells:
+                    for nt_el in cell._tc.findall(".//" + W_NS + "tbl"):
+                        try:
+                            nt = docx.table.Table(nt_el, cell)
+                        except Exception:
+                            nt = docx.table.Table(nt_el, None)
+                        nested = render_table(nt)
+                        if nested:
+                            tbl_lines.append("")
+                            tbl_lines.extend(nested)
+            return tbl_lines
         
         # 遍历文档元素（段落和表格）
         for element in doc.element.body:
@@ -54,13 +78,7 @@ def parse_docx(file_path):
                 # 处理表格
                 for table in doc.tables:
                     if table._element is element:
-                        table_lines = []
-                        for i, row in enumerate(table.rows):
-                            row_cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
-                            table_lines.append("| " + " | ".join(row_cells) + " |")
-                            if i == 0:
-                                table_lines.append("| " + " | ".join(["---"] * len(row_cells)) + " |")
-                        markdown_lines.extend(table_lines)
+                        markdown_lines.extend(render_table(table))
                         markdown_lines.append("")
                         break
                         

@@ -7,8 +7,12 @@ import queue
 import threading
 import json
 import logging
+import ipaddress
+import socket
 from datetime import datetime
+from functools import partial
 from pathlib import Path
+from urllib.parse import urlparse
 
 # 尝试引入本地图形库容器包
 try:
@@ -20,7 +24,7 @@ except ImportError:
 
 logger = logging.getLogger("claude_chat")
 
-from claude_chat.config import FALLBACK_MODELS, ConfigManager
+from claude_chat.config import FALLBACK_MODELS, ConfigManager, find_custom_provider, custom_platform_id
 from claude_chat.db import DatabaseManager
 from claude_chat.clients import fetch_available_models, get_default_capabilities, sanitize_error_message
 
@@ -58,22 +62,32 @@ class ClaudeChatApp:
         # 当前活跃的本地代码执行子进程映射 { process_id: { "proc": Popen对象, "temp_path": 临时文件路径 } }
         self.active_processes = {}
         self.process_lock = threading.Lock()
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         
         # 挂载的终端日志监听回调列表
         self.console_listeners = []
 
+    def set_streaming_done(self):
+        """
+        M9: 线程安全地将 is_streaming 置为 False。
+        供 reader 线程和 HTTP server 的流式处理线程统一调用，避免无锁并发竞态。
+        """
+        with self.lock:
+            self.is_streaming = False
+
     def abort_generation(self):
         """
         强行中止当前的模型输出生成流：设置事件，关闭底层连接，标记状态为非流式。
+        M9: 加锁保护 is_streaming/active_stream 的读写，防止与 reader 线程并发竞态。
         """
-        self.abort_event.set()
-        if self.active_stream:
-            try:
-                self.active_stream.close()
-            except Exception:
-                pass
-            self.active_stream = None
+        with self.lock:
+            self.abort_event.set()
+            if self.active_stream:
+                try:
+                    self.active_stream.close()
+                except Exception:
+                    pass
+                self.active_stream = None
         return True
 
     def save_code_block(self, content, suggest_name):
@@ -104,6 +118,36 @@ class ClaudeChatApp:
         except Exception as e:
             logger.error(f"保存代码块时发生写入错误: {e}")
             return False
+
+    @staticmethod
+    def _is_safe_url(url):
+        """
+        SSRF 防护:校验 http(s) URL 的主机不指向私有/环回/链路本地地址。
+        用于 LLM 渲染输出中 <img src> 等模型可控 URL 的出站抓取。
+        """
+        try:
+            parsed = urlparse(url)
+        except Exception:
+            return False
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = parsed.hostname
+        if not host:
+            return False
+        # 域名解析为 IP 后逐个校验,拒绝内网/元数据地址
+        try:
+            infos = socket.getaddrinfo(host, None)
+        except Exception:
+            return False
+        for info in infos:
+            ip_str = info[4][0]
+            try:
+                ip = ipaddress.ip_address(ip_str)
+            except ValueError:
+                continue
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False
+        return True
 
     def save_image(self, image_data, suggest_name):
         """
@@ -140,6 +184,10 @@ class ClaudeChatApp:
                     logger.error("不支持的 data URI 格式（非 base64）")
                     return None
             elif image_data.startswith("http://") or image_data.startswith("https://"):
+                # SSRF 防护:模型可控的 <img src> 可能指向内网/元数据地址,校验后再抓取
+                if not self._is_safe_url(image_data):
+                    logger.error(f"拒绝抓取不安全的图片 URL: {image_data[:80]}...")
+                    return None
                 import urllib.request
                 req = urllib.request.Request(image_data, headers={"User-Agent": "Mozilla/5.0"})
                 with urllib.request.urlopen(req, timeout=30) as resp:
@@ -261,6 +309,11 @@ class ClaudeChatApp:
             elif active_platform == "gemini":
                 api_key = self.config.get("gemini_api_key", "")
                 platform_api_url = self.config.get("gemini_api_url", "")
+            elif active_platform.startswith("custom:"):
+                provider = find_custom_provider(self.config.data, active_platform) or {}
+                pid = custom_platform_id(active_platform)
+                api_key = self.config.get(f"custom_{pid}_api_key", "") if pid else ""
+                platform_api_url = provider.get("api_url", "")
             else:
                 api_key = self.config.get("api_key", "")
                 platform_api_url = None
@@ -268,7 +321,14 @@ class ClaudeChatApp:
             proxy_mode = self.config.get("proxy_mode", "system")
             proxy_url = self.config.get("proxy_url", "")
             
-            model_ids = fetch_available_models(api_key, proxy_mode, proxy_url, active_platform=active_platform, platform_api_url=platform_api_url)
+            custom_fallback = None
+            custom_models_api_url = None
+            if active_platform.startswith("custom:"):
+                provider = find_custom_provider(self.config.data, active_platform) or {}
+                custom_fallback = provider.get("models", [])
+                custom_models_api_url = provider.get("models_api_url", "")
+            
+            model_ids = fetch_available_models(api_key, proxy_mode, proxy_url, active_platform=active_platform, platform_api_url=platform_api_url, custom_fallback_models=custom_fallback, custom_models_api_url=custom_models_api_url)
             
             # 校验平台是否在拉取期间发生切换，防止旧请求覆盖新平台的模型列表
             current_platform = self.config.get("active_platform", "claude")
@@ -290,13 +350,20 @@ class ClaudeChatApp:
         [在后台线程中运行] 主流消息读取线程。
         从内部线程队列 `streaming_queue` 中循环读取 API 响应事件块，
         并将其通过 `evaluate_js` 推送回桌面客户端前端渲染页面。
+        M9: 保存 queue 的局部引用，循环中始终使用该引用而非 self.streaming_queue，
+        防止流结束后用户立即发新消息导致 self.streaming_queue 被替换、旧 reader 读到新 queue 的竞态。
         """
+        my_queue = self.streaming_queue
         streaming_text = ""
         streaming_thinking_text = ""
-        
+        # 在线程启动时一次性捕获当前对话 id,避免后续被 load/delete/save 等持锁操作改写
+        # 导致"流式中切换对话 → 响应写进错误对话"或 NoneType 不可下标的竞态 (#5/#6)。
+        my_conv = self.current_conv
+        conv_id = my_conv["id"] if my_conv else None
+
         while True:
             try:
-                msg = self.streaming_queue.get() # 阻塞直至下一条消息块到来
+                msg = my_queue.get() # 阻塞直至下一条消息块到来
                 msg_type, msg_data = msg
                 
                 if msg_type == "text":
@@ -334,61 +401,69 @@ class ClaudeChatApp:
                         self.window.evaluate_js(js_code)
                     
                 elif msg_type == "done":
-                    # 生成成功结束包，计算 Token 数量并持久化写入 SQLite 数据库
-                    if self.current_conv:
+                    # 生成成功结束包,计算 Token 数量并持久化写入 SQLite 数据库
+                    if conv_id:
                         input_tokens = msg_data.get("input_tokens", 0)
                         output_tokens = msg_data.get("output_tokens", 0)
                         thinking = streaming_thinking_text if streaming_thinking_text else None
                         self.conv_manager.add_assistant_message_and_update_tokens(
-                            self.current_conv["id"],
+                            conv_id,
                             streaming_text,
                             thinking,
                             input_tokens,
                             output_tokens
                         )
-                        # 从数据库重新加载以保持内存状态同步
-                        self.current_conv = self.conv_manager.load_conversation(self.current_conv["id"])
+                        # 仅当用户未在流式期间切换对话时才同步内存,避免覆盖已切换到的新对话
+                        with self.lock:
+                            if self.current_conv and self.current_conv.get("id") == conv_id:
+                                self.current_conv = self.conv_manager.load_conversation(conv_id)
                     
                     if self.window:
                         js_code = f"if (window.onStreamMessage) window.onStreamMessage('done', {json.dumps(msg_data)});"
                         self.window.evaluate_js(js_code)
                     
-                    self.is_streaming = False
+                    self.set_streaming_done()
                     break
                     
                 elif msg_type == "aborted":
-                    # 用户手工中止包，对现有生成内容作局部保存
-                    if self.current_conv:
+                    # 用户手工中止包,对现有生成内容作局部保存
+                    if conv_id:
                         thinking = streaming_thinking_text if streaming_thinking_text else None
                         self.conv_manager.add_assistant_message_and_update_tokens(
-                            self.current_conv["id"],
+                            conv_id,
                             streaming_text,
                             thinking,
                             aborted=True
                         )
-                        self.current_conv = self.conv_manager.load_conversation(self.current_conv["id"])
+                        with self.lock:
+                            if self.current_conv and self.current_conv.get("id") == conv_id:
+                                self.current_conv = self.conv_manager.load_conversation(conv_id)
                     
                     if self.window:
                         js_code = f"if (window.onStreamMessage) window.onStreamMessage('aborted', {{}});"
                         self.window.evaluate_js(js_code)
                     
-                    self.is_streaming = False
+                    self.set_streaming_done()
                     break
  
                 elif msg_type == "error":
-                    # 出错，通知前端弹窗并在本地数据库记录已生成的这部分文本内容
-                    if self.current_conv and streaming_text:
+                    # 出错,通知前端弹窗并在本地数据库记录已生成的这部分文本内容
+                    if conv_id and streaming_text:
+                        thinking = streaming_thinking_text if streaming_thinking_text else None
                         self.conv_manager.add_assistant_message_and_update_tokens(
-                            self.current_conv["id"],
-                            streaming_text
+                            conv_id,
+                            streaming_text,
+                            thinking
                         )
-                        self.current_conv = self.conv_manager.load_conversation(self.current_conv["id"])
+                        with self.lock:
+                            if self.current_conv and self.current_conv.get("id") == conv_id:
+                                self.current_conv = self.conv_manager.load_conversation(conv_id)
                         
                     if self.window:
                         js_code = f"if (window.onStreamMessage) window.onStreamMessage('error', {json.dumps(msg_data)});"
                         self.window.evaluate_js(js_code)
                     
-                    self.is_streaming = False
+                    self.set_streaming_done()
                     break
             except Exception as e:
                 if self.window:
@@ -396,6 +471,6 @@ class ClaudeChatApp:
                     cleaned_err = sanitize_error_message(e)
                     js_code = f"if (window.onStreamMessage) window.onStreamMessage('error', {json.dumps(cleaned_err)});"
                     self.window.evaluate_js(js_code)
-                self.is_streaming = False
+                self.set_streaming_done()
                 break
 

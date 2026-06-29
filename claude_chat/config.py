@@ -52,6 +52,54 @@ def setup_logging():
 logger = logging.getLogger("claude_chat")
 
 
+def sanitize_provider_id(raw_id):
+    """将任意字符串规整为只含 a-z0-9_ 的安全标识符，用作配置键后缀。"""
+    import re
+    cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', str(raw_id)).lower().strip('_')
+    return cleaned or "provider"
+
+
+def get_sensitive_api_keys(config_data):
+    """
+    返回需要加密保存的全部 API Key 字段名列表。
+    包含 3 个内置平台的固定 Key，以及所有自定义提供商动态生成的 custom_<id>_api_key。
+    """
+    base_keys = [
+        "api_key", "tavily_api_key", "jina_api_key",
+        "deepseek_api_key", "gemini_api_key",
+        "deepseek_tavily_api_key", "deepseek_jina_api_key"
+    ]
+    for p in (config_data.get("custom_providers") or []):
+        pid = p.get("id")
+        if pid:
+            base_keys.append(f"custom_{sanitize_provider_id(pid)}_api_key")
+    return base_keys
+
+
+def is_custom_platform(active_platform):
+    """判断平台标识是否指向自定义提供商（形如 'custom:<id>'）。"""
+    return isinstance(active_platform, str) and active_platform.startswith("custom:")
+
+
+def custom_platform_id(active_platform):
+    """从 'custom:<id>' 平台标识中提取并规整 provider id。"""
+    if is_custom_platform(active_platform):
+        return sanitize_provider_id(active_platform.split(":", 1)[1])
+    return None
+
+
+def find_custom_provider(config_data, active_platform):
+    """在 config_data 的 custom_providers 列表中按平台标识查找对应 provider，找不到返回 None。"""
+    pid = custom_platform_id(active_platform)
+    if not pid:
+        return None
+    for p in (config_data.get("custom_providers") or []):
+        if sanitize_provider_id(p.get("id", "")) == pid:
+            return p
+    return None
+
+
+
 
 # ==========================================
 # 默认/备用模型列表 (如果从 API 获取在线模型失败时使用)
@@ -208,6 +256,8 @@ class ConfigManager:
             "thinking_budget": 16000,
             "thinking_level": "high",
             "enable_web_search": False,
+            "enable_web_fetch": True,
+            "web_fetch_limit": 15000,
             "web_search_engine": "google",
             "tavily_api_key": "",
             "jina_api_key": "",
@@ -218,6 +268,8 @@ class ConfigManager:
             "deepseek_temperature": 0.7,
             "deepseek_max_tokens": 4096,
             "deepseek_enable_web_search": False,
+            "deepseek_enable_web_fetch": True,
+            "deepseek_web_fetch_limit": 15000,
             "deepseek_web_search_engine": "google",
             "deepseek_tavily_api_key": "",
             "deepseek_jina_api_key": "",
@@ -238,6 +290,7 @@ class ConfigManager:
             "enable_ssl": False,
             "sync_config_to_web": True,
             "only_server": False,
+            "use_cdn_assets": False,
             "proxy_mode": "system",
             "proxy_url": "",
             "security_token": "",
@@ -246,8 +299,12 @@ class ConfigManager:
                 {"id": "translator", "name": "专业翻译官", "content": "你是一个专业的翻译官，请将我输入的所有内容翻译成地道的英文，如果本身就是英文则翻译成中文。无需解释。"},
                 {"id": "programmer", "name": "高级程序员", "content": "你是一位拥有20年开发经验的资深软件架构师。请以严谨、结构化、注重性能与安全性的视角回答编程问题，并提供符合最佳实践的完整代码段。"}
             ],
-            "selected_system_prompt_id": ""
+            "selected_system_prompt_id": "",
+            "custom_providers": []
         }
+        # 保存默认值的深拷贝，供 load() 类型校验时恢复使用
+        import copy
+        self._defaults = copy.deepcopy(self.data)
         self.load()
         
         # 确保存在一个安全验证 Token 用于跨端与网络鉴权
@@ -255,6 +312,52 @@ class ConfigManager:
             import secrets
             self.data["security_token"] = secrets.token_hex(16)
             self.save()
+
+    # M5: 已知配置键的类型规范，用于 load() 时校验和修正 config.json 中的错误类型
+    _TYPE_SPEC = {
+        "temperature": float,
+        "max_tokens": int,
+        "thinking_budget": int,
+        "deepseek_temperature": float,
+        "deepseek_max_tokens": int,
+        "gemini_temperature": float,
+        "gemini_max_tokens": int,
+        "gemini_thinking_budget": int,
+        "server_port": int,
+        "web_fetch_limit": int,
+        "deepseek_web_fetch_limit": int,
+    }
+    _BOOL_KEYS = {
+        "thinking_enabled", "enable_web_search", "enable_web_fetch", "enable_code_sandbox",
+        "auto_run_code", "deepseek_enable_web_search", "deepseek_enable_web_fetch",
+        "gemini_thinking_enabled", "gemini_enable_web_search",
+        "gemini_enable_code_sandbox", "enable_server", "enable_ssl",
+        "sync_config_to_web", "only_server", "use_cdn_assets",
+    }
+
+    def _validate_config_types(self):
+        """
+        校验 self.data 中已知键的类型，将 None 或错误类型修正为正确类型。
+        防止 config.json 中的 "temperature": null 或 "max_tokens": "4096" 等问题
+        导致后续 int()/float()/bool() 转换崩溃或逻辑反转。
+        """
+        for k, typ in self._TYPE_SPEC.items():
+            v = self.data.get(k)
+            if v is None:
+                self.data[k] = self._defaults.get(k)
+            elif not isinstance(v, typ):
+                try:
+                    self.data[k] = typ(v)
+                except (ValueError, TypeError):
+                    self.data[k] = self._defaults.get(k)
+        for k in self._BOOL_KEYS:
+            v = self.data.get(k)
+            if isinstance(v, str):
+                self.data[k] = v.strip().lower() in ("true", "1", "yes")
+            elif v is None:
+                self.data[k] = self._defaults.get(k, False)
+            elif not isinstance(v, bool):
+                self.data[k] = bool(v)
 
     def load(self):
         """
@@ -269,12 +372,12 @@ class ConfigManager:
                     # 用读取到的字段覆盖更新默认配置字典
                     self.data.update(loaded)
                     
-                    # 定义所有需要安全加密保存的 API Key 列表
-                    api_keys = [
-                        "api_key", "tavily_api_key", "jina_api_key", 
-                        "deepseek_api_key", "gemini_api_key",
-                        "deepseek_tavily_api_key", "deepseek_jina_api_key"
-                    ]
+                    # M5: 类型校验 — 防止 config.json 中的错误类型(None/字符串)导致
+                    # 后续 int()/float()/bool() 转换崩溃或逻辑反转(如 bool("false")=True)
+                    self._validate_config_types()
+                    
+                    # 定义所有需要安全加密保存的 API Key 列表（含自定义提供商动态 Key）
+                    api_keys = get_sensitive_api_keys(loaded)
                     
                     for key in api_keys:
                         storage = loaded.get(f"{key}_storage", "none")
@@ -292,7 +395,6 @@ class ConfigManager:
                                     key_val = aes_decrypt(obf) if ":" in obf else xor_decrypt(obf)
                             except Exception as e:
                                 logger.warning(f"从 keyring 中读取 {key} 失败，降级采用本地加密副本: {e}")
-                                self._keyring_available = False
                                 if obf:
                                     key_val = aes_decrypt(obf) if ":" in obf else xor_decrypt(obf)
                         elif storage in ("aes", "xor"):
@@ -310,44 +412,65 @@ class ConfigManager:
                     logger.error(f"加载配置文件出错: {e}")
 
 
+    def _encrypt_key_backup(self, key_val):
+        """
+        生成 API Key 的加密备份。实现三级递降策略：AES → XOR → none。
+        返回 (storage_type, obfuscated_str)。
+        """
+        encrypted = aes_encrypt(key_val)
+        if encrypted:
+            return ("aes", encrypted)
+        try:
+            obf = xor_crypt(key_val)
+            if obf:
+                return ("xor", obf)
+        except Exception as e:
+            logger.error(f"XOR 混淆备份失败: {e}")
+        logger.error("AES 与 XOR 加密均失败，Key 备份无法生成")
+        return ("none", "")
+
     def save(self):
         """
         保存当前配置到本地 file。出于安全考虑，敏感 API Key 不会以明文写入磁盘文件。
-        优先存入 keyring 并保存一份基于机器指纹的 XOR 混淆副本。
+        存储层级：keyring → AES-GCM-256 → XOR，无论 keyring 是否成功都始终保留加密备份，
+        确保 keyring 后续不可用时仍可从备份恢复。
         """
         with self._lock:
             to_save = dict(self.data)
 
-            # 定义所有需要安全加密保存的 API Key 列表
-            api_keys = [
-                "api_key", "tavily_api_key", "jina_api_key", 
-                "deepseek_api_key", "gemini_api_key",
-                "deepseek_tavily_api_key", "deepseek_jina_api_key"
-            ]
-            
+            # 定义所有需要安全加密保存的 API Key 列表（含自定义提供商动态 Key）
+            api_keys = get_sensitive_api_keys(to_save)
+
             for key in api_keys:
-                key_val = to_save.get(key, "").strip()
-                
+                # M1 防御：config.get 可能返回 None，strip() 前做类型检查
+                raw = to_save.get(key)
+                key_val = raw.strip() if isinstance(raw, str) else ""
+
                 # 清除要写入磁盘的明文字段
                 to_save[key] = ""
                 to_save[f"{key}_storage"] = "none"
                 to_save[f"{key}_obfuscated"] = ""
-                
-                if key_val:
-                    if getattr(self, "_keyring_available", True):
-                        try:
-                            import keyring
-                            keyring.set_password("ClaudeChat", key, key_val)
-                            to_save[f"{key}_storage"] = "keyring"
-                            to_save[f"{key}_obfuscated"] = ""
-                        except Exception as e:
-                            logger.warning(f"保存 {key} 至 keyring 失败，将自动降级为本地加密存储 (AES): {e}")
-                            self._keyring_available = False
-                            to_save[f"{key}_storage"] = "aes"
-                            to_save[f"{key}_obfuscated"] = aes_encrypt(key_val)
-                    else:
-                        to_save[f"{key}_storage"] = "aes"
-                        to_save[f"{key}_obfuscated"] = aes_encrypt(key_val)
+
+                if not key_val:
+                    continue
+
+                # 第 1 级：尝试 keyring（不依赖实例级永久禁用标志，每次都尝试）
+                keyring_ok = False
+                try:
+                    import keyring
+                    keyring.set_password("ClaudeChat", key, key_val)
+                    keyring_ok = True
+                except Exception as e:
+                    logger.warning(f"保存 {key} 至 keyring 失败，降级本地加密: {e}")
+
+                # 第 2 级：无论 keyring 成败，始终生成加密备份（H1 核心修复）
+                backup_type, backup_obf = self._encrypt_key_backup(key_val)
+
+                if keyring_ok:
+                    to_save[f"{key}_storage"] = "keyring"
+                else:
+                    to_save[f"{key}_storage"] = backup_type
+                to_save[f"{key}_obfuscated"] = backup_obf
 
             try:
                 with open(CONFIG_PATH, "w", encoding="utf-8") as f:
@@ -369,5 +492,15 @@ class ConfigManager:
         """
         with self._lock:
             self.data[key] = value
+            self.save()
+
+    def set_many(self, updates):
+        """
+        批量更新多个配置项并一次性持久化写入。
+        用于 save_config 等需要原子性批量写入的场景，避免循环调用 set() 导致重复写盘。
+        """
+        with self._lock:
+            for k, v in updates.items():
+                self.data[k] = v
             self.save()
 

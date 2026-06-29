@@ -4,7 +4,8 @@ import tempfile
 import json
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from claude_chat.app import ClaudeChatApp, WebAPI
+from claude_chat.app import ClaudeChatApp
+from claude_chat.api_bridge import WebAPI
 from claude_chat.db import DatabaseManager
 import claude_chat.db
 

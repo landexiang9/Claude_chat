@@ -80,18 +80,23 @@ def preprocess_message_content(content):
 
 def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None, enable_search=False, enable_web_fetch=True, web_fetch_limit=15000, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, **kwargs):
     try:
-        # Preprocess messages to extract and structure any base64 markdown images
+        active_platform = kwargs.get("active_platform", "claude")
+
+        # M4: 仅 Claude 平台做 base64 图片块预处理，DeepSeek/Custom 平台不做转换，
+        # 否则 Anthropic 格式 image block 会被 convert_messages_to_openai 替换为 "[图片]"，
+        # 既丢失图片数据也丢失原始 markdown 文本。
         processed_messages = []
         for msg in messages:
-            role = msg.get("role")
             content = msg.get("content")
-            processed_content = preprocess_message_content(content)
+            if active_platform == "claude":
+                processed_content = preprocess_message_content(content)
+            else:
+                processed_content = content
             processed_msg = dict(msg)
             processed_msg["content"] = processed_content
             processed_messages.append(processed_msg)
         messages = processed_messages
 
-        active_platform = kwargs.get("active_platform", "claude")
         depth = kwargs.get("depth", 0)
         previous_content_blocks = kwargs.get("previous_content_blocks")
         
@@ -142,6 +147,7 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 tavily_api_key=tavily_api_key,
                 jina_api_key=jina_api_key,
                 web_page_parser=web_page_parser,
+                web_fetch_limit=web_fetch_limit,
                 conv_id=conv_id,
                 conv_manager=conv_manager,
                 previous_content_blocks=previous_content_blocks,
@@ -177,6 +183,33 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 conv_id=conv_id,
                 conv_manager=conv_manager,
                 previous_content_blocks=previous_content_blocks
+            )
+        elif active_platform.startswith("custom:"):
+            # 自定义 OpenAI 兼容提供商：复用 DeepSeek (OpenAI SDK) 客户端
+            custom_api_key = kwargs.get("custom_api_key", "")
+            custom_api_url = kwargs.get("custom_api_url", "")
+            return stream_deepseek_response(
+                api_key=custom_api_key,
+                api_url=custom_api_url,
+                proxy_mode=proxy_mode,
+                proxy_url=proxy_url,
+                messages=messages,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                streaming_queue=streaming_queue,
+                abort_event=abort_event,
+                on_stream_created=on_stream_created,
+                system=system,
+                enable_search=False,
+                search_engine="google",
+                tavily_api_key="",
+                jina_api_key="",
+                web_page_parser="local",
+                conv_id=conv_id,
+                conv_manager=conv_manager,
+                previous_content_blocks=previous_content_blocks,
+                depth=depth
             )
         else:
             raise ValueError(f"Unknown active platform: {active_platform}")

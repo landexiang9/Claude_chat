@@ -224,11 +224,15 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         """
         解析 POST 请求中的 JSON 请求体数据，带有请求大小上限检查，防御 OOM 攻击
         """
-        content_length = int(self.headers.get('Content-Length', 0))
-        if content_length == 0:
-            return {}
-            
         # 限制请求体最大为 50MB，防御超大 payload 导致的 OOM 攻击
+        # M-fix#7: 用 <= 0 拒绝负值(Content-Length: -1 经 read(-1) 会被当成"读到 EOF",
+        # 绕过上限耗尽内存);非法/缺省头统一视作 0。
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+        except (ValueError, TypeError):
+            return {}
+        if content_length <= 0:
+            return {}
         if content_length > 50 * 1024 * 1024:
             raise ValueError("Payload too large")
             
@@ -374,7 +378,12 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             parts = path.split("/")
             if len(parts) >= 5:
                 conv_id = parts[-2]
-                index = int(parts[-1])
+                # M-fix#31: 索引段可能非数字(如 /abc),int 会抛 ValueError 漏到顶层变 500,补 400。
+                try:
+                    index = int(parts[-1])
+                except (ValueError, TypeError):
+                    self.send_error(400, "Bad Request")
+                    return
                 self.send_json_response(self.server.api.get_message_packet(conv_id, index))
             else:
                 self.send_error(400, "Bad Request")
@@ -388,6 +397,10 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         elif path.startswith("/api/console_stream/"):
             proc_id = path.split("/")[-1]
             self.handle_console_stream(proc_id)
+            
+        # GET /api/custom_providers -> 获取自定义模型提供商列表
+        elif path == "/api/custom_providers":
+            self.send_json_response(self.server.api.list_custom_providers())
             
         else:
             self.send_error(404, "Endpoint Not Found")
@@ -406,13 +419,47 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                 
             if not self.server.app.config.get("sync_config_to_web", True):
                 # 隐藏保存通道：若关闭了向 Web 同步，网络端提交的全部敏感凭证在后端强制以本地现有数据覆盖，保证存储隔离
-                keys_to_preserve = ["api_key", "deepseek_api_key", "gemini_api_key", "tavily_api_key", "jina_api_key"]
+                from claude_chat.config import get_sensitive_api_keys
+                keys_to_preserve = get_sensitive_api_keys(self.server.app.config.data)
                 for key in keys_to_preserve:
                     body[key] = self.server.app.config.get(key)
                     # 避免触发清除逻辑
                     body.pop(f"clear_{key}", None)
             success = self.server.api.save_config(body)
             self.send_json_response({"success": success})
+            
+        # POST /api/add_custom_provider -> 新增自定义模型提供商并保存到服务器
+        elif path == "/api/add_custom_provider":
+            result = self.server.api.add_custom_provider(
+                name=body.get("name", ""),
+                api_url=body.get("api_url", ""),
+                api_key=body.get("api_key", ""),
+                models=body.get("models", []),
+                temperature=body.get("temperature", 0.7),
+                max_tokens=body.get("max_tokens", 4096),
+                models_api_url=body.get("models_api_url", "")
+            )
+            self.send_json_response(result)
+            
+        # POST /api/update_custom_provider -> 更新自定义提供商元数据 / API Key
+        elif path == "/api/update_custom_provider":
+            result = self.server.api.update_custom_provider(
+                provider_id=body.get("id", ""),
+                name=body.get("name"),
+                api_url=body.get("api_url"),
+                api_key=body.get("api_key"),
+                models=body.get("models"),
+                temperature=body.get("temperature"),
+                max_tokens=body.get("max_tokens"),
+                models_api_url=body.get("models_api_url"),
+                clear_api_key=body.get("clear_api_key", False)
+            )
+            self.send_json_response(result)
+            
+        # POST /api/remove_custom_provider -> 删除自定义提供商
+        elif path == "/api/remove_custom_provider":
+            result = self.server.api.remove_custom_provider(body.get("id", ""))
+            self.send_json_response(result)
             
         # POST /api/new_conversation -> 新建对话
         elif path == "/api/new_conversation":
@@ -570,11 +617,13 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                     )
                     
                     # 仅当内存中当前选中的对话 ID 仍匹配时才从 DB 重新加载进行同步，防状态污染
-                    curr = self.server.api._app.current_conv
-                    if curr and curr.get("id") == conv_id:
-                        self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
-                        
-                    self.server.api._app.is_streaming = False
+                    # M-fix#20: 读-检查-写 current_conv 须持 app.lock,与 api_bridge 各持锁写入互斥,避免 TOCTOU 覆盖
+                    with self.server.api._app.lock:
+                        curr = self.server.api._app.current_conv
+                        if curr and curr.get("id") == conv_id:
+                            self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
+
+                    self.server.api._app.set_streaming_done()
                     break
                 elif msg_type == "aborted":
                     # 被强行中止，增量对已生成的内容作局部保存存档
@@ -585,33 +634,63 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                         thinking,
                         aborted=True
                     )
-                    
-                    curr = self.server.api._app.current_conv
-                    if curr and curr.get("id") == conv_id:
-                        self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
-                        
-                    self.server.api._app.is_streaming = False
+
+                    with self.server.api._app.lock:
+                        curr = self.server.api._app.current_conv
+                        if curr and curr.get("id") == conv_id:
+                            self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
+
+                    self.server.api._app.set_streaming_done()
                     break
                 elif msg_type == "error":
                     # 发生错误，将当前已生成文本增量妥善存档
                     if streaming_text:
+                        thinking = streaming_thinking_text if streaming_thinking_text else None
                         self.server.api._app.conv_manager.add_assistant_message_and_update_tokens(
                             conv_id,
-                            streaming_text
+                            streaming_text,
+                            thinking
                         )
-                        curr = self.server.api._app.current_conv
-                        if curr and curr.get("id") == conv_id:
-                            self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
-                            
-                    self.server.api._app.is_streaming = False
+                        with self.server.api._app.lock:
+                            curr = self.server.api._app.current_conv
+                            if curr and curr.get("id") == conv_id:
+                                self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
+
+                    self.server.api._app.set_streaming_done()
                     break
             except queue.Empty:
                 logger.warning("模型流输出队列超时。")
-                self.server.api._app.is_streaming = False
+                # M-fix#19: 超时不能直接丢已累积的流式文本;按 error 模式增量存档并停止后端生成线程
+                if streaming_text:
+                    try:
+                        thinking = streaming_thinking_text if streaming_thinking_text else None
+                        self.server.api._app.conv_manager.add_assistant_message_and_update_tokens(
+                            conv_id, streaming_text, thinking
+                        )
+                    except Exception as save_err:
+                        logger.error(f"超时时存档部分响应失败: {save_err}")
+                try:
+                    self.server.api._app.abort_generation()
+                except Exception:
+                    pass
+                self.server.api._app.set_streaming_done()
                 break
             except Exception as e:
                 logger.error(f"推送流事件数据时出错: {e}")
-                self.server.api._app.is_streaming = False
+                # M-fix#19: 同上,异常/客户端断开时也存档已生成文本并停止后台线程
+                if streaming_text:
+                    try:
+                        thinking = streaming_thinking_text if streaming_thinking_text else None
+                        self.server.api._app.conv_manager.add_assistant_message_and_update_tokens(
+                            conv_id, streaming_text, thinking
+                        )
+                    except Exception as save_err:
+                        logger.error(f"异常时存档部分响应失败: {save_err}")
+                try:
+                    self.server.api._app.abort_generation()
+                except Exception:
+                    pass
+                self.server.api._app.set_streaming_done()
                 break
 
     def handle_console_stream(self, process_id):
@@ -628,21 +707,38 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                 
         # 挂载到全局应用监听列表中
         self.server.app.console_listeners.append(callback)
-        
+
+        # M-fix#21: 连接前先校验进程是否仍存活,已退出者直接 404,避免线程在无事件的
+        # queue.get() 上永久阻塞、监听器累积泄漏。
+        with self.server.app.process_lock:
+            process_exists = process_id in self.server.app.active_processes
+        if not process_exists:
+            if callback in self.server.app.console_listeners:
+                self.server.app.console_listeners.remove(callback)
+            self.send_error(404, "Process Not Found")
+            return
+
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain; charset=utf-8')
         self._send_cors_headers()
         self.send_header("Referrer-Policy", "same-origin")
         self.end_headers()
-        
+
         try:
             while True:
-                # 阻塞读取进程读写线程写入的数据
-                event = q.get()
+                # 带超时的阻塞读取:进程已退出且无后续事件时也能及时退出,防止线程泄漏
+                try:
+                    event = q.get(timeout=5)
+                except queue.Empty:
+                    # 若进程已不在活跃表中且队列空,判定为已退出的陈旧连接,安全退出
+                    with self.server.app.process_lock:
+                        if process_id not in self.server.app.active_processes:
+                            break
+                    continue
                 line = json.dumps(event, ensure_ascii=False) + "\n"
                 self.wfile.write(line.encode('utf-8'))
                 self.wfile.flush()
-                
+
                 # 如果进程退出，则终止该推送流连接
                 if event.get("stream") == "exit":
                     break

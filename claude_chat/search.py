@@ -2,10 +2,41 @@ import urllib.parse
 import re
 import logging
 import html
+import ipaddress
+import socket
 import httpx
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger("claude_chat")
+
+
+def _is_safe_web_url(url):
+    """
+    SSRF 防护:校验 http(s) URL 不指向私有/环回/链路本地/保留地址。
+    用于 fetch_webpage_content 等对 LLM 可控 URL 的出站抓取。
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = parsed.hostname
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except Exception:
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except (ValueError, IndexError):
+            continue
+        if (ip.is_private or ip.is_loopback or ip.is_link_local or
+                ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return False
+    return True
 
 def build_search_client(proxy_mode="system", proxy_url=""):
     """
@@ -291,7 +322,13 @@ def fetch_webpage_content(url, parser_type="local", jina_api_key="", proxy_mode=
     """
     logger.info(f"开始抓取网页内容: {url}, 解析器类型: {parser_type}")
     usage_info = None
-    
+
+    # SSRF 防护:URL 由 LLM 工具(input)提供,可能经 prompt 注入指向内网/元数据地址。
+    # 校验后再放行,本地直连与 Jina 代理两种路径均受保护。
+    if not _is_safe_web_url(url):
+        logger.warning(f"拒绝抓取不安全的网页 URL: {url}")
+        return f"Error: URL rejected for security reasons (internal/private host not allowed): {url}", None
+
     try:
         with build_search_client(proxy_mode, proxy_url) as client:
             if parser_type == "jina":

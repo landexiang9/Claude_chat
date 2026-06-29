@@ -7,12 +7,11 @@ if (typeof marked !== 'undefined') {
 }
 
 function parseMarkdown(text) {
-    if (typeof marked !== 'undefined') {
-        const parsedHtml = marked.parse(text);
-        if (typeof DOMPurify !== 'undefined') {
-            return DOMPurify.sanitize(parsedHtml);
-        }
-        return parsedHtml;
+    // M-fix#16: 必须同时具备 marked + DOMPurify 才能安全返回 HTML。
+    // 当 marked 已加载而 DOMPurify 因 CDN 失败/广告拦截缺失时,直接返回 marked.parse 会
+    // 把内联原始 HTML 注入 innerHTML 造成 XSS,因此降级走转义路径而非返回原始解析结果。
+    if ((typeof marked !== 'undefined') && (typeof DOMPurify !== 'undefined')) {
+        return DOMPurify.sanitize(marked.parse(text));
     }
     return String(text)
         .replace(/&/g, "&amp;")
@@ -66,14 +65,18 @@ function updateLedStatus() {
         hasKey = !!(config.has_deepseek_api_key || (config.deepseek_api_key && config.deepseek_api_key.trim()));
     } else if (platform === "gemini") {
         hasKey = !!(config.has_gemini_api_key || (config.gemini_api_key && config.gemini_api_key.trim()));
+    } else if (platform.startsWith("custom:")) {
+        // 自定义提供商：后端在 get_config 时已注入 has_custom_<id>_api_key
+        const pid = platform.split(":")[1];
+        hasKey = !!(config[`has_custom_${pid}_api_key`] || config[`custom_${pid}_api_key`]);
     }
     
     if (hasKey) {
         apiStatusLed.className = "status-led online";
-        apiStatusLed.title = `API 已连接 (${platform.toUpperCase()})`;
+        apiStatusLed.title = `API 已连接 (${platform})`;
     } else {
         apiStatusLed.className = "status-led";
-        apiStatusLed.title = `API 未连接 (${platform.toUpperCase()})`;
+        apiStatusLed.title = `API 未连接 (${platform})`;
     }
 }
 
@@ -83,7 +86,7 @@ function updateModelList(models) {
     if (!models || models.length === 0) {
         const option = document.createElement("option");
         option.value = "";
-        option.textContent = "无可用模型";
+        option.textContent = "模型加载失败或无可用模型，请在设置中检查配置";
         modelSelect.appendChild(option);
         return;
     }
@@ -150,6 +153,10 @@ if (platformSelect) {
         modelSelect.innerHTML = '<option value="">正在加载模型...</option>';
         if (config.active_platform === "deepseek") {
             statusLabel.textContent = "已切换至 DeepSeek (本地文档解析与 OCR 提取生效)";
+        } else if (config.active_platform.startsWith("custom:")) {
+            const opt = e.target.selectedOptions && e.target.selectedOptions[0];
+            const dispName = opt ? opt.textContent : config.active_platform;
+            statusLabel.textContent = `已切换至自定义提供商: ${dispName}`;
         } else {
             statusLabel.textContent = `已切换至平台: ${config.active_platform}`;
         }
@@ -436,7 +443,7 @@ function appendMessage(role, content, thinking, isStreamingPlaceholder = false, 
                         <span>读取工具：</span>
                         <span class="search-engine-badge" style="background-color: var(--overlay0);">${parserName}</span>
                         <span style="font-size: 11.5px; color: var(--subtext0); margin-left: 8px;">${usageStr}</span>
-                        <div style="font-size: 11px; color: var(--subtext0); word-break: break-all; margin-top: 4px;">URL: <a href="${tc.url}" target="_blank" style="color: var(--blue); text-decoration: underline;">${tc.url}</a></div>
+                        <div style="font-size: 11px; color: var(--subtext0); word-break: break-all; margin-top: 4px;">URL: <a href="${safeUrl(tc.url)}" target="_blank" style="color: var(--blue); text-decoration: underline;">${escapeHtml(tc.url)}</a></div>  <!-- M-fix#15: 对齐流式卡,safeUrl 过滤 + escapeHtml 转义,防 javascript:/onerror XSS -->
                     </div>
                 `;
                 
@@ -613,7 +620,10 @@ function renderArtifactPreview(content, type) {
         iframe.style.height = "100%";
         iframe.style.border = "none";
         iframe.style.backgroundColor = "#ffffff";
-        iframe.sandbox = "allow-scripts allow-same-origin allow-forms allow-modals allow-popups";
+        // M-fix#29: 移除 allow-same-origin。srcdoc iframe 继承父域,allow-same-origin 会让
+// 内嵌 LLM 生成的 HTML 脚本能读取 parent.localStorage(security_token) 并打认证 /api/*。
+// 预览脚本无需同源能力,故仅保留脚本/表单/弹窗执行权限,沙箱真正生效。
+iframe.sandbox = "allow-scripts allow-forms allow-modals allow-popups";
         iframe.srcdoc = content;
         
         artifactsPreviewContainer.appendChild(iframe);

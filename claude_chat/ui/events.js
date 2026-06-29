@@ -123,20 +123,9 @@ async function reloadCurrentConversation() {
     if (!conv) return;
     currentConv = conv;
     messageList.innerHTML = "";
-    
+
     const messages = conv.messages || [];
-    for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-        
-        // 跳过独立的 tool_result 用户消息气泡
-        if (msg.role === "user" && isToolResultMsg(msg.content)) {
-            continue;
-        }
-        
-        let toolCalls = extractToolCallsFromMsg(msg, i + 1 < messages.length ? messages[i + 1] : null);
-        
-        appendMessage(msg.role, msg.content, msg.thinking, false, i, toolCalls);
-    }
+    renderConversationMessages(messages);  // M-fix#28: 与 selectConversation 共用合并逻辑,保证视图一致
     scrollChatBottom();
     
     if (config.auto_run_code) {
@@ -193,7 +182,14 @@ clearChatBtn.onclick = () => {
 
 confirmDeleteBtn.onclick = async () => {
     if (!deleteTargetId) return;
-    
+
+    // M-fix#5/#6: 流式生成中拒绝删除/切换,防止 reader 线程响应写入目标被改动导致丢消息/写错对话。
+    if (isStreaming) {
+        statusLabel.textContent = "生成中无法删除对话";
+        hideModal(deleteModal);
+        return;
+    }
+
     await apiBridge.delete_conversation(deleteTargetId);
     hideModal(deleteModal);
     await loadConversations();

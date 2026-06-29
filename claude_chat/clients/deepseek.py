@@ -83,7 +83,8 @@ def convert_messages_to_openai(messages):
             
     return openai_msgs
 
-def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, previous_content_blocks=None, depth=0):
+def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", web_fetch_limit=15000, conv_id=None, conv_manager=None, previous_content_blocks=None, depth=0):
+    response_stream = None  # M-fix#10: 保证 finally 中一定可关闭,避免 abort/异常路径泄漏 HTTP 连接
     try:
         if depth >= 5:
             logger.warning(f"联网搜索已达最大深度限制 ({depth})，强制关闭此轮搜索。")
@@ -143,18 +144,18 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
         response_stream = client.chat.completions.create(**kwargs)
         if on_stream_created:
             on_stream_created(response_stream)
-            
+
         full_text = ""
         full_reasoning = ""
         tool_calls_dict = {}
         input_tokens = 0
         output_tokens = 0
-        
+
         for chunk in response_stream:
             if abort_event and abort_event.is_set():
                 streaming_queue.put(("aborted", {}))
                 return
-                
+
             if hasattr(chunk, "usage") and chunk.usage is not None:
                 usage = chunk.usage
                 if hasattr(usage, "prompt_tokens") and usage.prompt_tokens is not None:
@@ -277,7 +278,8 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                             parser_type=web_page_parser,
                             jina_api_key=jina_api_key,
                             proxy_mode=proxy_mode,
-                            proxy_url=proxy_url
+                            proxy_url=proxy_url,
+                            max_web_fetch_length=web_fetch_limit  # M-fix#23: 接通 deepseek_web_fetch_limit 配置
                         )
                         
                         streaming_queue.put(("fetch_done", {
@@ -336,6 +338,7 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                     tavily_api_key=tavily_api_key,
                     jina_api_key=jina_api_key,
                     web_page_parser=web_page_parser,
+                    web_fetch_limit=web_fetch_limit,
                     conv_id=conv_id,
                     conv_manager=conv_manager,
                     previous_content_blocks=new_previous,
@@ -369,4 +372,12 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
     except Exception as e:
         logger.exception(f"DeepSeek streaming error: {e}")
         streaming_queue.put(("error", f"DeepSeek 错误: {sanitize_error_message(e)}"))
+    finally:
+        # M-fix#10: 无论正常结束、abort 裸 return、递归 return 还是异常,都显式关闭底层流,
+        # 防止 HTTP 连接泄漏。close() 幂等,与 abort_generation() 的外部关闭互不冲突。
+        if response_stream is not None:
+            try:
+                response_stream.close()
+            except Exception:
+                pass
 

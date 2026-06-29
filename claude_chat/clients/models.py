@@ -85,7 +85,7 @@ def get_default_capabilities(model_id):
         
     return res
 
-def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="claude", platform_api_url=None):
+def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="claude", platform_api_url=None, custom_fallback_models=None, custom_models_api_url=None):
     """
     根据选定的平台类型，拉取对应的活跃模型列表及其详细能力结构。
     """
@@ -94,7 +94,7 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
             return []
         try:
             http_client = build_http_client(proxy_mode, proxy_url)
-            client = Anthropic(api_key=api_key, http_client=http_client)
+            client = Anthropic(api_key=api_key, http_client=http_client, timeout=30.0)
             models = client.models.list()
             
             models_data = []
@@ -114,7 +114,8 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
                 models_data.insert(0, get_default_capabilities("claude-3-7-sonnet-latest"))
                 
             return models_data
-        except Exception:
+        except Exception as e:
+            logger.warning(f"拉取 Claude 模型列表失败: {e}")
             return []
             
     elif active_platform == "deepseek":
@@ -140,12 +141,12 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
             return fallback_deepseek
         try:
             from openai import OpenAI
-            client = OpenAI(api_key=api_key, base_url=platform_api_url or "https://api.deepseek.com")
+            client = OpenAI(api_key=api_key, base_url=platform_api_url or "https://api.deepseek.com", timeout=30.0)
             models = client.models.list()
             res = []
             for m in models.data:
                 mid = m.id
-                is_reasoner = "pro" in mid.lower() or "reasoner" in mid.lower()
+                is_reasoner = "deepseek-reasoner" in mid.lower() or "reasoner" in mid.lower()
                 res.append({
                     "id": mid,
                     "display_name": mid,
@@ -155,7 +156,8 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
                     "effort_levels": []
                 })
             return res if res else fallback_deepseek
-        except Exception:
+        except Exception as e:
+            logger.warning(f"拉取 DeepSeek 模型列表失败: {e}")
             return fallback_deepseek
         
     elif active_platform == "gemini":
@@ -176,14 +178,14 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
             import httpx
             
             http_options_kwargs = {}
-            if platform_api_url and platform_api_url.strip():
+            if platform_api_url and isinstance(platform_api_url, str) and platform_api_url.strip():
                 http_options_kwargs["api_endpoint"] = platform_api_url.strip()
-            if proxy_mode == "custom" and proxy_url.strip():
-                http_options_kwargs["client_args"] = {"transport": httpx.HTTPTransport(proxy=proxy_url.strip())}
-                http_options_kwargs["async_client_args"] = {"transport": httpx.AsyncHTTPTransport(proxy=proxy_url.strip())}
+            if proxy_mode == "custom" and isinstance(proxy_url, str) and proxy_url.strip():
+                http_options_kwargs["client_args"] = {"transport": httpx.HTTPTransport(proxy=proxy_url.strip(), timeout=30.0)}
+                http_options_kwargs["async_client_args"] = {"transport": httpx.AsyncHTTPTransport(proxy=proxy_url.strip(), timeout=30.0)}
             elif proxy_mode == "none":
-                http_options_kwargs["client_args"] = {"trust_env": False}
-                http_options_kwargs["async_client_args"] = {"trust_env": False}
+                http_options_kwargs["client_args"] = {"trust_env": False, "timeout": httpx.Timeout(30.0, connect=10.0)}
+                http_options_kwargs["async_client_args"] = {"trust_env": False, "timeout": httpx.Timeout(30.0, connect=10.0)}
                 
             client_kwargs = {"api_key": api_key}
             if http_options_kwargs:
@@ -219,8 +221,48 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
             if gemini_models:
                 return gemini_models
             return fallback_gemini
-        except Exception:
+        except Exception as e:
+            logger.warning(f"拉取 Gemini 模型列表失败: {e}")
             return fallback_gemini
-            
+
+    elif active_platform.startswith("custom:"):
+        # 自定义 OpenAI 兼容提供商：用户可在设置中预置模型列表作为回退
+        fallback_custom = []
+        if custom_fallback_models:
+            for mid in custom_fallback_models:
+                if isinstance(mid, str) and mid.strip():
+                    fallback_custom.append({
+                        "id": mid.strip(),
+                        "display_name": mid.strip(),
+                        "thinking_supported": False,
+                        "adaptive_supported": False,
+                        "enabled_supported": False,
+                        "effort_levels": []
+                    })
+        if not api_key:
+            return fallback_custom
+        try:
+            from openai import OpenAI
+            # 模型列表获取地址：优先使用单独配置的 models_api_url，否则回退到聊天 api_url
+            models_base_url = custom_models_api_url.strip() if custom_models_api_url and custom_models_api_url.strip() else platform_api_url
+            client = OpenAI(api_key=api_key, base_url=models_base_url, timeout=30.0)
+            models = client.models.list()
+            res = []
+            for m in models.data:
+                mid = m.id
+                is_reasoner = any(k in mid.lower() for k in ("reasoner", "reasoning", "thinking", "o1", "o3", "r1"))
+                res.append({
+                    "id": mid,
+                    "display_name": mid,
+                    "thinking_supported": is_reasoner,
+                    "adaptive_supported": is_reasoner,
+                    "enabled_supported": is_reasoner,
+                    "effort_levels": []
+                })
+            return res if res else fallback_custom
+        except Exception as e:
+            logger.warning(f"拉取自定义提供商模型列表失败: {e}")
+            return fallback_custom
+
     return []
 

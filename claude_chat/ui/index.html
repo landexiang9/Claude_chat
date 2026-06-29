@@ -445,7 +445,63 @@
                     </div>
                 </div>
 
-                <!-- Group 2: Global and Server Settings -->
+                <!-- Custom Provider Management -->
+                <div class="settings-section-card">
+                    <div class="settings-section-title">➕ 自定义模型提供商 (Custom OpenAI-Compatible Providers)
+                        <button type="button" id="add-custom-provider-btn" class="btn btn-secondary btn-sm" style="margin-left: 12px; font-size: 11px; padding: 3px 10px;">＋ 新增提供商</button>
+                    </div>
+                    <p style="font-size: 11px; color: var(--subtext0); margin: 4px 0 10px 0;">添加任意 OpenAI 兼容的 API 端点（如 OpenRouter / Groq / Together / 本地 Ollama 等），保存至服务器配置后可在顶部平台下拉中切换使用。</p>
+                    <div id="custom-providers-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+
+                    <!-- Add/Edit Custom Provider Form (hidden by default) -->
+                    <div id="custom-provider-form" class="hidden" style="margin-top: 12px; padding: 12px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 8px;">
+                        <div class="form-group">
+                            <label for="cp-name-input">显示名称:</label>
+                            <input type="text" id="cp-name-input" placeholder="例如: OpenRouter" style="width: 100%;">
+                        </div>
+                        <div class="form-group">
+                            <label for="cp-api-url-input">API Base URL (聊天接口):</label>
+                            <input type="text" id="cp-api-url-input" placeholder="例如: https://openrouter.ai/api/v1 (不要包含 /chat/completions 后缀，SDK 会自动拼接)" style="width: 100%;">
+                        </div>
+                        <div class="form-group">
+                            <label for="cp-models-api-url-input">模型列表获取地址 (Models API URL，可选):</label>
+                            <input type="text" id="cp-models-api-url-input" placeholder="留空则使用上面的 API Base URL；可填独立的 /models 端点 (同样不要包含 /chat/completions)" style="width: 100%;">
+                        </div>
+                        <div class="form-group" id="cp-api-key-input-container">
+                            <label for="cp-api-key-input">API Key:</label>
+                            <input type="password" id="cp-api-key-input" placeholder="必填" style="width: 100%;">
+                        </div>
+                        <div class="form-group hidden" id="cp-api-key-status-container">
+                            <label>API Key 状态:</label>
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px;">
+                                <span style="color: var(--green); font-size: 12px; font-weight: 500;">🔒 API Key 已加密配置在服务端</span>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" id="cp-change-key-btn" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 3px 8px;">更换</button>
+                                    <button type="button" id="cp-disconnect-key-btn" class="btn btn-secondary btn-sm" style="color: var(--red); font-size: 11px; padding: 3px 8px;">断开/清除</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="cp-models-input">模型列表 (可选，逗号分隔；留空则自动从 API 拉取):</label>
+                            <input type="text" id="cp-models-input" placeholder="例如: gpt-4o, claude-3.5-sonnet, llama-3.1-70b" style="width: 100%;">
+                        </div>
+                        <div class="form-group" style="display: flex; gap: 16px;">
+                            <div style="flex: 1;">
+                                <label for="cp-temperature-input">Temperature:</label>
+                                <input type="number" id="cp-temperature-input" min="0" max="2" step="0.05" value="0.7" style="width: 100%;">
+                            </div>
+                            <div style="flex: 1;">
+                                <label for="cp-max-tokens-input">Max Tokens:</label>
+                                <input type="number" id="cp-max-tokens-input" value="4096" style="width: 100%;">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; margin-top: 8px;">
+                            <button type="button" id="cp-save-btn" class="btn" style="background: var(--blue); color: white; font-size: 12px;">保存</button>
+                            <button type="button" id="cp-cancel-btn" class="btn btn-secondary" style="font-size: 12px;">取消</button>
+                            <span id="cp-edit-id" style="display: none;"></span>
+                        </div>
+                    </div>
+                </div>
                 <div class="settings-section-card">
                     <div class="settings-section-title">🌐 全局与客户端设置 (Global & Server)</div>
                     <div class="form-group" style="display: flex; gap: 16px; flex-wrap: wrap;">

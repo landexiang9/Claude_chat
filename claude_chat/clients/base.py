@@ -30,13 +30,15 @@ def build_http_client(proxy_mode="system", proxy_url=""):
     - "none": 禁用代理，禁用信任操作系统环境变量代理行为。
     - "custom": 使用用户自定义输入的代理地址（如 http://127.0.0.1:7890）。
     - "system": 默认选项，自动继承操作系统的环境变量（如 HTTP_PROXY, HTTPS_PROXY）。
+    H5 修复：所有客户端统一配置 30s 超时（10s 连接超时），防止 API 端点无响应时永久阻塞。
     """
+    timeout = httpx.Timeout(30.0, connect=10.0)
     if proxy_mode == "none":
-        return httpx.Client(trust_env=False)
-    elif proxy_mode == "custom" and proxy_url.strip():
-        return httpx.Client(proxy=proxy_url.strip(), trust_env=False)
+        return httpx.Client(trust_env=False, timeout=timeout)
+    elif proxy_mode == "custom" and isinstance(proxy_url, str) and proxy_url.strip():
+        return httpx.Client(proxy=proxy_url.strip(), trust_env=False, timeout=timeout)
     else:
-        return httpx.Client()
+        return httpx.Client(timeout=timeout)
 
 def extract_api_message(msg):
     """

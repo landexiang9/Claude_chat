@@ -93,10 +93,16 @@ async function selectConversation(id) {
     }
 
     if (conv.model) {
-        let targetPlatform = config.active_platform;
-        if (conv.model.includes("claude")) targetPlatform = "claude";
-        else if (conv.model.includes("deepseek")) targetPlatform = "deepseek";
-        else if (conv.model.includes("gemini") || conv.model.includes("learnlm")) targetPlatform = "gemini";
+        // 优先使用对话持久化的 platform 字段（新数据），避免靠模型名子串推断导致自定义供应商被误判
+        let targetPlatform = null;
+        if (conv.platform && String(conv.platform).trim()) {
+            targetPlatform = conv.platform;
+        } else {
+            // 兼容旧数据（无 platform 列）：回退到模型名推断
+            if (conv.model.includes("claude")) targetPlatform = "claude";
+            else if (conv.model.includes("deepseek")) targetPlatform = "deepseek";
+            else if (conv.model.includes("gemini") || conv.model.includes("learnlm")) targetPlatform = "gemini";
+        }
         
         let needSave = false;
         const configUpdate = {};
@@ -135,66 +141,8 @@ async function selectConversation(id) {
 
     // 遍历并渲染当前对话的所有消息历史
     const messages = conv.messages || [];
-    for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-        
-        // 跳过独立的 tool_result 用户消息气泡
-        if (msg.role === "user" && isToolResultMsg(msg.content)) {
-            continue;
-        }
-        
-        let toolCalls = extractToolCallsFromMsg(msg, i + 1 < messages.length ? messages[i + 1] : null);
-        let mergedThinking = msg.thinking || "";
-        let mergedContent = msg.content;
-        let currentI = i;
+    renderConversationMessages(messages);
 
-        // 如果是 assistant 消息，贪婪地向后合并由 tool_result 隔开的后续 assistant 消息
-        if (msg.role === "assistant") {
-            // 深拷贝 content 避免修改源数据
-            if (Array.isArray(mergedContent)) {
-                mergedContent = [...mergedContent];
-            }
-            while (i + 2 < messages.length && 
-                   messages[i+1].role === "user" && isToolResultMsg(messages[i+1].content) && 
-                   messages[i+2].role === "assistant") {
-                
-                let nextAstMsg = messages[i+2];
-                
-                // 拼接 thinking
-                if (nextAstMsg.thinking) {
-                    mergedThinking = (mergedThinking ? mergedThinking + "\n\n" : "") + nextAstMsg.thinking;
-                }
-                
-                // 提取并拼接 nextAstMsg 的纯文本内容
-                let extraText = "";
-                if (typeof nextAstMsg.content === "string") {
-                    extraText = nextAstMsg.content;
-                } else if (Array.isArray(nextAstMsg.content)) {
-                    extraText = nextAstMsg.content.filter(x => x && x.type === "text").map(x => x.text).join("\n");
-                }
-                
-                if (extraText) {
-                    if (typeof mergedContent === "string") {
-                        mergedContent += (mergedContent ? "\n\n" : "") + extraText;
-                    } else if (Array.isArray(mergedContent)) {
-                        mergedContent.push({ type: "text", text: "\n\n" + extraText });
-                    }
-                }
-                
-                // 拼接 tool_calls
-                let nextToolCalls = extractToolCallsFromMsg(nextAstMsg, i + 3 < messages.length ? messages[i+3] : null);
-                if (nextToolCalls) {
-                    if (!toolCalls) toolCalls = [];
-                    toolCalls = toolCalls.concat(nextToolCalls);
-                }
-                
-                i += 2;
-            }
-        }
-        
-        appendMessage(msg.role, mergedContent, mergedThinking, false, currentI, toolCalls);
-    }
-    
     scrollChatBottom();
 }
 // 开启全新对话会话
@@ -225,6 +173,9 @@ async function sendMessage() {
         hasKey = !!(config.has_deepseek_api_key || (config.deepseek_api_key && config.deepseek_api_key.trim()));
     } else if (platform === "gemini") {
         hasKey = !!(config.has_gemini_api_key || (config.gemini_api_key && config.gemini_api_key.trim()));
+    } else if (platform.startsWith("custom:")) {
+        const pid = platform.split(":")[1];
+        hasKey = !!(config[`has_custom_${pid}_api_key`] || config[`custom_${pid}_api_key`]);
     }
     
     if (!hasKey) {
@@ -281,6 +232,18 @@ async function sendMessage() {
     isSending = true;
     try {
         await apiBridge.send_message(currentConvId, text, oldAttachments);
+    } catch (e) {
+        console.error("send_message 调用失败:", e);
+        statusLabel.textContent = "发送失败: " + (e.message || String(e));
+        isStreaming = false;
+        sendBtn.classList.remove("stop-active");
+        sendBtn.title = "发送 (Ctrl+Enter)";
+        const sendIcon = sendBtn.querySelector(".send-icon");
+        if (sendIcon) sendIcon.textContent = "↑";
+        const body = document.getElementById("streaming-message-body");
+        if (body) {
+            body.innerHTML = `<span style="color: var(--red);">❌ 发送失败: ${escapeHtml(e.message || String(e))}</span>`;
+        }
     } finally {
         isSending = false;
     }
@@ -319,7 +282,7 @@ window.onStreamMessage = async (type, data) => {
             const searchCard = document.createElement("div");
             searchCard.id = `streaming-search-card-${Date.now()}`;
             searchCard.className = "search-card";
-            const queryText = data.query ? `：${data.query}` : "";
+            const queryText = data.query ? `：${escapeHtml(data.query)}` : "";  // M-fix#14: 转义,与 search_done 一致,防 XSS
             searchCard.innerHTML = `
                 <div class="search-card-header">
                     <div class="search-status-wrapper">
@@ -441,7 +404,7 @@ window.onStreamMessage = async (type, data) => {
                 <div class="search-card-header">
                     <div class="search-status-wrapper">
                         <span class="search-radar"></span>
-                        <span>正在深度读取网页内容：${data.url}...</span>
+                        <span>正在深度读取网页内容：${escapeHtml(data.url)}...</span>  <!-- M-fix#13: 转义,与 fetch_done 一致,防 XSS -->
                     </div>
                 </div>
                 <div class="search-card-body"></div>
@@ -573,19 +536,29 @@ window.onStreamMessage = async (type, data) => {
         
     } else if (type === "error") {
         isStreaming = false;
-        
+
         // Restore send button state
         sendBtn.classList.remove("stop-active");
         sendBtn.title = "发送 (Ctrl+Enter)";
         const sendIcon = sendBtn.querySelector(".send-icon");
         if (sendIcon) sendIcon.textContent = "↑";
-        
+
         const errText = typeof data === 'object' && data !== null ? (data.text || JSON.stringify(data)) : data;
         statusLabel.textContent = `错误: ${errText}`;
-        
+
+        // M-fix#12: 与 done/aborted 一致,移除三个流式临时 ID,否则下一次 appendMessage 会
+        // 因 getElementById 命中陈旧的错误元素而使新占位卡死、流更新目标错位。
+        const row = document.getElementById("streaming-msg-row");
+        if (row) row.removeAttribute("id");
         if (body) {
+            body.removeAttribute("id");
             body.innerHTML = `<span style="color: var(--red);">❌ 发生错误: ${escapeHtml(errText)}</span>`;
         }
+        const tc = document.getElementById("streaming-thinking-container");
+        if (tc) tc.removeAttribute("id");
+
+        await loadConversations();
+        await reloadCurrentConversation();
     }
 };
 // 用户消息历史内嵌快捷二次修改并重新生成
@@ -667,6 +640,18 @@ async function editUserMessage(msgIndex) {
         isSending = true;
         try {
             await apiBridge.edit_and_resend(currentConvId, msgIndex, newText);
+        } catch (e) {
+            console.error("edit_and_resend 调用失败:", e);
+            statusLabel.textContent = "编辑重发失败: " + (e.message || String(e));
+            isStreaming = false;
+            sendBtn.classList.remove("stop-active");
+            sendBtn.title = "发送 (Ctrl+Enter)";
+            const sendIcon = sendBtn.querySelector(".send-icon");
+            if (sendIcon) sendIcon.textContent = "↑";
+            const body = document.getElementById("streaming-message-body");
+            if (body) {
+                body.innerHTML = `<span style="color: var(--red);">❌ 编辑重发失败: ${escapeHtml(e.message || String(e))}</span>`;
+            }
         } finally {
             isSending = false;
         }
@@ -707,5 +692,19 @@ async function retryAssistantMessage(msgIndex) {
     if (sendIcon) sendIcon.textContent = "■";
     statusLabel.textContent = "Claude 思考中...";
     
-    await apiBridge.retry_message(currentConvId, msgIndex);
+    try {
+        await apiBridge.retry_message(currentConvId, msgIndex);
+    } catch (e) {
+        console.error("retry_message 调用失败:", e);
+        statusLabel.textContent = "重试失败: " + (e.message || String(e));
+        isStreaming = false;
+        sendBtn.classList.remove("stop-active");
+        sendBtn.title = "发送 (Ctrl+Enter)";
+        const sendIcon = sendBtn.querySelector(".send-icon");
+        if (sendIcon) sendIcon.textContent = "↑";
+        const body = document.getElementById("streaming-message-body");
+        if (body) {
+            body.innerHTML = `<span style="color: var(--red);">❌ 重试失败: ${escapeHtml(e.message || String(e))}</span>`;
+        }
+    }
 }

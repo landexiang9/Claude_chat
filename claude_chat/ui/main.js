@@ -93,6 +93,9 @@ async function initApp() {
         // 初始化系统提示词下拉菜单
         renderSystemPromptSelect();
         
+        // 动态填充平台选择器中的自定义提供商选项
+        await refreshPlatformSelect();
+        
         // 初始化平台选择器状态
         if (platformSelect) {
             platformSelect.value = config.active_platform || "claude";
@@ -146,4 +149,37 @@ if (document.readyState === "complete" || document.readyState === "interactive")
             initApp();
         }
     }, 300);
+}
+
+// 动态刷新顶部平台选择器，注入自定义提供商选项
+async function refreshPlatformSelect() {
+    if (!platformSelect) return;
+    // 保留内置的三个选项，移除已添加的自定义选项
+    const builtinValues = ["claude", "deepseek", "gemini"];
+    Array.from(platformSelect.options).forEach(opt => {
+        if (!builtinValues.includes(opt.value)) {
+            platformSelect.removeChild(opt);
+        }
+    });
+    let providers = [];
+    try {
+        providers = await apiBridge.list_custom_providers();
+    } catch (e) {
+        console.warn("list_custom_providers failed", e);
+    }
+    if (providers && providers.length > 0) {
+        const sep = document.createElement("optgroup");
+        sep.label = "── 自定义提供商 ──";
+        providers.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.platform_id || `custom:${p.id}`;
+            opt.textContent = p.name || p.id;
+            sep.appendChild(opt);
+        });
+        platformSelect.appendChild(sep);
+    }
+    // 恢复当前选中值（动态注入可能导致选中丢失）
+    if (config && config.active_platform) {
+        platformSelect.value = config.active_platform;
+    }
 }
