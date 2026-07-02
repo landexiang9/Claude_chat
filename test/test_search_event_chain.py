@@ -8,7 +8,7 @@ sys.path.insert(0, ".")
 
 import pathlib
 # Read app.py and check for all required handlers
-base_path = pathlib.Path(__file__).parent
+base_path = pathlib.Path(__file__).parent.parent / "claude_chat"
 with open(base_path / "app.py", "r", encoding="utf-8") as f:
     content = f.read()
 
@@ -31,7 +31,7 @@ else:
     sys.exit(1)
 
 # Also verify client.py emits search_start and search_done for DeepSeek
-with open(base_path / "client.py", "r", encoding="utf-8") as f:
+with open(base_path / "clients" / "deepseek.py", "r", encoding="utf-8") as f:
     client_content = f.read()
 
 print("\n=== Checking search event emissions in client.py ===")
