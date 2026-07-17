@@ -360,27 +360,38 @@ class DatabaseManager:
         """
         [增量更新] 向指定对话中追加一条新消息，并更新对话的更新时间，
         彻底规避多线程并发加载-修改-保存造成的“旧快照覆盖抹除新数据”的竞争风险。
+        包含锁冲突重试机制（最多 3 次，每次间隔 0.5s），避免并发写入时消息丢失。
         """
+        import time
         now = datetime.now().isoformat()
         aborted_val = 1 if aborted else 0
         serialized_content = serialize_content(content)
         
-        with self.get_connection() as conn:
-            conn.execute("BEGIN EXCLUSIVE")
+        for attempt in range(3):
             try:
-                conn.execute("""
-                    INSERT INTO messages (conversation_id, role, content, thinking, aborted, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (conv_id, role, serialized_content, thinking, aborted_val, now))
-                
-                conn.execute("""
-                    UPDATE conversations 
-                    SET updated_at = ? 
-                    WHERE id = ?
-                """, (now, conv_id))
-                conn.commit()
-            except Exception:
-                conn.rollback()
+                with self.get_connection() as conn:
+                    conn.execute("BEGIN EXCLUSIVE")
+                    try:
+                        conn.execute("""
+                            INSERT INTO messages (conversation_id, role, content, thinking, aborted, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (conv_id, role, serialized_content, thinking, aborted_val, now))
+                        
+                        conn.execute("""
+                            UPDATE conversations 
+                            SET updated_at = ? 
+                            WHERE id = ?
+                        """, (now, conv_id))
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+                        raise
+                return
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < 2:
+                    logger.warning(f"数据库锁冲突，第 {attempt + 1} 次重试...")
+                    time.sleep(0.5)
+                    continue
                 raise
 
     def add_assistant_message_and_update_tokens(self, conv_id, content, thinking=None, input_tokens=0, output_tokens=0, aborted=False):

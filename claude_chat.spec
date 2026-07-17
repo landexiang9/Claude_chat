@@ -8,6 +8,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('claude_chat/ui', 'claude_chat/ui'),
+        ('models_registry.json', '.'),
     ],
     hiddenimports=[
         'keyring.backends.Windows',

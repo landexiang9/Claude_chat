@@ -7,6 +7,20 @@ from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestErro
 
 logger = logging.getLogger("claude_chat.clients")
 
+
+def extract_final_response_text(done_data, fallback=""):
+    """Extract only the terminal assistant text from a streaming ``done`` event."""
+    blocks = done_data.get("content_blocks") if isinstance(done_data, dict) else None
+    if not isinstance(blocks, list):
+        return fallback
+    text_parts = []
+    found_text_block = False
+    for block in blocks:
+        if isinstance(block, dict) and block.get("type") == "text":
+            found_text_block = True
+            text_parts.append(str(block.get("text", "")))
+    return "".join(text_parts) if found_text_block else fallback
+
 def sanitize_error_message(err):
     """
     过滤错误消息中的敏感信息，例如 API Keys (如 sk-... 等高危敏感字符)。

@@ -8,9 +8,12 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import parse_qs, urlparse
 
 import logging
 logger = logging.getLogger("claude_chat")
+
+from claude_chat.clients import extract_final_response_text
 
 def get_local_ip():
     """
@@ -358,7 +361,9 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             
         # GET /api/models -> 读取可用模型列表
         elif path == "/api/models":
-            self.send_json_response(self.server.api.fetch_models())
+            query = parse_qs(urlparse(self.path).query)
+            requested_platform = query.get("platform", [None])[0]
+            self.send_json_response(self.server.api.fetch_models(requested_platform))
             
         # GET /api/check_parsers -> 检查本地可选解析依赖库安装状态
         elif path == "/api/check_parsers":
@@ -427,6 +432,10 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                     body.pop(f"clear_{key}", None)
             success = self.server.api.save_config(body)
             self.send_json_response({"success": success})
+
+        # POST /api/update_model_registry -> 手动刷新模型能力注册表
+        elif path == "/api/update_model_registry":
+            self.send_json_response(self.server.api.update_model_registry())
             
         # POST /api/add_custom_provider -> 新增自定义模型提供商并保存到服务器
         elif path == "/api/add_custom_provider":
@@ -607,10 +616,13 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                     # 增量安全写入 AI 响应及 Token，在首轮对话自动生成标题，规避并发覆盖冲突
                     input_tokens = msg_data.get("input_tokens", 0)
                     output_tokens = msg_data.get("output_tokens", 0)
-                    thinking = streaming_thinking_text if streaming_thinking_text else None
+                    final_text = extract_final_response_text(msg_data, streaming_text)
+                    thinking = msg_data.get("thinking")
+                    if thinking is None:
+                        thinking = streaming_thinking_text if streaming_thinking_text else None
                     self.server.api._app.conv_manager.add_assistant_message_and_update_tokens(
                         conv_id, 
-                        streaming_text, 
+                        final_text,
                         thinking, 
                         input_tokens, 
                         output_tokens
@@ -829,4 +841,3 @@ def start_server(app, api, host='0.0.0.0', start_port=8000):
     print(f"===================================================")
     
     return port, is_ssl
-

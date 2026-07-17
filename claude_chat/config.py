@@ -105,10 +105,9 @@ def find_custom_provider(config_data, active_platform):
 # 默认/备用模型列表 (如果从 API 获取在线模型失败时使用)
 # ==========================================
 FALLBACK_MODELS = [
-    "claude-3-7-sonnet-latest",
-    "claude-3-5-sonnet-20241022",
-    "claude-3-5-haiku-20241022",
-    "claude-3-opus-20240229",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001",
+    "claude-opus-4-8",
 ]
 
 FALLBACK_MODELS_DEEPSEEK = [
@@ -247,7 +246,7 @@ class ConfigManager:
             "gemini_api_url": "",
             "ocr_mode": "auto",
             "ocr_cloud_model": "gemini",
-            "model": "claude-3-7-sonnet-latest",
+            "model": "claude-sonnet-4-6",
             # Claude settings (legacy flat keys)
             "temperature": 0.7,
             "max_tokens": 4096,
@@ -300,7 +299,8 @@ class ConfigManager:
                 {"id": "programmer", "name": "高级程序员", "content": "你是一位拥有20年开发经验的资深软件架构师。请以严谨、结构化、注重性能与安全性的视角回答编程问题，并提供符合最佳实践的完整代码段。"}
             ],
             "selected_system_prompt_id": "",
-            "custom_providers": []
+            "custom_providers": [],
+            "model_configs": {}
         }
         # 保存默认值的深拷贝，供 load() 类型校验时恢复使用
         import copy
@@ -475,8 +475,10 @@ class ConfigManager:
             try:
                 with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                     json.dump(to_save, f, indent=2, ensure_ascii=False)
+                return True
             except Exception as e:
                 logger.error(f"写入配置文件失败: {e}")
+                return False
 
     def get(self, key, default=None):
         """
@@ -491,8 +493,16 @@ class ConfigManager:
         更新指定的配置项并立即持久化写入本地配置文件中
         """
         with self._lock:
+            missing = object()
+            previous = self.data.get(key, missing)
             self.data[key] = value
-            self.save()
+            if self.save():
+                return True
+            if previous is missing:
+                self.data.pop(key, None)
+            else:
+                self.data[key] = previous
+            return False
 
     def set_many(self, updates):
         """
@@ -500,7 +510,43 @@ class ConfigManager:
         用于 save_config 等需要原子性批量写入的场景，避免循环调用 set() 导致重复写盘。
         """
         with self._lock:
+            missing = object()
+            previous = {k: self.data.get(k, missing) for k in updates}
             for k, v in updates.items():
                 self.data[k] = v
-            self.save()
+            if self.save():
+                return True
+            for key, value in previous.items():
+                if value is missing:
+                    self.data.pop(key, None)
+                else:
+                    self.data[key] = value
+            return False
 
+    def get_model_config(self, model_id):
+        """
+        获取指定 model_id 的专属配置字典。
+        """
+        with self._lock:
+            model_configs = self.data.get("model_configs", {})
+            return model_configs.get(model_id, {})
+
+    def set_model_config(self, model_id, config_dict):
+        """
+        更新指定 model_id 的专属配置，并持久化。
+        """
+        with self._lock:
+            import copy
+            previous = copy.deepcopy(self.data.get("model_configs"))
+            if "model_configs" not in self.data:
+                self.data["model_configs"] = {}
+            if model_id not in self.data["model_configs"]:
+                self.data["model_configs"][model_id] = {}
+            self.data["model_configs"][model_id].update(config_dict)
+            if self.save():
+                return True
+            if previous is None:
+                self.data.pop("model_configs", None)
+            else:
+                self.data["model_configs"] = previous
+            return False

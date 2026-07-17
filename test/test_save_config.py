@@ -25,9 +25,9 @@ app.window = DummyWindow()
 
 app_api = WebAPI(app)
 
-app.config.set("model", "claude-3-7-sonnet-latest")
+app.config.set("model", "claude-sonnet-4-6")
 conv = app.conv_manager.new_conversation()
-conv["model"] = "claude-3-7-sonnet-latest"
+conv["model"] = "claude-sonnet-4-6"
 app.conv_manager.save_conversation(conv)
 app.current_conv = conv
 

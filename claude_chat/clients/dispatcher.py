@@ -151,7 +151,8 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 conv_id=conv_id,
                 conv_manager=conv_manager,
                 previous_content_blocks=previous_content_blocks,
-                depth=depth
+                depth=depth,
+                thinking_config=thinking_config
             )
         elif active_platform == "gemini":
             gemini_api_key = kwargs.get("gemini_api_key", "")
@@ -209,7 +210,8 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 conv_id=conv_id,
                 conv_manager=conv_manager,
                 previous_content_blocks=previous_content_blocks,
-                depth=depth
+                depth=depth,
+                thinking_config=thinking_config
             )
         else:
             raise ValueError(f"Unknown active platform: {active_platform}")

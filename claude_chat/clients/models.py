@@ -1,13 +1,148 @@
 import base64
 import json
 import logging
+import sys
+import threading
+import time
 from pathlib import Path
+
 import httpx
 from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestError
 
+from .base import build_http_client
+
 logger = logging.getLogger("claude_chat.clients")
 
-from .base import build_http_client
+_REGISTRY_CACHE = None
+_REGISTRY_LAST_FETCH = 0
+_REGISTRY_LOCK = threading.RLock()
+
+_FETCHING_REGISTRY = False
+
+if getattr(sys, 'frozen', False):
+    BASE_DIR = Path(sys.executable).parent
+    BUNDLED_BASE_DIR = Path(getattr(sys, "_MEIPASS", BASE_DIR))
+else:
+    BASE_DIR = Path(__file__).parent.parent.parent
+    BUNDLED_BASE_DIR = BASE_DIR
+
+_REGISTRY_FILE = BASE_DIR / "models_registry.json"
+_BUNDLED_REGISTRY_FILE = BUNDLED_BASE_DIR / "models_registry.json"
+
+def _do_fetch_registry():
+    global _REGISTRY_CACHE, _REGISTRY_LAST_FETCH, _FETCHING_REGISTRY
+    try:
+        response = httpx.get(
+            "https://models.dev/models.json",
+            headers={"User-Agent": "ClaudeChat"},
+            timeout=15.0,
+            follow_redirects=True
+        )
+        response.raise_for_status()
+        data = response.json()
+            
+        registry = {}
+        for mid, m in data.items():
+            limit = m.get("limit", {})
+            context_length = limit.get("context", 0)
+            max_output = limit.get("output", 0)
+            is_reasoner = m.get("reasoning", False)
+            
+            entry = {
+                "max_context": context_length,
+                "max_output": max_output,
+                "thinking_supported": is_reasoner
+            }
+            registry[mid] = entry
+            if "/" in mid:
+                base_name = mid.split("/", 1)[1]
+                if base_name not in registry:
+                    registry[base_name] = entry
+
+        with _REGISTRY_LOCK:
+            _REGISTRY_CACHE = registry
+            _REGISTRY_LAST_FETCH = time.time()
+            
+        # 异步保存到本地文件
+        try:
+            with open(_REGISTRY_FILE, "w", encoding="utf-8") as f:
+                json.dump(registry, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.warning(f"Failed to save models registry to local file: {e}")
+            
+        return registry
+    except Exception as e:
+        logger.warning(f"Failed to fetch model registry from models.dev: {e}")
+        return None
+    finally:
+        _FETCHING_REGISTRY = False
+
+def fetch_model_registry():
+    global _REGISTRY_CACHE, _REGISTRY_LAST_FETCH, _FETCHING_REGISTRY
+    with _REGISTRY_LOCK:
+        now = time.time()
+        
+        # 如果内存缓存为空，尝试先从本地文件加载兜底数据
+        if _REGISTRY_CACHE is None:
+            registry_candidates = list(dict.fromkeys((_REGISTRY_FILE, _BUNDLED_REGISTRY_FILE)))
+            for registry_file in registry_candidates:
+                if not registry_file.exists():
+                    continue
+                try:
+                    with open(registry_file, "r", encoding="utf-8") as f:
+                        _REGISTRY_CACHE = json.load(f)
+                    break
+                except Exception as e:
+                    logger.warning(f"Failed to load model registry {registry_file}: {e}")
+            if _REGISTRY_CACHE is None:
+                _REGISTRY_CACHE = {}
+        
+        # 每次启动应用（或缓存过期）异步拉取更新一次
+        if not _FETCHING_REGISTRY and (now - _REGISTRY_LAST_FETCH > 3600):
+            _FETCHING_REGISTRY = True
+            threading.Thread(target=_do_fetch_registry, daemon=True).start()
+            
+        return _REGISTRY_CACHE
+
+def enrich_with_registry(model_list, user_model_configs=None):
+    registry = fetch_model_registry()
+    user_model_configs = user_model_configs or {}
+    
+    for m in model_list:
+        mid = m["id"]
+        reg_entry = registry.get(mid)
+        # If not found, try lowercase
+        if not reg_entry:
+            reg_entry = registry.get(mid.lower())
+        
+        # User defined overrides take precedence for thinking
+        user_config = user_model_configs.get(mid, {})
+        user_thinking = user_config.get("user_defined_thinking_supported")
+        
+        if reg_entry:
+            m["max_context"] = reg_entry.get("max_context", 0)
+            m["max_output"] = reg_entry.get("max_output", 0)
+            # If not already supported natively, rely on registry
+            if not m.get("thinking_supported"):
+                m["thinking_supported"] = reg_entry.get("thinking_supported", False)
+                m["adaptive_supported"] = m["thinking_supported"]
+                m["enabled_supported"] = m["thinking_supported"]
+        else:
+            m["max_context"] = m.get("max_context", 0)
+            m["max_output"] = m.get("max_output", 0)
+
+        # Apply user override if it exists
+        if user_thinking is not None:
+            m["thinking_supported"] = bool(user_thinking)
+            m["adaptive_supported"] = bool(user_thinking)
+            m["enabled_supported"] = bool(user_thinking)
+            m["user_overridden"] = True
+            
+        if m["thinking_supported"] and not m["effort_levels"]:
+             # Standard fallback effort levels for reasoning models
+             m["effort_levels"] = ["low", "medium", "high"]
+             
+    return model_list
 
 def get_model_capabilities(m):
     """
@@ -49,11 +184,19 @@ def get_model_capabilities(m):
             
     if not res["thinking_supported"]:
         mid_lower = mid.lower()
-        if "3-7-sonnet" in mid_lower or "claude-3-7" in mid_lower:
+        if (
+            "3-7-sonnet" in mid_lower
+            or "claude-3-7" in mid_lower
+            or mid_lower.startswith("claude-sonnet-4")
+            or mid_lower.startswith("claude-opus-4")
+        ):
             res["thinking_supported"] = True
             res["adaptive_supported"] = True
             res["enabled_supported"] = True
             res["effort_levels"] = ["low", "medium", "high", "max"]
+        elif mid_lower.startswith("claude-haiku-4"):
+            res["thinking_supported"] = True
+            res["enabled_supported"] = True
             
     return res
 
@@ -70,7 +213,17 @@ def get_default_capabilities(model_id):
         "enabled_supported": False,
         "effort_levels": []
     }
-    if "3-7-sonnet" in mid or "claude-3-7" in mid:
+    if mid.startswith("claude-sonnet-4") or mid.startswith("claude-opus-4"):
+        res["thinking_supported"] = True
+        res["adaptive_supported"] = True
+        res["enabled_supported"] = True
+        res["effort_levels"] = ["low", "medium", "high", "max"]
+        res["display_name"] = model_id.replace("claude-", "Claude ").replace("-", " ").title()
+    elif mid.startswith("claude-haiku-4"):
+        res["thinking_supported"] = True
+        res["enabled_supported"] = True
+        res["display_name"] = model_id.replace("claude-", "Claude ").replace("-", " ").title()
+    elif "3-7-sonnet" in mid or "claude-3-7" in mid:
         res["thinking_supported"] = True
         res["adaptive_supported"] = True
         res["enabled_supported"] = True
@@ -85,7 +238,7 @@ def get_default_capabilities(model_id):
         
     return res
 
-def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="claude", platform_api_url=None, custom_fallback_models=None, custom_models_api_url=None):
+def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="claude", platform_api_url=None, custom_fallback_models=None, custom_models_api_url=None, user_model_configs=None):
     """
     根据选定的平台类型，拉取对应的活跃模型列表及其详细能力结构。
     """
@@ -98,7 +251,6 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
             models = client.models.list()
             
             models_data = []
-            has_opus_47 = False
             
             for m in models.data:
                 mid = m.id
@@ -107,13 +259,8 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
                 
                 m_cap = get_model_capabilities(m)
                 models_data.append(m_cap)
-                if "claude-3-7-sonnet" in mid.lower():
-                    has_opus_47 = True
-                    
-            if not has_opus_47:
-                models_data.insert(0, get_default_capabilities("claude-3-7-sonnet-latest"))
                 
-            return models_data
+            return enrich_with_registry(models_data, user_model_configs)
         except Exception as e:
             logger.warning(f"拉取 Claude 模型列表失败: {e}")
             return []
@@ -138,7 +285,7 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
             }
         ]
         if not api_key:
-            return fallback_deepseek
+            return enrich_with_registry(fallback_deepseek, user_model_configs)
         try:
             from openai import OpenAI
             client = OpenAI(api_key=api_key, base_url=platform_api_url or "https://api.deepseek.com", timeout=30.0)
@@ -155,10 +302,10 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
                     "enabled_supported": is_reasoner,
                     "effort_levels": []
                 })
-            return res if res else fallback_deepseek
+            return enrich_with_registry(res if res else fallback_deepseek, user_model_configs)
         except Exception as e:
             logger.warning(f"拉取 DeepSeek 模型列表失败: {e}")
-            return fallback_deepseek
+            return enrich_with_registry(fallback_deepseek, user_model_configs)
         
     elif active_platform == "gemini":
         fallback_gemini = [
@@ -170,7 +317,7 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
         ]
         
         if not api_key:
-            return fallback_gemini
+            return enrich_with_registry(fallback_gemini, user_model_configs)
             
         try:
             from google import genai
@@ -219,11 +366,11 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
                 })
                 
             if gemini_models:
-                return gemini_models
-            return fallback_gemini
+                return enrich_with_registry(gemini_models, user_model_configs)
+            return enrich_with_registry(fallback_gemini, user_model_configs)
         except Exception as e:
             logger.warning(f"拉取 Gemini 模型列表失败: {e}")
-            return fallback_gemini
+            return enrich_with_registry(fallback_gemini, user_model_configs)
 
     elif active_platform.startswith("custom:"):
         # 自定义 OpenAI 兼容提供商：用户可在设置中预置模型列表作为回退
@@ -240,7 +387,7 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
                         "effort_levels": []
                     })
         if not api_key:
-            return fallback_custom
+            return enrich_with_registry(fallback_custom, user_model_configs)
         try:
             from openai import OpenAI
             # 模型列表获取地址：优先使用单独配置的 models_api_url，否则回退到聊天 api_url
@@ -250,7 +397,7 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
             res = []
             for m in models.data:
                 mid = m.id
-                is_reasoner = any(k in mid.lower() for k in ("reasoner", "reasoning", "thinking", "o1", "o3", "r1"))
+                is_reasoner = False # Will be determined by registry or user config
                 res.append({
                     "id": mid,
                     "display_name": mid,
@@ -259,10 +406,10 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
                     "enabled_supported": is_reasoner,
                     "effort_levels": []
                 })
-            return res if res else fallback_custom
+            return enrich_with_registry(res if res else fallback_custom, user_model_configs)
         except Exception as e:
             logger.warning(f"拉取自定义提供商模型列表失败: {e}")
-            return fallback_custom
+            return enrich_with_registry(fallback_custom, user_model_configs)
 
     return []
 

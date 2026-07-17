@@ -26,7 +26,7 @@ logger = logging.getLogger("claude_chat")
 
 from claude_chat.config import FALLBACK_MODELS, ConfigManager, find_custom_provider, custom_platform_id
 from claude_chat.db import DatabaseManager
-from claude_chat.clients import fetch_available_models, get_default_capabilities, sanitize_error_message
+from claude_chat.clients import fetch_available_models, get_default_capabilities, sanitize_error_message, extract_final_response_text
 
 from claude_chat.api_bridge import WebAPI
 
@@ -328,7 +328,14 @@ class ClaudeChatApp:
                 custom_fallback = provider.get("models", [])
                 custom_models_api_url = provider.get("models_api_url", "")
             
-            model_ids = fetch_available_models(api_key, proxy_mode, proxy_url, active_platform=active_platform, platform_api_url=platform_api_url, custom_fallback_models=custom_fallback, custom_models_api_url=custom_models_api_url)
+            model_ids = fetch_available_models(
+                api_key, proxy_mode, proxy_url, 
+                active_platform=active_platform, 
+                platform_api_url=platform_api_url, 
+                custom_fallback_models=custom_fallback, 
+                custom_models_api_url=custom_models_api_url,
+                user_model_configs=self.config.get("model_configs", {})
+            )
             
             # 校验平台是否在拉取期间发生切换，防止旧请求覆盖新平台的模型列表
             current_platform = self.config.get("active_platform", "claude")
@@ -339,7 +346,10 @@ class ClaudeChatApp:
                 self.available_models = model_ids
                 if self.window:
                     # 将模型字典推送给前端注册好的全局回调函数
-                    js_code = f"if (window.onModelsUpdated) window.onModelsUpdated({json.dumps(model_ids)});"
+                    js_code = (
+                        "if (window.onModelsUpdated) "
+                        f"window.onModelsUpdated({json.dumps(model_ids)}, {json.dumps(active_platform)});"
+                    )
                     self.window.evaluate_js(js_code)
 
         thread = threading.Thread(target=_fetch, daemon=True)
@@ -405,10 +415,13 @@ class ClaudeChatApp:
                     if conv_id:
                         input_tokens = msg_data.get("input_tokens", 0)
                         output_tokens = msg_data.get("output_tokens", 0)
-                        thinking = streaming_thinking_text if streaming_thinking_text else None
+                        final_text = extract_final_response_text(msg_data, streaming_text)
+                        thinking = msg_data.get("thinking")
+                        if thinking is None:
+                            thinking = streaming_thinking_text if streaming_thinking_text else None
                         self.conv_manager.add_assistant_message_and_update_tokens(
                             conv_id,
-                            streaming_text,
+                            final_text,
                             thinking,
                             input_tokens,
                             output_tokens

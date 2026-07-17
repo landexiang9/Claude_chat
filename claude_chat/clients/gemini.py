@@ -128,6 +128,13 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
         input_tokens = 0
         output_tokens = 0
         content_blocks = []
+
+        # 流式思考标签解析器:gemini-3.5-flash 等 preview 模型不在协议层分离思考,
+        # 而是把 <thought>...</thought> 写在正文 text part 里(thought=False)。此处在
+        # 正文通道上兜底解析。若 part.thought 已为 True(SDK 原生分离),直接走 thinking,
+        # 不经过解析器,不会受影响。见 thinking_tag_parser。
+        from .thinking_tag_parser import ThinkingTagStreamParser
+        tag_parser = ThinkingTagStreamParser()
         
         if use_legacy:
             import google.generativeai as genai
@@ -203,8 +210,15 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
                                     streaming_queue.put(("thinking", text))
                             else:
                                 if text:
-                                    full_text += text
-                                    streaming_queue.put(("text", text))
+                                    # 正文里可能含 <thought>...</thought>(gemini-3.5-flash
+                                    # preview 未在协议层分离时),经解析器兜底拆分
+                                    text_part, thinking_part = tag_parser.feed(text)
+                                    if thinking_part:
+                                        full_reasoning += thinking_part
+                                        streaming_queue.put(("thinking", thinking_part))
+                                    if text_part:
+                                        full_text += text_part
+                                        streaming_queue.put(("text", text_part))
                                     
             input_tokens = len(str(legacy_msgs)) // 4
             output_tokens = len(full_text) // 4
@@ -354,8 +368,15 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
                                         streaming_queue.put(("thinking", text))
                                 else:
                                     if text:
-                                        full_text += text
-                                        streaming_queue.put(("text", text))
+                                        # 正文里可能含 <thought>...</thought>(gemini-3.5-flash
+                                        # preview 未在协议层分离时),经解析器兜底拆分
+                                        text_part, thinking_part = tag_parser.feed(text)
+                                        if thinking_part:
+                                            full_reasoning += thinking_part
+                                            streaming_queue.put(("thinking", thinking_part))
+                                        if text_part:
+                                            full_text += text_part
+                                            streaming_queue.put(("text", text_part))
                                         
                 if hasattr(chunk, "usage_metadata") and chunk.usage_metadata:
                     um = chunk.usage_metadata
@@ -402,6 +423,15 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
             if output_tokens == 0:
                 output_tokens = len(full_text) // 4
 
+        # 取走思考标签解析器残余缓冲(模型未写闭标签就被 max_tokens 截断)
+        text_part, thinking_part = tag_parser.flush()
+        if thinking_part:
+            full_reasoning += thinking_part
+            streaming_queue.put(("thinking", thinking_part))
+        if text_part:
+            full_text += text_part
+            streaming_queue.put(("text", text_part))
+
         content_blocks = [{"type": "text", "text": full_text}]
         if full_reasoning:
             content_blocks.insert(0, {
@@ -409,9 +439,6 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
                 "thinking": full_reasoning,
                 "signature": "omitted_for_display"
             })
-            
-        if previous_content_blocks:
-            content_blocks = previous_content_blocks + content_blocks
             
         streaming_queue.put(("done", {
             "input_tokens": input_tokens,

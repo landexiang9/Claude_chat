@@ -55,13 +55,6 @@ const serverTokenInput = document.getElementById("server-token-input");
 const toggleTokenVisibility = document.getElementById("toggle-token-visibility");
 
 // Claude specific parameters
-const claudeTempSlider = document.getElementById("claude-temp-slider");
-const claudeTempLabelTitle = document.getElementById("claude-temp-label-title");
-const claudeMaxTokensInput = document.getElementById("claude-max-tokens-input");
-const claudeBudgetGroup = document.getElementById("claude-budget-group");
-const claudeBudgetTokensInput = document.getElementById("claude-budget-tokens-input");
-const claudeThinkingLevelGroup = document.getElementById("claude-thinking-level-group");
-const claudeThinkingLevelSelect = document.getElementById("claude-thinking-level-select");
 const claudeEnableSearchInput = document.getElementById("claude-enable-search-input");
 const claudeSearchGroup = document.getElementById("claude-search-group");
 const claudeEnableFetchInput = document.getElementById("claude-enable-fetch-input");
@@ -84,9 +77,6 @@ const claudeWebPageParserSelect = document.getElementById("claude-web-page-parse
 const claudeWebFetchLimitInput = document.getElementById("claude-web-fetch-limit-input");
 
 // DeepSeek specific parameters
-const deepseekTempSlider = document.getElementById("deepseek-temp-slider");
-const deepseekTempLabelTitle = document.getElementById("deepseek-temp-label-title");
-const deepseekMaxTokensInput = document.getElementById("deepseek-max-tokens-input");
 const deepseekEnableSearchInput = document.getElementById("deepseek-enable-search-input");
 const deepseekSearchGroup = document.getElementById("deepseek-search-group");
 const deepseekEnableFetchInput = document.getElementById("deepseek-enable-fetch-input");
@@ -109,14 +99,6 @@ const deepseekWebPageParserSelect = document.getElementById("deepseek-web-page-p
 const deepseekWebFetchLimitInput = document.getElementById("deepseek-web-fetch-limit-input");
 
 // Gemini specific parameters
-const geminiTempSlider = document.getElementById("gemini-temp-slider");
-const geminiTempLabelTitle = document.getElementById("gemini-temp-label-title");
-const geminiMaxTokensInput = document.getElementById("gemini-max-tokens-input");
-const geminiThinkingEnabledInput = document.getElementById("gemini-thinking-enabled-input");
-const geminiBudgetGroup = document.getElementById("gemini-budget-group");
-const geminiBudgetTokensInput = document.getElementById("gemini-budget-tokens-input");
-const geminiThinkingLevelGroup = document.getElementById("gemini-thinking-level-group");
-const geminiThinkingLevelSelect = document.getElementById("gemini-thinking-level-select");
 const geminiEnableSearchInput = document.getElementById("gemini-enable-search-input");
 const geminiEnableCodeSandboxInput = document.getElementById("gemini-enable-code-sandbox-input");
 const geminiCodeSandboxTypeSelect = document.getElementById("gemini-code-sandbox-type-select");
@@ -154,3 +136,20 @@ const clearChatBtn = document.getElementById("clear-chat-btn");
 const deleteModal = document.getElementById("delete-modal");
 const confirmDeleteBtn = document.getElementById("confirm-delete-btn");
 
+
+const modelTempSlider = document.getElementById("model-temp-slider");
+const modelTempLabelTitle = document.getElementById("model-temp-label-title");
+const modelMaxTokensInput = document.getElementById("model-max-tokens-input");
+const modelThinkingContainer = document.getElementById("model-thinking-container");
+const modelThinkingEnabledInput = document.getElementById("model-thinking-enabled-input");
+const modelThinkingOptions = document.getElementById("model-thinking-options");
+const modelThinkingTypeGroup = document.getElementById("model-thinking-type-group");
+const modelThinkingBudgetGroup = document.getElementById("model-thinking-budget-group");
+const modelThinkingBudgetInput = document.getElementById("model-thinking-budget-input");
+const modelThinkingLevelGroup = document.getElementById("model-thinking-level-group");
+const modelThinkingLevelSelect = document.getElementById("model-thinking-level-select");
+const modelInfoContext = document.getElementById("model-info-context");
+const modelInfoOutput = document.getElementById("model-info-output");
+const modelInfoReasoning = document.getElementById("model-info-reasoning");
+const updateModelRegistryBtn = document.getElementById("update-model-registry-btn");
+const currentModelIndicator = document.getElementById("current-model-indicator");

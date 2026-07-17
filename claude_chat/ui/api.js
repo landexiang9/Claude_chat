@@ -122,9 +122,15 @@ async function readHttpStream(response, callback) {
 // config 快照覆盖新值(丢失用户设置)。所有路径共享此 promise 链,逐条执行。
 let _saveConfigChain = Promise.resolve();
 function serializeSaveConfig(cfg) {
-    const run = () => (checkIsNative()
-        ? window.pywebview.api.save_config(cfg)
-        : fetchJson('/api/save_config', 'POST', cfg));
+    const run = async () => {
+        const result = await (checkIsNative()
+            ? window.pywebview.api.save_config(cfg)
+            : fetchJson('/api/save_config', 'POST', cfg));
+        if (result && typeof result === 'object' && Object.prototype.hasOwnProperty.call(result, 'success')) {
+            return Boolean(result.success);
+        }
+        return Boolean(result);
+    };
     const next = _saveConfigChain.then(run, run);
     // 不让单次失败阻断整条串行队列
     _saveConfigChain = next.catch(() => {});
@@ -134,7 +140,14 @@ function serializeSaveConfig(cfg) {
 const apiBridge = {
     get_config: () => checkIsNative() ? window.pywebview.api.get_config() : fetchJson('/api/config'),
     save_config: (cfg) => serializeSaveConfig(cfg),
-    fetch_models: () => checkIsNative() ? window.pywebview.api.fetch_models() : fetchJson('/api/models'),
+    fetch_models: (platform = null) => {
+        if (checkIsNative()) return window.pywebview.api.fetch_models(platform);
+        const query = platform ? `?platform=${encodeURIComponent(platform)}` : '';
+        return fetchJson(`/api/models${query}`);
+    },
+    update_model_registry: () => checkIsNative()
+        ? window.pywebview.api.update_model_registry()
+        : fetchJson('/api/update_model_registry', 'POST', {}),
     check_parsers: () => {
         if (checkIsNative() && typeof window.pywebview.api.check_parsers === 'function') {
             return window.pywebview.api.check_parsers();

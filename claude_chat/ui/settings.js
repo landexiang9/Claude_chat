@@ -131,53 +131,10 @@ function showSettings() {
         }).catch(err => console.error("Error checking parsers status:", err));
     }
     
-    // 加载各平台参数值
-    if (claudeTempSlider) {
-        claudeTempSlider.value = config.temperature !== undefined ? config.temperature : 0.7;
-        claudeTempLabelTitle.textContent = `Temperature: ${parseFloat(claudeTempSlider.value).toFixed(2)}`;
-    }
-    if (claudeMaxTokensInput) {
-        claudeMaxTokensInput.value = config.max_tokens || 4096;
-    }
-
-    if (deepseekTempSlider) {
-        deepseekTempSlider.value = config.deepseek_temperature !== undefined ? config.deepseek_temperature : 0.7;
-        deepseekTempLabelTitle.textContent = `Temperature: ${parseFloat(deepseekTempSlider.value).toFixed(2)}`;
-    }
-    if (deepseekMaxTokensInput) {
-        deepseekMaxTokensInput.value = config.deepseek_max_tokens || 4096;
-    }
-
-    if (geminiTempSlider) {
-        geminiTempSlider.value = config.gemini_temperature !== undefined ? config.gemini_temperature : 0.7;
-        geminiTempLabelTitle.textContent = `Temperature: ${parseFloat(geminiTempSlider.value).toFixed(2)}`;
-    }
-    if (geminiMaxTokensInput) {
-        geminiMaxTokensInput.value = config.gemini_max_tokens || 4096;
-    }
-
-    // Claude 思维模式设置
-    const claudeMode = config.thinking_enabled ? config.thinking_type : "disabled";
-    document.querySelectorAll("input[name='claude-thinking-mode']").forEach(radio => {
-        radio.checked = (radio.value === claudeMode);
-    });
-    if (claudeBudgetTokensInput) {
-        claudeBudgetTokensInput.value = config.thinking_budget || 16000;
-    }
-    if (claudeThinkingLevelSelect) {
-        claudeThinkingLevelSelect.value = config.thinking_level || "high";
-    }
-
-    // Gemini 思维模式设置
-    if (geminiThinkingEnabledInput) {
-        geminiThinkingEnabledInput.checked = !!config.gemini_thinking_enabled;
-    }
-    if (geminiBudgetTokensInput) {
-        geminiBudgetTokensInput.value = config.gemini_thinking_budget || 1024;
-    }
-    if (geminiThinkingLevelSelect) {
-        geminiThinkingLevelSelect.value = config.gemini_thinking_level || "high";
-    }
+        // 更新当前模型的专属设置UI
+    updateModelSettingsUI();
+    if (typeof renderPresetsList === "function") renderPresetsList();
+    showModal(settingsModal);
 
     // Claude 网页搜索
     if (claudeEnableSearchInput) {
@@ -467,132 +424,189 @@ if (deepseekWebPageParserSelect) {
     };
 }
 
-// Claude Thinking Mode Events
-document.querySelectorAll("input[name='claude-thinking-mode']").forEach(radio => {
-    radio.onchange = () => {
-        updateThinkingSettingsUI();
-    };
-});
 
-// Gemini Thinking Enabled Event
-if (geminiThinkingEnabledInput) {
-    geminiThinkingEnabledInput.onchange = () => {
-        updateThinkingSettingsUI();
+// 手动更新模型能力注册表
+if (updateModelRegistryBtn) {
+    updateModelRegistryBtn.onclick = async () => {
+        const originalText = updateModelRegistryBtn.innerHTML;
+        updateModelRegistryBtn.innerHTML = "⏳ 更新中...";
+        updateModelRegistryBtn.disabled = true;
+        try {
+            const res = await apiBridge.update_model_registry();
+            if (res && res.success) {
+                alert(`更新成功！已拉取 ${res.count} 个模型的最新能力数据。`);
+                // 刷新 UI
+                if (typeof fetchModels === "function") {
+                    await fetchModels();
+                } else if (apiBridge.fetch_models) {
+                    const platform = config.active_platform || "claude";
+                    availableModels = await apiBridge.fetch_models(platform);
+                    if (availableModels) modelCache.set(platform, availableModels);
+                }
+                updateModelSettingsUI();
+            } else {
+                alert(`更新失败: ${res ? res.error : "未知错误"}`);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("请求异常，请查看日志。");
+        } finally {
+            updateModelRegistryBtn.innerHTML = originalText;
+            updateModelRegistryBtn.disabled = false;
+        }
     };
 }
 
-function updateThinkingSettingsUI() {
-    const selectedModelId = modelSelect.value || config.model;
-    const modelObj = availableModels.find(m => (typeof m === 'object' && m.id === selectedModelId));
-    
+// 当模型改变时，刷新UI (在 ui.js 中 modelSelect.addEventListener("change", ...) 里也会调用此函数)
+// 为此我们需要将 updateModelSettingsUI 挂载到 window
+window.updateModelSettingsUI = function() {
+    const selectedModelId = modelSelect ? modelSelect.value : config.model;
+    if (!selectedModelId) return;
+
+    if (currentModelIndicator) {
+        currentModelIndicator.textContent = selectedModelId;
+    }
+
+    // 从 config.model_configs 或 config 中提取
+    const modelConfigs = config.model_configs || {};
+    let mConfig = modelConfigs[selectedModelId];
+    if (!mConfig) {
+        // Fallback to top level config if no model specific config
+        mConfig = {
+            temperature: config.temperature,
+            max_tokens: config.max_tokens,
+            thinking_enabled: config.thinking_enabled,
+            thinking_type: config.thinking_type || "adaptive",
+            thinking_budget: config.thinking_budget || 1024,
+            thinking_level: config.thinking_level || "high"
+        };
+    }
+
+    // 基础参数
+    if (modelTempSlider) {
+        modelTempSlider.value = mConfig.temperature !== undefined ? mConfig.temperature : 0.7;
+        if (modelTempLabelTitle) modelTempLabelTitle.textContent = `Temperature: ${parseFloat(modelTempSlider.value).toFixed(2)}`;
+    }
+    if (modelMaxTokensInput) {
+        modelMaxTokensInput.value = mConfig.max_tokens || 4096;
+    }
+
+    // 查找模型能力
+    const modelObj = availableModels ? availableModels.find(m => (typeof m === 'object' && m.id === selectedModelId)) : null;
     const caps = modelObj || {
         thinking_supported: false,
         adaptive_supported: false,
         enabled_supported: false,
-        effort_levels: []
+        effort_levels: [],
+        context_length: 0,
+        max_output: 0
     };
-    
-    const activePlatform = config.active_platform || "claude";
-    
-    // 首先隐藏所有平台思维设置区域
-    const claudeThinkingSection = document.querySelector("input[name='claude-thinking-mode']")?.closest(".form-group");
-    if (claudeThinkingSection) claudeThinkingSection.classList.add("hidden");
-    if (claudeBudgetGroup) claudeBudgetGroup.classList.add("hidden");
-    if (claudeThinkingLevelGroup) claudeThinkingLevelGroup.classList.add("hidden");
-    
-    const geminiThinkingSection = geminiThinkingEnabledInput?.closest(".form-group");
-    if (geminiThinkingSection) geminiThinkingSection.classList.add("hidden");
-    if (geminiBudgetGroup) geminiBudgetGroup.classList.add("hidden");
-    if (geminiThinkingLevelGroup) geminiThinkingLevelGroup.classList.add("hidden");
-    
-    if (activePlatform === "claude") {
-        if (!caps.thinking_supported) return;
-        if (claudeThinkingSection) claudeThinkingSection.classList.remove("hidden");
+
+    // 更新注册表信息展示
+    if (modelInfoContext) modelInfoContext.textContent = caps.context_length ? caps.context_length.toLocaleString() : "未知";
+    if (modelInfoOutput) modelInfoOutput.textContent = caps.max_output ? caps.max_output.toLocaleString() : "未知";
+    if (modelInfoReasoning) {
+        if (caps.thinking_supported) {
+            modelInfoReasoning.textContent = "支持";
+            modelInfoReasoning.style.color = "var(--green)";
+        } else {
+            modelInfoReasoning.textContent = "不支持";
+            modelInfoReasoning.style.color = "var(--red)";
+        }
+    }
+
+    // 处理 Thinking UI
+    if (!caps.thinking_supported) {
+        if (modelThinkingContainer) modelThinkingContainer.classList.add("hidden");
+    } else {
+        if (modelThinkingContainer) modelThinkingContainer.classList.remove("hidden");
         
-        const adaptiveRadio = document.querySelector("input[name='claude-thinking-mode'][value='adaptive']");
-        const enabledRadio = document.querySelector("input[name='claude-thinking-mode'][value='enabled']");
+        if (modelThinkingEnabledInput) {
+            modelThinkingEnabledInput.checked = !!mConfig.thinking_enabled;
+        }
+
+        // Toggle visibility of options based on checkbox
+        if (modelThinkingOptions) {
+            if (mConfig.thinking_enabled) {
+                modelThinkingOptions.classList.remove("hidden");
+            } else {
+                modelThinkingOptions.classList.add("hidden");
+            }
+        }
+
+        // Setup radio buttons for type
+        const adaptiveRadio = document.querySelector("input[name='model-thinking-type'][value='adaptive']");
+        const enabledRadio = document.querySelector("input[name='model-thinking-type'][value='enabled']");
         
-        if (adaptiveRadio) {
+        if (adaptiveRadio && enabledRadio) {
             adaptiveRadio.disabled = !caps.adaptive_supported;
             adaptiveRadio.closest(".radio-label").style.opacity = caps.adaptive_supported ? "1" : "0.5";
-        }
-        if (enabledRadio) {
             enabledRadio.disabled = !caps.enabled_supported;
             enabledRadio.closest(".radio-label").style.opacity = caps.enabled_supported ? "1" : "0.5";
-        }
-        
-        let checkedRadio = document.querySelector("input[name='claude-thinking-mode']:checked");
-        if (checkedRadio && checkedRadio.disabled) {
-            const disabledRadio = document.querySelector("input[name='claude-thinking-mode'][value='disabled']");
-            if (disabledRadio) disabledRadio.checked = true;
-            checkedRadio = disabledRadio;
-        }
-        
-        const mode = checkedRadio ? checkedRadio.value : "disabled";
-        
-        if (mode === "disabled") {
-            if (claudeBudgetGroup) claudeBudgetGroup.classList.add("hidden");
-            if (claudeThinkingLevelGroup) claudeThinkingLevelGroup.classList.add("hidden");
-        } else if (mode === "adaptive") {
-            if (claudeBudgetGroup) claudeBudgetGroup.classList.add("hidden");
-            if (caps.effort_levels && caps.effort_levels.length > 0) {
-                if (claudeThinkingLevelGroup) claudeThinkingLevelGroup.classList.remove("hidden");
-                populateThinkingLevels(claudeThinkingLevelSelect, caps.effort_levels, config.thinking_level);
+
+            if (mConfig.thinking_type === "adaptive" && caps.adaptive_supported) {
+                adaptiveRadio.checked = true;
+            } else if (mConfig.thinking_type === "enabled" && caps.enabled_supported) {
+                enabledRadio.checked = true;
             } else {
-                if (claudeThinkingLevelGroup) claudeThinkingLevelGroup.classList.add("hidden");
+                // Default fallback
+                if (caps.adaptive_supported) adaptiveRadio.checked = true;
+                else if (caps.enabled_supported) enabledRadio.checked = true;
             }
-        } else if (mode === "enabled") {
-            if (claudeBudgetGroup) claudeBudgetGroup.classList.remove("hidden");
-            if (claudeThinkingLevelGroup) claudeThinkingLevelGroup.classList.add("hidden");
         }
-    } else if (activePlatform === "gemini") {
-        if (!caps.thinking_supported) return;
-        if (geminiThinkingSection) geminiThinkingSection.classList.remove("hidden");
-        
-        if (geminiThinkingEnabledInput && geminiThinkingEnabledInput.checked) {
-            if (caps.effort_levels && caps.effort_levels.length > 0) {
-                if (geminiThinkingLevelGroup) geminiThinkingLevelGroup.classList.remove("hidden");
-                if (geminiBudgetGroup) geminiBudgetGroup.classList.add("hidden");
-                populateThinkingLevels(geminiThinkingLevelSelect, caps.effort_levels, config.gemini_thinking_level || "high");
+
+        // Type Group Visibility (only show if we have choices or required explicitly)
+        if (modelThinkingTypeGroup) {
+            if (caps.adaptive_supported || caps.enabled_supported) {
+                modelThinkingTypeGroup.classList.remove("hidden");
             } else {
-                if (geminiThinkingLevelGroup) geminiThinkingLevelGroup.classList.add("hidden");
-                if (geminiBudgetGroup) geminiBudgetGroup.classList.remove("hidden");
+                modelThinkingTypeGroup.classList.add("hidden");
             }
-        } else {
-            if (geminiBudgetGroup) geminiBudgetGroup.classList.add("hidden");
-            if (geminiThinkingLevelGroup) geminiThinkingLevelGroup.classList.add("hidden");
+        }
+
+        if (modelThinkingBudgetInput) {
+            modelThinkingBudgetInput.value = mConfig.thinking_budget || 1024;
+        }
+
+        // Populating effort levels
+        if (modelThinkingLevelSelect) {
+            if (caps.effort_levels && caps.effort_levels.length > 0) {
+                if (modelThinkingLevelGroup) modelThinkingLevelGroup.classList.remove("hidden");
+                modelThinkingLevelSelect.innerHTML = "";
+                caps.effort_levels.forEach(lvl => {
+                    const option = document.createElement("option");
+                    option.value = lvl;
+                    option.textContent = lvl.charAt(0).toUpperCase() + lvl.slice(1);
+                    modelThinkingLevelSelect.appendChild(option);
+                });
+                modelThinkingLevelSelect.value = mConfig.thinking_level || caps.effort_levels[0];
+            } else {
+                if (modelThinkingLevelGroup) modelThinkingLevelGroup.classList.add("hidden");
+            }
         }
     }
+};
+
+// Bind Events
+if (modelThinkingEnabledInput) {
+    modelThinkingEnabledInput.addEventListener("change", () => {
+        if (modelThinkingOptions) {
+            if (modelThinkingEnabledInput.checked) {
+                modelThinkingOptions.classList.remove("hidden");
+            } else {
+                modelThinkingOptions.classList.add("hidden");
+            }
+        }
+    });
+}
+if (modelTempSlider) {
+    modelTempSlider.addEventListener("input", (e) => {
+        if (modelTempLabelTitle) {
+            modelTempLabelTitle.textContent = `Temperature: ${parseFloat(e.target.value).toFixed(2)}`;
+        }
+    });
 }
 
-function populateThinkingLevels(selectEl, levels, currentVal) {
-    if (!selectEl) return;
-    const levelLabels = {
-        "low": "Low (低 - 快速且经济)",
-        "medium": "Medium (中 - 平衡)",
-        "high": "High (高 - 默认推荐)",
-        "xhigh": "X-High (极高)",
-        "max": "Max (最大级 - 最深思考)"
-    };
-    
-    selectEl.innerHTML = "";
-    
-    levels.forEach(lvl => {
-        const option = document.createElement("option");
-        option.value = lvl;
-        option.textContent = levelLabels[lvl] || lvl.toUpperCase();
-        if (lvl === currentVal) option.selected = true;
-        selectEl.appendChild(option);
-    });
-    
-    if (!levels.includes(currentVal)) {
-        if (levels.includes("high")) {
-            selectEl.value = "high";
-        } else if (levels.length > 0) {
-            selectEl.value = levels[levels.length - 1];
-        }
-    }
-}
 
 // 绑定设置弹窗内部的平台标签卡切换逻辑
 const settingsTabButtons = document.querySelectorAll(".platform-tabs .tab-btn");
@@ -671,49 +685,26 @@ saveSettingsBtn.onclick = async () => {
         config.security_token = serverTokenInput.value.trim();
     }
     
-    // 保存各平台温度滑块与 Max Tokens
-    if (claudeTempSlider) {
-        config.temperature = parseFloat(claudeTempSlider.value);
-    }
-    if (claudeMaxTokensInput) {
-        config.max_tokens = parseInt(claudeMaxTokensInput.value) || 4096;
-    }
+    // 保存当前模型的专属设置
+    const selectedModelId = modelSelect ? modelSelect.value : config.model;
+    if (selectedModelId) {
+        if (!config.model_configs) config.model_configs = {};
+        if (!config.model_configs[selectedModelId]) config.model_configs[selectedModelId] = {};
+        
+        const mConfig = config.model_configs[selectedModelId];
+        
+        if (modelTempSlider) mConfig.temperature = parseFloat(modelTempSlider.value);
+        if (modelMaxTokensInput) mConfig.max_tokens = parseInt(modelMaxTokensInput.value) || 4096;
+        
+        if (modelThinkingEnabledInput) mConfig.thinking_enabled = modelThinkingEnabledInput.checked;
+        const thinkingModeRadio = document.querySelector("input[name='model-thinking-type']:checked");
+        if (thinkingModeRadio) mConfig.thinking_type = thinkingModeRadio.value;
+        if (modelThinkingBudgetInput) mConfig.thinking_budget = parseInt(modelThinkingBudgetInput.value) || 1024;
+        if (modelThinkingLevelSelect) mConfig.thinking_level = modelThinkingLevelSelect.value || "high";
 
-    if (deepseekTempSlider) {
-        config.deepseek_temperature = parseFloat(deepseekTempSlider.value);
-    }
-    if (deepseekMaxTokensInput) {
-        config.deepseek_max_tokens = parseInt(deepseekMaxTokensInput.value) || 4096;
-    }
-
-    if (geminiTempSlider) {
-        config.gemini_temperature = parseFloat(geminiTempSlider.value);
-    }
-    if (geminiMaxTokensInput) {
-        config.gemini_max_tokens = parseInt(geminiMaxTokensInput.value) || 4096;
-    }
-
-    // Claude 思维模式保存
-    const claudeThinkingModeRadio = document.querySelector("input[name='claude-thinking-mode']:checked");
-    const claudeThinkingMode = claudeThinkingModeRadio ? claudeThinkingModeRadio.value : "disabled";
-    config.thinking_enabled = (claudeThinkingMode !== "disabled");
-    config.thinking_type = claudeThinkingMode;
-    if (claudeBudgetTokensInput) {
-        config.thinking_budget = parseInt(claudeBudgetTokensInput.value) || 16000;
-    }
-    if (claudeThinkingLevelSelect) {
-        config.thinking_level = claudeThinkingLevelSelect.value || "high";
-    }
-
-    // Gemini 思维模式保存
-    if (geminiThinkingEnabledInput) {
-        config.gemini_thinking_enabled = geminiThinkingEnabledInput.checked;
-    }
-    if (geminiBudgetTokensInput) {
-        config.gemini_thinking_budget = parseInt(geminiBudgetTokensInput.value) || 1024;
-    }
-    if (geminiThinkingLevelSelect) {
-        config.gemini_thinking_level = geminiThinkingLevelSelect.value || "high";
+        // Backward compatibility for root config fallback
+        config.temperature = mConfig.temperature;
+        config.max_tokens = mConfig.max_tokens;
     }
 
     // Claude 网页搜索
@@ -801,7 +792,11 @@ saveSettingsBtn.onclick = async () => {
     // 关键：删除 custom_providers，防止前端旧快照回写覆盖后端由 CRUD 端点维护的供应商列表
     delete config.custom_providers;
     
-    await apiBridge.save_config(config);
+    const saved = await apiBridge.save_config(config);
+    if (!saved) {
+        statusLabel.textContent = "设置保存失败，请检查日志或磁盘权限";
+        return;
+    }
     const fetchedConfig = await apiBridge.get_config();
     config = fetchedConfig;
     updateLedStatus();

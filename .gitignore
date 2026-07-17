@@ -15,6 +15,10 @@ server.key
 AGENTS.md
 test_dialog.py
 test/
+!test/
+test/*
+!test/test_thinking_tag_parser.py
+!test/test_fixed_regressions.py
 scratch/
 test.db
 debug.txt
@@ -40,4 +44,3 @@ inspect_output.txt
 options.txt
 test.pptx
 .antigravitycli/
-

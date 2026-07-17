@@ -12,6 +12,7 @@ logger = logging.getLogger("claude_chat")
 from claude_chat.config import FALLBACK_MODELS, IMAGE_EXTENSIONS, PDF_EXTENSIONS, TEXT_EXTENSIONS, ConfigManager, get_sensitive_api_keys, find_custom_provider, custom_platform_id, sanitize_provider_id
 from claude_chat.db import DatabaseManager, deserialize_content
 from claude_chat.clients import extract_api_message, stream_claude_response, fetch_available_models
+from claude_chat.clients.models import _do_fetch_registry
 import webview
 
 def get_mime_type(file_path):
@@ -138,37 +139,78 @@ class WebAPI:
             for key in sensitive_keys:
                 if new_config.get(f"clear_{key}"):
                     updates[key] = ""
+
+            # Only changes that affect model discovery should trigger a network refresh.
+            # A normal model selection or unrelated settings save must stay local/fast.
+            changed_keys = {
+                key for key, value in updates.items()
+                if self._app.config.get(key) != value
+            }
             
             # 通过 ConfigManager.set_many 一次性加锁写入 + 持久化
-            self._app.config.set_many(updates)
+            if not self._app.config.set_many(updates):
+                logger.error("配置文件写入失败，未应用本次前端配置更新")
+                return False
             
-            # 刷新可用的模型列表以更新凭证
-            self._app._refresh_models_async()
+            model_source_keys = {
+                "api_key", "deepseek_api_key", "gemini_api_key",
+                "deepseek_api_url", "gemini_api_url",
+                "proxy_mode", "proxy_url", "model_configs",
+            }
+            custom_model_source_changed = any(
+                key.startswith("custom_") and key.endswith("_api_key")
+                for key in changed_keys
+            )
+            if changed_keys & model_source_keys or custom_model_source_changed:
+                self._app._refresh_models_async()
             
             # 联调:如果存在活跃的对话且属于全局配置范畴,同步修改对话内置的模型参数以防数据割裂
             # M-fix#2:使用 save_conversation_metadata(仅 UPDATE)而非 save_conversation,
             # 后者会 INSERT OR REPLACE 触发 ON DELETE CASCADE + 显式 DELETE messages,
             # 与流式 reader 线程并发时会抹除刚写入的助手消息并重置 token 计数。
             if self._app.current_conv:
-                self._app.current_conv["model"] = self._app.config.get("model")
-                self._app.current_conv["temperature"] = self._app.config.get("temperature", 0.7)
-                self._app.current_conv["max_tokens"] = self._app.config.get("max_tokens", 4096)
-                if self._app.config.get("thinking_enabled"):
-                    self._app.current_conv["thinking"] = {
-                        "type": self._app.config.get("thinking_type", "adaptive"),
-                        "budget_tokens": self._app.config.get("thinking_budget", 16000),
-                        "effort": self._app.config.get("thinking_level", "high"),
-                    }
-                else:
-                    self._app.current_conv["thinking"] = None
+                conv_platform = updates.get("active_platform") or self._app.current_conv.get("platform") or "claude"
+                conv_model = updates.get("model") or self._app.current_conv.get("model") or self._app.config.get("model")
+                mapped = PlatformParamMapper.map_params(conv_platform, self._app.config.data, model_id=conv_model)
+                
+                self._app.current_conv["model"] = conv_model
+                self._app.current_conv["platform"] = conv_platform
+                self._app.current_conv["temperature"] = mapped.get("temperature", 0.7)
+                self._app.current_conv["max_tokens"] = mapped.get("max_tokens", 4096)
+                
+                # Persist the same model-aware thinking configuration used for generation.
+                self._app.current_conv["thinking"] = None
+                if mapped.get("thinking_config"):
+                    self._app.current_conv["thinking"] = dict(mapped["thinking_config"])
+                    if (mapped.get("output_config") or {}).get("effort"):
+                        self._app.current_conv["thinking"]["effort"] = mapped["output_config"]["effort"]
                 self._app.conv_manager.save_conversation_metadata(self._app.current_conv)
             return True
 
-    def fetch_models(self):
+    def update_model_registry(self):
+        """
+        供前端手动调用的方法，强制重新拉取并更新模型能力表，阻塞直到完成并返回。
+        """
+        logger.info("Manual update of model registry requested from UI.")
+        try:
+            result = _do_fetch_registry()
+            if result is not None:
+                return {"success": True, "count": len(result)}
+            else:
+                return {"success": False, "error": "Fetch failed, see logs."}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def fetch_models(self, requested_platform=None):
         """
         前端请求在线模型列表。改为同步获取并返回最新结果，以支持 headless server 模式。
         """
-        active_platform = self._app.config.get("active_platform", "claude")
+        configured_platform = self._app.config.get("active_platform", "claude")
+        active_platform = requested_platform if isinstance(requested_platform, str) and requested_platform else configured_platform
+        if active_platform not in {"claude", "deepseek", "gemini"} and not active_platform.startswith("custom:"):
+            return []
+        if active_platform.startswith("custom:") and not find_custom_provider(self._app.config.data, active_platform):
+            return []
         if active_platform == "deepseek":
             api_key = self._app.config.get("deepseek_api_key", "")
             platform_api_url = self._app.config.get("deepseek_api_url", "https://api.deepseek.com")
@@ -194,25 +236,33 @@ class WebAPI:
             custom_fallback = provider.get("models", [])
             custom_models_api_url = provider.get("models_api_url", "")
 
-        model_ids = fetch_available_models(api_key, proxy_mode, proxy_url, active_platform=active_platform, platform_api_url=platform_api_url, custom_fallback_models=custom_fallback, custom_models_api_url=custom_models_api_url)
+        model_ids = fetch_available_models(
+            api_key, proxy_mode, proxy_url, 
+            active_platform=active_platform, 
+            platform_api_url=platform_api_url, 
+            custom_fallback_models=custom_fallback, 
+            custom_models_api_url=custom_models_api_url,
+            user_model_configs=self._app.config.get("model_configs", {})
+        )
         
-        # 校验平台是否在拉取期间发生切换，防止旧请求覆盖新平台的模型列表
+        # Only publish a global callback for the configured platform. Explicit
+        # per-conversation requests return their result directly to avoid stale UI races.
         current_platform = self._app.config.get("active_platform", "claude")
-        if current_platform != active_platform:
-            return []
-            
         if model_ids:
-            self._app.available_models = model_ids
-            # 在 GUI 模式下为了兼容性依然尝试推送一次回调，但不再是必须
-            if self._app.window:
-                js_code = f"if (window.onModelsUpdated) window.onModelsUpdated({json.dumps(model_ids)});"
+            if current_platform == active_platform:
+                self._app.available_models = model_ids
+            if requested_platform is None and current_platform == active_platform and self._app.window:
+                js_code = (
+                    "if (window.onModelsUpdated) "
+                    f"window.onModelsUpdated({json.dumps(model_ids)}, {json.dumps(active_platform)});"
+                )
                 try:
                     self._app.window.evaluate_js(js_code)
                 except Exception:
                     pass
             return model_ids
-        # 加载失败/返回空：不保留旧模型列表，明确返回空让前端显示加载失败提示
-        self._app.available_models = []
+        if current_platform == active_platform:
+            self._app.available_models = []
         return []
 
     def paste_from_clipboard(self):
@@ -300,16 +350,21 @@ class WebAPI:
         with self._app.lock:
             logger.info("正在创建新会话...")
             conv_data = self._app.conv_manager.new_conversation()
-            conv_data["model"] = self._app.config.get("model", FALLBACK_MODELS[0])
-            conv_data["platform"] = self._app.config.get("active_platform", "claude")
-            conv_data["temperature"] = self._app.config.get("temperature", 0.7)
-            conv_data["max_tokens"] = self._app.config.get("max_tokens", 4096)
-            if self._app.config.get("thinking_enabled"):
-                conv_data["thinking"] = {
-                    "type": self._app.config.get("thinking_type", "adaptive"),
-                    "budget_tokens": self._app.config.get("thinking_budget", 16000),
-                    "effort": self._app.config.get("thinking_level", "high"),
-                }
+            conv_platform = self._app.config.get("active_platform", "claude")
+            conv_model = self._app.config.get("model", FALLBACK_MODELS[0])
+            mapped = PlatformParamMapper.map_params(conv_platform, self._app.config.data, model_id=conv_model)
+            
+            conv_data["model"] = conv_model
+            conv_data["platform"] = conv_platform
+            conv_data["temperature"] = mapped.get("temperature", 0.7)
+            conv_data["max_tokens"] = mapped.get("max_tokens", 4096)
+            
+            # Build thinking config from the same model-aware mapping used by generation.
+            conv_data["thinking"] = None
+            if mapped.get("thinking_config"):
+                conv_data["thinking"] = dict(mapped["thinking_config"])
+                if (mapped.get("output_config") or {}).get("effort"):
+                    conv_data["thinking"]["effort"] = mapped["output_config"]["effort"]
             self._app.conv_manager.save_conversation(conv_data)
             self._app.current_conv = conv_data
             return conv_data
@@ -474,8 +529,9 @@ class WebAPI:
             api_messages = [extract_api_message(msg) for msg in self._app.current_conv["messages"]]
             
             # 获取活跃平台与投影映射后的扁平配置
-            active_platform = self._app.config.get("active_platform", "claude")
-            mapped = PlatformParamMapper.map_params(active_platform, self._app.config.data)
+            active_platform = self._app.current_conv.get("platform") or self._app.config.get("active_platform", "claude")
+            current_model = self._app.current_conv.get("model") or self._app.config.get("model", FALLBACK_MODELS[0])
+            mapped = PlatformParamMapper.map_params(active_platform, self._app.config.data, model_id=current_model)
             
             # 挂载流通道队列
             active_queue = custom_queue if custom_queue is not None else queue.Queue()
@@ -518,10 +574,10 @@ class WebAPI:
                     self._app.config.get("proxy_mode", "system"),
                     self._app.config.get("proxy_url", ""),
                     api_messages,
-                    self._app.current_conv.get("model", self._app.config.get("model")),
+                    current_model,
                     mapped["max_tokens"],
                     mapped["temperature"],
-                    mapped["thinking_config"] if active_platform == "claude" else None,
+                    mapped.get("thinking_config"),
                     active_queue,
                     self._app.abort_event,
                     on_stream_created
@@ -596,7 +652,8 @@ class WebAPI:
                     fp = att["path"]
                     ext = Path(fp).suffix.lower()
                     mime = get_mime_type(fp)
-                    if self._app.config.get("active_platform") == "deepseek" and (ext in IMAGE_EXTENSIONS or ext in PDF_EXTENSIONS):
+                    conv_platform = conv.get("platform") or self._app.config.get("active_platform", "claude")
+                    if conv_platform == "deepseek" and (ext in IMAGE_EXTENSIONS or ext in PDF_EXTENSIONS):
                         from claude_chat.attachment_parser import parse_attachment_to_markdown
                         md_res = parse_attachment_to_markdown(
                             att, 
@@ -730,13 +787,16 @@ class WebAPI:
                     "id": new_conv_id,
                     "title": branch_title,
                     "model": conv.get("model", ""),
+                    "platform": conv.get("platform", ""),
                     "temperature": conv.get("temperature", 0.7),
                     "max_tokens": conv.get("max_tokens", 4096),
                     "thinking": conv.get("thinking"),
                     "created_at": now_str,
                     "updated_at": now_str,
-                    "input_tokens": conv.get("input_tokens", 0),
-                    "output_tokens": conv.get("output_tokens", 0),
+                    # The branch contains only a prefix of the source messages, so the
+                    # source conversation's aggregate usage cannot be copied accurately.
+                    "input_tokens": 0,
+                    "output_tokens": 0,
                     "messages": branch_messages
                 }
                 
@@ -1169,10 +1229,14 @@ class WebAPI:
 
 class PlatformParamMapper:
     @staticmethod
-    def map_params(active_platform, config):
+    def map_params(active_platform, config, model_id=None):
         """
         根据当前 active_platform 映射出一致化的扁平参数集传递给底层的 stream 派发和 clients。
         """
+        model_config = {}
+        if model_id:
+            model_configs = config.get("model_configs", {})
+            model_config = model_configs.get(model_id, {})
         # 默认取值
         params = {
             "api_key": "",
@@ -1194,8 +1258,8 @@ class PlatformParamMapper:
 
         if active_platform == "claude":
             params["api_key"] = config.get("api_key", "")
-            params["max_tokens"] = int(config.get("max_tokens", 4096))
-            params["temperature"] = float(config.get("temperature", 0.7))
+            params["max_tokens"] = int(model_config.get("max_tokens", config.get("max_tokens", 4096)))
+            params["temperature"] = float(model_config.get("temperature", config.get("temperature", 0.7)))
             params["enable_search"] = bool(config.get("enable_web_search", False))
             params["enable_web_fetch"] = bool(config.get("enable_web_fetch", True))
             params["web_fetch_limit"] = int(config.get("web_fetch_limit", 15000))
@@ -1205,21 +1269,22 @@ class PlatformParamMapper:
             params["web_page_parser"] = config.get("web_page_parser", "local")
 
             # 组装思考推理 Extended Thinking 字段
-            if config.get("thinking_enabled"):
-                ttype = config.get("thinking_type", "adaptive")
+            thinking_enabled = model_config.get("thinking_enabled", config.get("thinking_enabled", False))
+            if thinking_enabled:
+                ttype = model_config.get("thinking_type", config.get("thinking_type", "adaptive"))
                 if ttype == "adaptive":
                     params["thinking_config"] = {"type": "adaptive"}
-                    effort_val = config.get("thinking_level", "high")
+                    effort_val = model_config.get("thinking_level", config.get("thinking_level", "high"))
                     if effort_val:
                         params["output_config"] = {"effort": effort_val}
                 elif ttype == "enabled":
-                    params["thinking_config"] = {"type": "enabled", "budget_tokens": int(config.get("thinking_budget", 16000))}
+                    params["thinking_config"] = {"type": "enabled", "budget_tokens": int(model_config.get("thinking_budget", config.get("thinking_budget", 16000)))}
 
         elif active_platform == "deepseek":
             params["api_key"] = config.get("deepseek_api_key", "")
             params["api_url"] = config.get("deepseek_api_url", "https://api.deepseek.com")
-            params["max_tokens"] = int(config.get("deepseek_max_tokens", 4096))
-            params["temperature"] = float(config.get("deepseek_temperature", 0.7))
+            params["max_tokens"] = int(model_config.get("max_tokens", config.get("deepseek_max_tokens", 4096)))
+            params["temperature"] = float(model_config.get("temperature", config.get("deepseek_temperature", 0.7)))
             params["enable_search"] = bool(config.get("deepseek_enable_web_search", False))
             params["enable_web_fetch"] = bool(config.get("deepseek_enable_web_fetch", True))
             params["web_fetch_limit"] = int(config.get("deepseek_web_fetch_limit", 15000))
@@ -1227,22 +1292,28 @@ class PlatformParamMapper:
             params["tavily_api_key"] = config.get("deepseek_tavily_api_key", "")
             params["jina_api_key"] = config.get("deepseek_jina_api_key", "")
             params["web_page_parser"] = config.get("deepseek_web_page_parser", "local")
+            
+            thinking_enabled = model_config.get("thinking_enabled", config.get("deepseek_thinking_enabled", False))
+            if thinking_enabled:
+                effort = model_config.get("thinking_level", config.get("deepseek_thinking_level", "high"))
+                params["thinking_config"] = {"effort": effort}
 
         elif active_platform == "gemini":
             params["api_key"] = config.get("gemini_api_key", "")
             params["api_url"] = config.get("gemini_api_url", "")
-            params["max_tokens"] = int(config.get("gemini_max_tokens", 4096))
-            params["temperature"] = float(config.get("gemini_temperature", 0.7))
+            params["max_tokens"] = int(model_config.get("max_tokens", config.get("gemini_max_tokens", 4096)))
+            params["temperature"] = float(model_config.get("temperature", config.get("gemini_temperature", 0.7)))
             params["enable_search"] = bool(config.get("gemini_enable_web_search", False))
             params["enable_code_sandbox"] = bool(config.get("gemini_enable_code_sandbox", False))
             params["code_sandbox_type"] = config.get("gemini_code_sandbox_type", "local")
 
             # Gemini 思维配置
-            if config.get("gemini_thinking_enabled"):
+            thinking_enabled = model_config.get("thinking_enabled", config.get("gemini_thinking_enabled", False))
+            if thinking_enabled:
                 params["thinking_config"] = {
                     "enabled": True,
-                    "budget_tokens": int(config.get("gemini_thinking_budget", 1024)),
-                    "effort": config.get("gemini_thinking_level", "high")
+                    "budget_tokens": int(model_config.get("thinking_budget", config.get("gemini_thinking_budget", 1024))),
+                    "effort": model_config.get("thinking_level", config.get("gemini_thinking_level", "high"))
                 }
 
         elif active_platform.startswith("custom:"):
@@ -1250,9 +1321,13 @@ class PlatformParamMapper:
             pid = custom_platform_id(active_platform)
             params["api_key"] = config.get(f"custom_{pid}_api_key", "") if pid else ""
             params["api_url"] = provider.get("api_url", "")
-            params["max_tokens"] = int(provider.get("max_tokens", 4096))
-            params["temperature"] = float(provider.get("temperature", 0.7))
+            params["max_tokens"] = int(model_config.get("max_tokens", provider.get("max_tokens", 4096)))
+            params["temperature"] = float(model_config.get("temperature", provider.get("temperature", 0.7)))
             params["enable_search"] = False
             params["enable_web_fetch"] = False
+            if model_config.get("thinking_enabled", provider.get("thinking_enabled", False)):
+                params["thinking_config"] = {
+                    "effort": model_config.get("thinking_level", provider.get("thinking_level", "high"))
+                }
 
         return params

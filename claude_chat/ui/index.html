@@ -164,44 +164,6 @@
                                 </div>
                             </div>
                         </div>
-                        <!-- Claude Parameters -->
-                        <div class="form-group" style="margin-top: 12px;">
-                            <label for="claude-temp-slider" id="claude-temp-label-title">Temperature: 0.70</label>
-                            <input type="range" id="claude-temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
-                        </div>
-                        <div class="form-group">
-                            <label for="claude-max-tokens-input">Max Tokens:</label>
-                            <input type="number" id="claude-max-tokens-input" value="4096">
-                        </div>
-                        <!-- Claude Extended Thinking -->
-                        <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px;">
-                            <label>Extended Thinking (深度思考):</label>
-                            <div class="radio-group">
-                                <label class="radio-label">
-                                    <input type="radio" name="claude-thinking-mode" value="disabled" checked> Disabled
-                                </label>
-                                <label class="radio-label">
-                                    <input type="radio" name="claude-thinking-mode" value="adaptive"> Adaptive
-                                </label>
-                                <label class="radio-label">
-                                    <input type="radio" name="claude-thinking-mode" value="enabled"> Enabled
-                                </label>
-                            </div>
-                        </div>
-                        <div id="claude-budget-group" class="form-group hidden">
-                            <label for="claude-budget-tokens-input">Budget Tokens:</label>
-                            <input type="number" id="claude-budget-tokens-input" value="16000">
-                        </div>
-                        <div id="claude-thinking-level-group" class="form-group hidden">
-                            <label for="claude-thinking-level-select">Thinking Level (思考等级 / Effort):</label>
-                            <select id="claude-thinking-level-select">
-                                <option value="low">Low (低 - 快速且经济)</option>
-                                <option value="medium">Medium (中 - 平衡)</option>
-                                <option value="high">High (高 - 默认推荐)</option>
-                                <option value="xhigh">X-High (极高)</option>
-                                <option value="max">Max (最大级 - 最深思考)</option>
-                            </select>
-                        </div>
                         <!-- Claude Web Search -->
                         <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px;">
                             <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
@@ -295,15 +257,6 @@
                             <label for="deepseek-api-url-input">DeepSeek API URL (可选自定义代理):</label>
                             <input type="text" id="deepseek-api-url-input" placeholder="https://api.deepseek.com" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text);">
                         </div>
-                        <!-- DeepSeek Parameters -->
-                        <div class="form-group" style="margin-top: 12px;">
-                            <label for="deepseek-temp-slider" id="deepseek-temp-label-title">Temperature: 0.70</label>
-                            <input type="range" id="deepseek-temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
-                        </div>
-                        <div class="form-group">
-                            <label for="deepseek-max-tokens-input">Max Tokens:</label>
-                            <input type="number" id="deepseek-max-tokens-input" value="4096">
-                        </div>
                         <!-- DeepSeek Web Search -->
                         <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px;">
                             <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
@@ -396,33 +349,6 @@
                             <label for="gemini-api-url-input">Gemini API URL (可选自定义代理):</label>
                             <input type="text" id="gemini-api-url-input" placeholder="留空为默认" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text);">
                         </div>
-                        <!-- Gemini Parameters -->
-                        <div class="form-group" style="margin-top: 12px;">
-                            <label for="gemini-temp-slider" id="gemini-temp-label-title">Temperature: 0.70</label>
-                            <input type="range" id="gemini-temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
-                        </div>
-                        <div class="form-group">
-                            <label for="gemini-max-tokens-input">Max Tokens:</label>
-                            <input type="number" id="gemini-max-tokens-input" value="4096">
-                        </div>
-                        <!-- Gemini Extended Thinking -->
-                        <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px; display: flex; align-items: center; gap: 8px;">
-                            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
-                                <input type="checkbox" id="gemini-thinking-enabled-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用思维模式 (Thinking Mode)
-                            </label>
-                        </div>
-                        <div id="gemini-budget-group" class="form-group hidden">
-                            <label for="gemini-budget-tokens-input">思维 Token 预算 (Thinking Budget):</label>
-                            <input type="number" id="gemini-budget-tokens-input" value="1024">
-                        </div>
-                        <div id="gemini-thinking-level-group" class="form-group hidden">
-                            <label for="gemini-thinking-level-select">思维深度等级 (Thinking Level / Effort):</label>
-                            <select id="gemini-thinking-level-select">
-                                <option value="low">Low (低 - 快速且经济)</option>
-                                <option value="medium">Medium (中 - 平衡)</option>
-                                <option value="high">High (高 - 默认推荐)</option>
-                            </select>
-                        </div>
                         <!-- Gemini Web Search Grounding -->
                         <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px; display: flex; align-items: center; gap: 8px;">
                             <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
@@ -439,6 +365,72 @@
                                 <select id="gemini-code-sandbox-type-select" style="padding: 2px 4px; border-radius: 4px; border: 1px solid var(--border, #ccc); background: var(--surface0); color: var(--text); font-size: 12px;">
                                     <option value="local">本地执行 (Local)</option>
                                     <option value="cloud">云端执行 (Cloud)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                
+                <!-- Group 2: Model Specific Settings -->
+                <div class="settings-section-card" id="model-specific-settings-card">
+                    <div class="settings-section-title">
+                        🧠 当前模型专属设置 (Per-Model Settings)
+                        <span id="current-model-indicator" style="float: right; color: var(--blue); font-size: 13px;"></span>
+                    </div>
+                    
+                    <div id="model-registry-info" style="margin-top: 10px; padding: 10px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px; font-size: 12px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                        <div>上下文长度: <span id="model-info-context" style="color: var(--green); font-weight: bold;">--</span></div>
+                        <div>最大输出: <span id="model-info-output" style="color: var(--peach); font-weight: bold;">--</span></div>
+                        <div id="model-info-reasoning-container">思考支持: <span id="model-info-reasoning" style="color: var(--mauve); font-weight: bold;">--</span></div>
+                        <button id="update-model-registry-btn" style="margin-left: auto; background: var(--surface0); color: var(--text); border: 1px solid var(--surface1); border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                            🔄 手动拉取最新
+                        </button>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 15px;">
+                        <label for="model-temp-slider" id="model-temp-label-title">Temperature: 0.70</label>
+                        <input type="range" id="model-temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="model-max-tokens-input">Max Tokens:</label>
+                        <input type="number" id="model-max-tokens-input" value="4096">
+                    </div>
+
+                    <!-- Extended Thinking (Dynamic) -->
+                    <div class="form-group" style="margin-top: 15px; border-top: 1px dashed var(--surface0); padding-top: 10px;" id="model-thinking-container">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                            <input type="checkbox" id="model-thinking-enabled-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 
+                            <span style="font-weight: 500;">启用思维模式 (Thinking Mode)</span>
+                        </label>
+                        
+                        <div id="model-thinking-options" class="hidden" style="margin-top: 10px; padding-left: 22px;">
+                            <div class="form-group" id="model-thinking-type-group">
+                                <label>思维模式 (Thinking Type):</label>
+                                <div class="radio-group" style="margin-bottom: 8px;">
+                                    <label class="radio-label">
+                                        <input type="radio" name="model-thinking-type" value="adaptive"> Adaptive (自适应)
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="model-thinking-type" value="enabled"> Enabled (强制开启)
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group" id="model-thinking-budget-group">
+                                <label for="model-thinking-budget-input">思维 Token 预算 (Thinking Budget):</label>
+                                <input type="number" id="model-thinking-budget-input" value="1024">
+                            </div>
+                            
+                            <div class="form-group" id="model-thinking-level-group">
+                                <label for="model-thinking-level-select">思维深度等级 (Thinking Effort):</label>
+                                <select id="model-thinking-level-select">
+                                    <option value="low">Low (低)</option>
+                                    <option value="medium">Medium (中)</option>
+                                    <option value="high" selected>High (高)</option>
+                                    <option value="xhigh">X-High (极高)</option>
+                                    <option value="max">Max (最大)</option>
                                 </select>
                             </div>
                         </div>

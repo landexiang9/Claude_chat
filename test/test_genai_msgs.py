@@ -1,3 +1,4 @@
+import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from claude_chat.clients import convert_messages_to_gemini

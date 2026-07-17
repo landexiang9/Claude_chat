@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import re
 from pathlib import Path
 import httpx
 from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestError
@@ -9,7 +10,20 @@ logger = logging.getLogger("claude_chat.clients")
 
 from .base import sanitize_error_message, build_http_client, extract_api_message
 
-def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None, enable_search=False, enable_web_fetch=True, web_fetch_limit=15000, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, depth=0):
+
+def _supports_temperature(model):
+    """Return False for Claude models whose API only accepts the default temperature."""
+    model_id = (model or "").lower()
+    if model_id.startswith("claude-sonnet-5"):
+        return False
+    match = re.search(r"claude-opus-(\d+)(?:-(\d+))?", model_id)
+    if match:
+        major = int(match.group(1))
+        minor = int(match.group(2) or 0)
+        return (major, minor) < (4, 7)
+    return True
+
+def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None, enable_search=False, enable_web_fetch=True, web_fetch_limit=15000, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, depth=0, accumulated_input_tokens=0, accumulated_output_tokens=0):
     """
     启动 Anthropic API 消息流式接收。
     通常运行在后台线程中，实时抓取流中的文本块（text_delta）和思考推理块（thinking_delta），
@@ -28,9 +42,10 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
         kwargs = {
             "model": model,
             "max_tokens": max_tokens,
-            "temperature": temperature,
             "messages": messages,
         }
+        if temperature is not None and _supports_temperature(model):
+            kwargs["temperature"] = temperature
         if thinking_config:
             kwargs["thinking"] = thinking_config
         if output_config:
@@ -143,6 +158,8 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
 
         # 获取最终完整的 Message 对象并提取 Token 统计信息
         final = stream.get_final_message()
+        current_input_tokens = final.usage.input_tokens if hasattr(final, 'usage') and final.usage else 0
+        current_output_tokens = final.usage.output_tokens if hasattr(final, 'usage') and final.usage else 0
         
         # 如果模型决定使用工具
         if final.stop_reason == "tool_use" and enable_search:
@@ -300,12 +317,14 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
                     conv_manager=conv_manager,
                     # M-fix#3: 签名无 active_platform 形参,此 kwarg 会抛 TypeError 被外层吞掉,
                     # 导致每次工具回合都失败、tool_use/tool_result 配对孤立。移除之。
-                    depth=depth + 1
+                    depth=depth + 1,
+                    accumulated_input_tokens=accumulated_input_tokens + current_input_tokens,
+                    accumulated_output_tokens=accumulated_output_tokens + current_output_tokens
                 )
                 return
 
-        input_tokens = final.usage.input_tokens if hasattr(final, 'usage') and final.usage else 0
-        output_tokens = final.usage.output_tokens if hasattr(final, 'usage') and final.usage else 0
+        input_tokens = accumulated_input_tokens + current_input_tokens
+        output_tokens = accumulated_output_tokens + current_output_tokens
         
         # 将 final.content 序列化为 list of dicts 便于主线程存储完整结构
         content_blocks_dump = []

@@ -101,18 +101,11 @@ async function initApp() {
             platformSelect.value = config.active_platform || "claude";
         }
         
-        // 2. 拉取并配置可用模型下拉菜单
-        const models = await apiBridge.fetch_models();
-        if (!models) {
-            throw new Error("Models fetch returned null/undefined");
-        }
-        availableModels = models;
-        updateModelList(models);
-        
-        // 3. 加载历史对话卡片
+        // 2. Load conversations before any network-bound model discovery.
         await loadConversations();
         
-        // 4. 加载初始对话记录
+        // 3. The selected conversation renders immediately and refreshes its
+        // platform model list in the background on cache miss.
         if (conversations.length > 0) {
             await selectConversation(conversations[0].id);
         } else {

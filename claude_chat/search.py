@@ -22,7 +22,7 @@ def _is_safe_web_url(url):
     if parsed.scheme not in ("http", "https"):
         return False
     host = parsed.hostname
-    if not host:
+    if not host or parsed.username is not None or parsed.password is not None:
         return False
     try:
         infos = socket.getaddrinfo(host, None)
@@ -38,16 +38,50 @@ def _is_safe_web_url(url):
             return False
     return True
 
-def build_search_client(proxy_mode="system", proxy_url=""):
+def build_search_client(proxy_mode="system", proxy_url="", follow_redirects=True):
     """
     构建配置了代理且支持自动重定向的 httpx 客户端实例。
     """
     if proxy_mode == "none":
-        return httpx.Client(trust_env=False, follow_redirects=True)
+        return httpx.Client(trust_env=False, follow_redirects=follow_redirects)
     elif proxy_mode == "custom" and proxy_url.strip():
-        return httpx.Client(proxy=proxy_url.strip(), trust_env=False, follow_redirects=True)
+        return httpx.Client(proxy=proxy_url.strip(), trust_env=False, follow_redirects=follow_redirects)
     else:
-        return httpx.Client(trust_env=True, follow_redirects=True)
+        return httpx.Client(trust_env=True, follow_redirects=follow_redirects)
+
+
+_REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
+
+
+def _safe_get(client, url, headers=None, timeout=15.0, max_redirects=5):
+    """GET a URL while validating every redirect target against the SSRF policy."""
+    current_url = url
+    current_headers = dict(headers or {})
+    for redirect_count in range(max_redirects + 1):
+        if not _is_safe_web_url(current_url):
+            raise ValueError(f"Unsafe URL or redirect target rejected: {current_url}")
+        response = client.get(current_url, headers=current_headers, timeout=timeout)
+        if response.status_code not in _REDIRECT_STATUS_CODES:
+            return response
+        location = response.headers.get("location")
+        if not location:
+            return response
+        if redirect_count >= max_redirects:
+            response.close()
+            raise ValueError("Too many redirects while fetching webpage")
+
+        next_url = urllib.parse.urljoin(str(response.url), location)
+        old_origin = (response.url.scheme, response.url.host, response.url.port)
+        parsed_next = urllib.parse.urlparse(next_url)
+        new_origin = (parsed_next.scheme, parsed_next.hostname, parsed_next.port)
+        if old_origin != new_origin:
+            current_headers.pop("Authorization", None)
+            current_headers.pop("authorization", None)
+            current_headers.pop("Cookie", None)
+            current_headers.pop("cookie", None)
+        response.close()
+        current_url = next_url
+    raise ValueError("Too many redirects while fetching webpage")
 
 def get_browser_headers():
     """
@@ -93,7 +127,52 @@ def fetch_google(query, client):
                 continue
                 
             if title and url.startswith("http"):
-                results.append({"title": title, "url": url, "snippet": ""})
+                snippet = ""
+                # Try to locate the result container and extract description snippet
+                curr = a
+                container = None
+                for _ in range(5):
+                    curr = curr.parent
+                    if not curr:
+                        break
+                    # Common Google result container classes
+                    if curr.name == 'div' and curr.get('class') and any(cls in curr.get('class') for cls in ['g', 'MjjYud', 'tF2Cxc', 'v55x8c']):
+                        container = curr
+                        break
+                
+                if container:
+                    # 1. Search for known description classes like .VwiC3b or similar
+                    desc = container.find(class_=lambda c: c and any(x in c for x in ['VwiC3b', 'yDAB2d', 'MUbB0b', 'StE57c']))
+                    if desc:
+                        snippet = desc.get_text(strip=True)
+                    
+                    # 2. If not found, try to find a div containing snippet-like text
+                    if not snippet:
+                        for child in container.find_all('div'):
+                            cls = child.get('class')
+                            if cls and any(x in ''.join(cls) for x in ['kb095c', 'snip', 'desc', 'summary']):
+                                snippet = child.get_text(strip=True)
+                                if snippet:
+                                    break
+                
+                # Fallback 1: Look for next sibling or descendant VwiC3b div
+                if not snippet:
+                    next_sibling = a.find_next('div', class_=lambda c: c and 'VwiC3b' in c)
+                    if next_sibling:
+                        snippet = next_sibling.get_text(strip=True)
+                
+                # Fallback 2: Look for next sibling div that doesn't contain headers or links
+                if not snippet:
+                    curr = a.parent
+                    if curr:
+                        divs = curr.find_next_siblings('div')
+                        for d in divs:
+                            text_val = d.get_text(strip=True)
+                            if text_val and not d.find('h3') and not d.find('a'):
+                                snippet = text_val
+                                break
+                                
+                results.append({"title": title, "url": url, "snippet": snippet})
                 
     return results
 
@@ -330,7 +409,7 @@ def fetch_webpage_content(url, parser_type="local", jina_api_key="", proxy_mode=
         return f"Error: URL rejected for security reasons (internal/private host not allowed): {url}", None
 
     try:
-        with build_search_client(proxy_mode, proxy_url) as client:
+        with build_search_client(proxy_mode, proxy_url, follow_redirects=False) as client:
             if parser_type == "jina":
                 jina_url = f"https://r.jina.ai/{url}"
                 headers = {
@@ -339,7 +418,7 @@ def fetch_webpage_content(url, parser_type="local", jina_api_key="", proxy_mode=
                 if jina_api_key:
                     headers["Authorization"] = f"Bearer {jina_api_key}"
                 
-                response = client.get(jina_url, headers=headers, timeout=18.0)
+                response = _safe_get(client, jina_url, headers=headers, timeout=18.0)
                 if response.status_code == 200:
                     # 捕获额度响应头
                     rem_req = response.headers.get("x-ratelimit-remaining-requests")
@@ -361,7 +440,7 @@ def fetch_webpage_content(url, parser_type="local", jina_api_key="", proxy_mode=
             
             # 本地解析器提取模式
             headers = get_browser_headers()
-            response = client.get(url, headers=headers, timeout=15.0)
+            response = _safe_get(client, url, headers=headers, timeout=15.0)
             if response.status_code != 200:
                 return f"Error: Failed to fetch the webpage. HTTP status code: {response.status_code}", None
                 

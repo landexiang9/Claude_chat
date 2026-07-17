@@ -177,7 +177,7 @@ Claude_chat/
 ```json
 {
   "active_platform": "claude",
-  "model": "claude-3-7-sonnet-latest",
+  "model": "claude-sonnet-4-6",
   "temperature": 1.0,
   "max_tokens": 16000,
   "thinking_enabled": false,

@@ -83,7 +83,7 @@ def convert_messages_to_openai(messages):
             
     return openai_msgs
 
-def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", web_fetch_limit=15000, conv_id=None, conv_manager=None, previous_content_blocks=None, depth=0):
+def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", web_fetch_limit=15000, conv_id=None, conv_manager=None, previous_content_blocks=None, depth=0, thinking_config=None, accumulated_input_tokens=0, accumulated_output_tokens=0):
     response_stream = None  # M-fix#10: 保证 finally 中一定可关闭,避免 abort/异常路径泄漏 HTTP 连接
     try:
         if depth >= 5:
@@ -101,12 +101,18 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
         kwargs = {
             "model": model,
             "messages": openai_msgs,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
             "stream": True,
+            "temperature": temperature,
             "stream_options": {"include_usage": True}
         }
-        
+        if max_tokens is not None and max_tokens > 0:
+            kwargs["max_tokens"] = max_tokens
+            
+        if thinking_config and isinstance(thinking_config, dict):
+            effort = thinking_config.get("effort")
+            if effort:
+                kwargs["reasoning_effort"] = effort
+
         tools = None
         if enable_search and "reasoner" not in model.lower():
             tools = [
@@ -151,6 +157,13 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
         input_tokens = 0
         output_tokens = 0
 
+        # 流式思考标签解析器:部分 OpenAI 兼容聚合服务(如 opencode go)不在协议层分离思考,
+        # 而是把 <thought>...</thought> 写在正文 content 里。这里在 content 通道上兜底解析,
+        # 标签内文本路由到思考通道,标签外文本路由到正文通道。若模型已用 reasoning_content
+        # 原生分离,正文不含该标签,解析器直通放行,不会影响既有逻辑(见 thinking_tag_parser)。
+        from .thinking_tag_parser import ThinkingTagStreamParser
+        tag_parser = ThinkingTagStreamParser()
+
         for chunk in response_stream:
             if abort_event and abort_event.is_set():
                 streaming_queue.put(("aborted", {}))
@@ -166,16 +179,22 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
-            
+
             reasoning = getattr(delta, "reasoning_content", None)
             if reasoning:
                 full_reasoning += reasoning
                 streaming_queue.put(("thinking", reasoning))
-                
+
             content = getattr(delta, "content", None)
             if content:
-                full_text += content
-                streaming_queue.put(("text", content))
+                # 兜底解析正文里的 <thought>...</thought> 思考标签
+                text_part, thinking_part = tag_parser.feed(content)
+                if thinking_part:
+                    full_reasoning += thinking_part
+                    streaming_queue.put(("thinking", thinking_part))
+                if text_part:
+                    full_text += text_part
+                    streaming_queue.put(("text", text_part))
                 
             tool_calls = getattr(delta, "tool_calls", None)
             if tool_calls:
@@ -189,6 +208,22 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                         }
                     if tc.function and tc.function.arguments:
                         tool_calls_dict[idx]["arguments"] += tc.function.arguments
+
+        # Flush a possible partial tag before deciding whether this is a tool round.
+        # Previously this happened only on the terminal round, dropping buffered text
+        # whenever a tool call was emitted in the same response.
+        text_part, thinking_part = tag_parser.flush()
+        if thinking_part:
+            full_reasoning += thinking_part
+            streaming_queue.put(("thinking", thinking_part))
+        if text_part:
+            full_text += text_part
+            streaming_queue.put(("text", text_part))
+
+        if input_tokens == 0:
+            input_tokens = len(str(openai_msgs)) // 4
+        if output_tokens == 0:
+            output_tokens = len(full_text) // 4
 
         if tool_calls_dict and enable_search:
             assistant_content = [{"type": "text", "text": full_text}]
@@ -342,15 +377,13 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                     conv_id=conv_id,
                     conv_manager=conv_manager,
                     previous_content_blocks=new_previous,
-                    depth=depth + 1
+                    depth=depth + 1,
+                    thinking_config=thinking_config,
+                    accumulated_input_tokens=accumulated_input_tokens + input_tokens,
+                    accumulated_output_tokens=accumulated_output_tokens + output_tokens
                 )
                 return
 
-        if input_tokens == 0:
-            input_tokens = len(str(openai_msgs)) // 4
-        if output_tokens == 0:
-            output_tokens = len(full_text) // 4
-        
         content_blocks = [{"type": "text", "text": full_text}]
         if full_reasoning:
             content_blocks.insert(0, {
@@ -359,12 +392,9 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                 "signature": "omitted_for_display"
             })
             
-        if previous_content_blocks:
-            content_blocks = previous_content_blocks + content_blocks
-            
         streaming_queue.put(("done", {
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
+            "input_tokens": accumulated_input_tokens + input_tokens,
+            "output_tokens": accumulated_output_tokens + output_tokens,
             "content_blocks": content_blocks,
             "thinking": full_reasoning
         }))

@@ -289,7 +289,7 @@ def ocr_image_local_or_cloud(file_path, ocr_mode="auto", cloud_provider="gemini"
                 
                 b64_data = base64.b64encode(image_bytes).decode("utf-8")
                 response = client.messages.create(
-                    model="claude-3-5-sonnet-20241022",
+                    model="claude-sonnet-4-6",
                     max_tokens=4096,
                     messages=[
                         {

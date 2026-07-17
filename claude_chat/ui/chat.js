@@ -82,7 +82,7 @@ async function selectConversation(id) {
     messageList.innerHTML = "";
     
     const conv = await apiBridge.load_conversation(id);
-    if (!conv) return;
+    if (!conv || currentConvId !== id) return;
     currentConv = conv;
     
     // 设置 Token 统计标签展示
@@ -91,6 +91,12 @@ async function selectConversation(id) {
     } else {
         tokenLabel.textContent = "Token: --";
     }
+
+    // Render persisted messages immediately. Model discovery is network-bound and
+    // must never sit on the critical path of switching conversations.
+    const messages = conv.messages || [];
+    renderConversationMessages(messages);
+    scrollChatBottom();
 
     if (conv.model) {
         // 优先使用对话持久化的 platform 字段（新数据），避免靠模型名子串推断导致自定义供应商被误判
@@ -104,46 +110,46 @@ async function selectConversation(id) {
             else if (conv.model.includes("gemini") || conv.model.includes("learnlm")) targetPlatform = "gemini";
         }
         
-        let needSave = false;
-        const configUpdate = {};
-        
-        if (targetPlatform && targetPlatform !== config.active_platform) {
+        if (targetPlatform) {
             config.active_platform = targetPlatform;
             if (typeof platformSelect !== 'undefined' && platformSelect) {
                 platformSelect.value = targetPlatform;
             }
-            configUpdate.active_platform = targetPlatform;
-            needSave = true;
         }
-        
-        if (conv.model !== config.model) {
-            config.model = conv.model;
-            configUpdate.model = conv.model;
-            needSave = true;
-        }
-        
-        if (needSave) {
-            await apiBridge.save_config(configUpdate);
-            if (configUpdate.active_platform) {
-                const models = await apiBridge.fetch_models();
-                if (models) {
-                    availableModels = models;
-                    updateModelList(models);
+        config.model = conv.model;
+
+        const hasCachedModels = targetPlatform ? modelCache.has(targetPlatform) : false;
+        const cachedModels = hasCachedModels ? modelCache.get(targetPlatform) : null;
+        if (hasCachedModels) {
+            availableModels = cachedModels;
+            updateModelList(cachedModels, conv.model, true);
+        } else {
+            // Keep the historical model selectable while its platform list loads.
+            availableModels = [];
+            updateModelList([], conv.model, true);
+            if (targetPlatform) {
+                const selectionId = id;
+                let fetchPromise = modelFetchPromises.get(targetPlatform);
+                if (!fetchPromise) {
+                    fetchPromise = apiBridge.fetch_models(targetPlatform).finally(() => {
+                        modelFetchPromises.delete(targetPlatform);
+                    });
+                    modelFetchPromises.set(targetPlatform, fetchPromise);
                 }
+                fetchPromise.then(models => {
+                    if (!Array.isArray(models)) return;
+                    modelCache.set(targetPlatform, models);
+                    if (currentConvId !== selectionId || config.active_platform !== targetPlatform) return;
+                    availableModels = models;
+                    updateModelList(models, conv.model, true);
+                    if (window.updateModelSettingsUI) window.updateModelSettingsUI();
+                }).catch(error => {
+                    console.error(`Failed to load cached models for ${targetPlatform}:`, error);
+                });
             }
         }
-
-        const options = modelSelect.querySelectorAll("option");
-        options.forEach(opt => {
-            opt.selected = (opt.value === conv.model);
-        });
+        if (window.updateModelSettingsUI) window.updateModelSettingsUI();
     }
-
-    // 遍历并渲染当前对话的所有消息历史
-    const messages = conv.messages || [];
-    renderConversationMessages(messages);
-
-    scrollChatBottom();
 }
 // 开启全新对话会话
 async function startNewChat() {

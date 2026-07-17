@@ -81,9 +81,14 @@ function updateLedStatus() {
 }
 
 // 渲染下拉菜单中的模型选项列表
-function updateModelList(models) {
+function updateModelList(models, selectedModelId = config.model, preserveSelected = false) {
     modelSelect.innerHTML = "";
-    if (!models || models.length === 0) {
+    const displayModels = Array.isArray(models) ? [...models] : [];
+    const containsSelected = displayModels.some(m => (typeof m === 'string' ? m : m.id) === selectedModelId);
+    if (preserveSelected && selectedModelId && !containsSelected) {
+        displayModels.unshift({ id: selectedModelId, display_name: `${selectedModelId}（历史会话）` });
+    }
+    if (displayModels.length === 0) {
         const option = document.createElement("option");
         option.value = "";
         option.textContent = "模型加载失败或无可用模型，请在设置中检查配置";
@@ -91,20 +96,20 @@ function updateModelList(models) {
         return;
     }
     let hasSelected = false;
-    models.forEach(m => {
+    displayModels.forEach(m => {
         const mId = typeof m === 'string' ? m : m.id;
         const mName = typeof m === 'string' ? m : (m.display_name || m.id);
         const option = document.createElement("option");
         option.value = mId;
         option.textContent = mName;
-        if (mId === config.model) {
+        if (mId === selectedModelId) {
             option.selected = true;
             hasSelected = true;
         }
         modelSelect.appendChild(option);
     });
-    if (!hasSelected && models.length > 0) {
-        const firstId = typeof models[0] === 'string' ? models[0] : models[0].id;
+    if (!hasSelected && displayModels.length > 0) {
+        const firstId = typeof displayModels[0] === 'string' ? displayModels[0] : displayModels[0].id;
         config.model = firstId;
         modelSelect.value = firstId;
         apiBridge.save_config({ model: firstId });
@@ -113,18 +118,29 @@ function updateModelList(models) {
             if (conv) {
                 conv.model = firstId;
             }
+            if (currentConv && currentConv.id === currentConvId) {
+                currentConv.model = firstId;
+            }
         }
+        if (window.updateModelSettingsUI) window.updateModelSettingsUI();
     }
 }
 
 // 绑定模型列表更新的全局回调函数
-window.onModelsUpdated = (models) => {
+window.onModelsUpdated = (models, platform = null) => {
+    const sourcePlatform = platform || config.active_platform || "claude";
+    if (Array.isArray(models)) {
+        modelCache.set(sourcePlatform, models);
+    }
+    if (sourcePlatform !== (config.active_platform || "claude")) return;
     availableModels = models;
-    updateModelList(models);
+    const selectedModel = currentConv && currentConv.model ? currentConv.model : config.model;
+    updateModelList(models, selectedModel, Boolean(currentConv));
 };
 
 // 监听模型切换事件
 modelSelect.addEventListener("change", async (e) => {
+    const previousModel = config.model;
     config.model = e.target.value;
     
     // 安全防护：检测新切换的模型是否支持 Extended Thinking
@@ -142,13 +158,30 @@ modelSelect.addEventListener("change", async (e) => {
                 conv.thinking = null;
             }
         }
+        if (currentConv && currentConv.id === currentConvId) {
+            currentConv.model = config.model;
+            if (modelObj && !modelObj.thinking_supported) currentConv.thinking = null;
+        }
     }
-    await apiBridge.save_config(config);
+    const saved = await apiBridge.save_config(config);
+    if (!saved) {
+        statusLabel.textContent = "模型切换保存失败";
+        config.model = previousModel;
+        modelSelect.value = previousModel;
+        if (currentConvId) {
+            const conv = conversations.find(c => c.id === currentConvId);
+            if (conv) conv.model = previousModel;
+            if (currentConv && currentConv.id === currentConvId) currentConv.model = previousModel;
+        }
+        return;
+    }
+    if (window.updateModelSettingsUI) window.updateModelSettingsUI();
     statusLabel.textContent = `模型切换为: ${config.model}`;
 });
 
 if (platformSelect) {
     platformSelect.addEventListener("change", async (e) => {
+        const previousPlatform = config.active_platform;
         config.active_platform = e.target.value;
         modelSelect.innerHTML = '<option value="">正在加载模型...</option>';
         if (config.active_platform === "deepseek") {
@@ -160,11 +193,26 @@ if (platformSelect) {
         } else {
             statusLabel.textContent = `已切换至平台: ${config.active_platform}`;
         }
-        await apiBridge.save_config({ active_platform: config.active_platform });
+        const saved = await apiBridge.save_config({ active_platform: config.active_platform });
+        if (!saved) {
+            statusLabel.textContent = "平台切换保存失败";
+            config.active_platform = previousPlatform;
+            platformSelect.value = previousPlatform;
+            return;
+        }
+        if (currentConv && currentConv.id === currentConvId) {
+            currentConv.platform = config.active_platform;
+        }
+        if (currentConvId) {
+            const conv = conversations.find(c => c.id === currentConvId);
+            if (conv) conv.platform = config.active_platform;
+        }
         updateLedStatus();
-        const models = await apiBridge.fetch_models();
-        if (models && window.onModelsUpdated) {
-            window.onModelsUpdated(models);
+        const models = await apiBridge.fetch_models(config.active_platform);
+        if (models) {
+            modelCache.set(config.active_platform, models);
+            availableModels = models;
+            updateModelList(models, config.model, false);
         }
     });
 }
