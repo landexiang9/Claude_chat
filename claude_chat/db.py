@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 import logging
 
+from claude_chat.config import DEFAULT_MAX_TOKENS
+
 logger = logging.getLogger("claude_chat")
 
 # ==========================================
@@ -147,7 +149,7 @@ class DatabaseManager:
                 model = data.get("model", "")
                 platform = data.get("platform", "claude")
                 temperature = data.get("temperature", 0.7)
-                max_tokens = data.get("max_tokens", 4096)
+                max_tokens = data.get("max_tokens", DEFAULT_MAX_TOKENS)
                 thinking = json.dumps(data.get("thinking")) if data.get("thinking") is not None else None
                 created_at = data.get("created_at", datetime.now().isoformat())
                 updated_at = data.get("updated_at", datetime.now().isoformat())
@@ -258,7 +260,7 @@ class DatabaseManager:
         model = conv_data.get("model", "")
         platform = conv_data.get("platform", "")
         temperature = conv_data.get("temperature", 0.7)
-        max_tokens = conv_data.get("max_tokens", 4096)
+        max_tokens = conv_data.get("max_tokens", DEFAULT_MAX_TOKENS)
         thinking = json.dumps(conv_data.get("thinking")) if conv_data.get("thinking") is not None else None
         created_at = conv_data.get("created_at") or datetime.now().isoformat()
         updated_at = datetime.now().isoformat()
@@ -317,7 +319,7 @@ class DatabaseManager:
             "model": "",
             "platform": "",
             "temperature": 0.7,
-            "max_tokens": 4096,
+            "max_tokens": DEFAULT_MAX_TOKENS,
             "thinking": None,
             "messages": [],
         }
@@ -481,7 +483,7 @@ class DatabaseManager:
         model = conv_data.get("model", "")
         platform = conv_data.get("platform")
         temperature = conv_data.get("temperature", 0.7)
-        max_tokens = conv_data.get("max_tokens", 4096)
+        max_tokens = conv_data.get("max_tokens", DEFAULT_MAX_TOKENS)
         thinking = json.dumps(conv_data.get("thinking")) if conv_data.get("thinking") is not None else None
         updated_at = datetime.now().isoformat()
         conv_data["updated_at"] = updated_at

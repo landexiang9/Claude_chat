@@ -3,7 +3,6 @@ Claude Chat - pywebview 桌面客户端核心应用模块
 基于 pywebview 将前端的 HTML/JS/CSS 视图层与后端的 Python 逻辑层及本地 SQLite 数据库进行绑定。
 """
 
-import queue
 import threading
 import json
 import logging
@@ -27,6 +26,15 @@ logger = logging.getLogger("claude_chat")
 from claude_chat.config import FALLBACK_MODELS, ConfigManager, find_custom_provider, custom_platform_id
 from claude_chat.db import DatabaseManager
 from claude_chat.clients import fetch_available_models, get_default_capabilities, sanitize_error_message, extract_final_response_text
+from claude_chat.sandbox import cleanup_sandbox_process, terminate_sandbox_process
+from claude_chat.stream_protocol import (
+    StreamEvent,
+    StreamEventQueue,
+    StreamEventType,
+    StreamTask,
+    StreamTaskState,
+    ensure_stream_event_queue,
+)
 
 from claude_chat.api_bridge import WebAPI
 
@@ -51,29 +59,68 @@ class ClaudeChatApp:
         self.available_models = [get_default_capabilities(m) for m in FALLBACK_MODELS]
         
         # 流生成事件队列与控制状态
-        self.streaming_queue = queue.Queue()
-        self.is_streaming = False
-        self.abort_event = threading.Event()
-        self.active_stream = None
+        self.streaming_queue = StreamEventQueue()
+        self.stream_task = None
         
         # WebView2 窗口实例
         self.window = None
         
-        # 当前活跃的本地代码执行子进程映射 { process_id: { "proc": Popen对象, "temp_path": 临时文件路径 } }
+        # 当前活跃的安全代码执行进程映射（包含后端、容器名和独立临时目录）
         self.active_processes = {}
         self.process_lock = threading.Lock()
+        # 同一 AppContainer identity 不并发复用，避免任务间共享 profile 路径。
+        self.windows_sandbox_lock = threading.Lock()
         self.lock = threading.RLock()
         
         # 挂载的终端日志监听回调列表
         self.console_listeners = []
 
-    def set_streaming_done(self):
-        """
-        M9: 线程安全地将 is_streaming 置为 False。
-        供 reader 线程和 HTTP server 的流式处理线程统一调用，避免无锁并发竞态。
-        """
+    @property
+    def is_streaming(self):
         with self.lock:
-            self.is_streaming = False
+            return bool(self.stream_task and self.stream_task.is_active)
+
+    @property
+    def abort_event(self):
+        with self.lock:
+            task = self.stream_task
+            return task.abort_event if task else threading.Event()
+
+    @property
+    def active_stream(self):
+        with self.lock:
+            return self.stream_task.active_stream if self.stream_task else None
+
+    @active_stream.setter
+    def active_stream(self, stream):
+        with self.lock:
+            if self.stream_task:
+                self.stream_task.active_stream = stream
+
+    def begin_stream_task(self, conv_id, custom_queue=None):
+        with self.lock:
+            if self.stream_task and self.stream_task.is_active:
+                raise RuntimeError("已有流式任务正在运行")
+            events = ensure_stream_event_queue(custom_queue, conv_id)
+            task = StreamTask(conversation_id=conv_id, events=events)
+            task.transition(StreamTaskState.RUNNING)
+            self.stream_task = task
+            self.streaming_queue = events
+            return task
+
+    def set_streaming_done(self, state=StreamTaskState.COMPLETED, task=None):
+        """Finish the matching stream task without allowing an older reader to end a newer task."""
+        with self.lock:
+            target = task or self.stream_task
+            if not target:
+                return
+            if self.stream_task is not target:
+                return
+            if target.is_active:
+                if target.state == StreamTaskState.CANCELLING and state == StreamTaskState.COMPLETED:
+                    state = StreamTaskState.ABORTED
+                target.transition(state)
+            target.clear_stream()
 
     def abort_generation(self):
         """
@@ -81,14 +128,21 @@ class ClaudeChatApp:
         M9: 加锁保护 is_streaming/active_stream 的读写，防止与 reader 线程并发竞态。
         """
         with self.lock:
-            self.abort_event.set()
-            if self.active_stream:
-                try:
-                    self.active_stream.close()
-                except Exception:
-                    pass
-                self.active_stream = None
+            task = self.stream_task
+        if task and task.is_active:
+            task.request_abort()
         return True
+
+    def _push_stream_event(self, event: StreamEvent):
+        if not self.window:
+            return
+        wire = event.to_wire()
+        js_code = (
+            "if (window.onStreamEvent) window.onStreamEvent("
+            f"{json.dumps(wire)}); else if (window.onStreamMessage) "
+            f"window.onStreamMessage({json.dumps(event.type.value)}, {json.dumps(event.data)});"
+        )
+        self.window.evaluate_js(js_code)
 
     def save_code_block(self, content, suggest_name):
         """
@@ -286,10 +340,8 @@ class ClaudeChatApp:
         with self.process_lock:
             for proc_id, p_info in list(self.active_processes.items()):
                 try:
-                    proc = p_info["proc"]
-                    if proc.poll() is None:
-                        proc.kill()
-                    Path(p_info["temp_path"]).unlink(missing_ok=True)
+                    terminate_sandbox_process(p_info)
+                    cleanup_sandbox_process(p_info)
                 except Exception:
                     pass
             self.active_processes.clear()
@@ -355,7 +407,7 @@ class ClaudeChatApp:
         thread = threading.Thread(target=_fetch, daemon=True)
         thread.start()
 
-    def _process_sending_stream(self):
+    def _process_sending_stream(self, task=None):
         """
         [在后台线程中运行] 主流消息读取线程。
         从内部线程队列 `streaming_queue` 中循环读取 API 响应事件块，
@@ -363,52 +415,42 @@ class ClaudeChatApp:
         M9: 保存 queue 的局部引用，循环中始终使用该引用而非 self.streaming_queue，
         防止流结束后用户立即发新消息导致 self.streaming_queue 被替换、旧 reader 读到新 queue 的竞态。
         """
-        my_queue = self.streaming_queue
+        task = task or self.stream_task
+        if not task:
+            return
+        my_queue = task.events
         streaming_text = ""
         streaming_thinking_text = ""
         # 在线程启动时一次性捕获当前对话 id,避免后续被 load/delete/save 等持锁操作改写
         # 导致"流式中切换对话 → 响应写进错误对话"或 NoneType 不可下标的竞态 (#5/#6)。
-        my_conv = self.current_conv
-        conv_id = my_conv["id"] if my_conv else None
+        conv_id = task.conversation_id
 
         while True:
             try:
-                msg = my_queue.get() # 阻塞直至下一条消息块到来
-                msg_type, msg_data = msg
+                event = my_queue.get_event()  # 阻塞直至下一条消息块到来
+                msg_type, msg_data = event.to_legacy()
                 
                 if msg_type == "text":
                     # 普通文本生成包，累加并推至前端渲染
                     streaming_text += msg_data
-                    if self.window:
-                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('text', {json.dumps(msg_data)});"
-                        self.window.evaluate_js(js_code)
+                    self._push_stream_event(event)
                     
                 elif msg_type == "thinking":
                     # 推理思维生成包，累加并推至前端渲染
                     streaming_thinking_text += msg_data
-                    if self.window:
-                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('thinking', {json.dumps(msg_data)});"
-                        self.window.evaluate_js(js_code)
+                    self._push_stream_event(event)
                     
                 elif msg_type == "search_start":
-                    if self.window:
-                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('search_start', {json.dumps(msg_data)});"
-                        self.window.evaluate_js(js_code)
+                    self._push_stream_event(event)
                     
                 elif msg_type == "search_done":
-                    if self.window:
-                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('search_done', {json.dumps(msg_data)});"
-                        self.window.evaluate_js(js_code)
+                    self._push_stream_event(event)
                     
                 elif msg_type == "fetch_start":
-                    if self.window:
-                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('fetch_start', {json.dumps(msg_data)});"
-                        self.window.evaluate_js(js_code)
+                    self._push_stream_event(event)
                     
                 elif msg_type == "fetch_done":
-                    if self.window:
-                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('fetch_done', {json.dumps(msg_data)});"
-                        self.window.evaluate_js(js_code)
+                    self._push_stream_event(event)
                     
                 elif msg_type == "done":
                     # 生成成功结束包,计算 Token 数量并持久化写入 SQLite 数据库
@@ -431,11 +473,9 @@ class ClaudeChatApp:
                             if self.current_conv and self.current_conv.get("id") == conv_id:
                                 self.current_conv = self.conv_manager.load_conversation(conv_id)
                     
-                    if self.window:
-                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('done', {json.dumps(msg_data)});"
-                        self.window.evaluate_js(js_code)
+                    self._push_stream_event(event)
                     
-                    self.set_streaming_done()
+                    self.set_streaming_done(StreamTaskState.COMPLETED, task)
                     break
                     
                 elif msg_type == "aborted":
@@ -452,11 +492,9 @@ class ClaudeChatApp:
                             if self.current_conv and self.current_conv.get("id") == conv_id:
                                 self.current_conv = self.conv_manager.load_conversation(conv_id)
                     
-                    if self.window:
-                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('aborted', {{}});"
-                        self.window.evaluate_js(js_code)
+                    self._push_stream_event(event)
                     
-                    self.set_streaming_done()
+                    self.set_streaming_done(StreamTaskState.ABORTED, task)
                     break
  
                 elif msg_type == "error":
@@ -472,18 +510,22 @@ class ClaudeChatApp:
                             if self.current_conv and self.current_conv.get("id") == conv_id:
                                 self.current_conv = self.conv_manager.load_conversation(conv_id)
                         
-                    if self.window:
-                        js_code = f"if (window.onStreamMessage) window.onStreamMessage('error', {json.dumps(msg_data)});"
-                        self.window.evaluate_js(js_code)
+                    self._push_stream_event(event)
                     
-                    self.set_streaming_done()
+                    self.set_streaming_done(StreamTaskState.FAILED, task)
                     break
             except Exception as e:
                 if self.window:
                     from claude_chat.clients import sanitize_error_message
                     cleaned_err = sanitize_error_message(e)
-                    js_code = f"if (window.onStreamMessage) window.onStreamMessage('error', {json.dumps(cleaned_err)});"
-                    self.window.evaluate_js(js_code)
-                self.set_streaming_done()
+                    fallback_event = StreamEvent(
+                        task_id=task.task_id,
+                        conversation_id=conv_id,
+                        sequence=0,
+                        type=StreamEventType.ERROR,
+                        data=cleaned_err,
+                    )
+                    self._push_stream_event(fallback_event)
+                self.set_streaming_done(StreamTaskState.FAILED, task)
                 break
 

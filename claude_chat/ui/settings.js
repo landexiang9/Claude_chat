@@ -1,4 +1,6 @@
 // 弹窗显示/隐藏控制逻辑
+const DEFAULT_MODEL_MAX_TOKENS = 16384;
+
 function showModal(modal) {
     modal.classList.remove("hidden");
 }
@@ -34,6 +36,9 @@ function updateOcrNotices(platform) {
 }
 
 function showSettings() {
+    // 同时检测真实沙盒后端；失败时保持开关禁用，并显示后端写入日志的同一原因。
+    refreshCodeSandboxStatus();
+
     // 渲染各平台 API Key 已绑定或未绑定状态的面板
     for (const [key, item] of Object.entries(keyConfigs)) {
         item.setPending(false); // 重置 pending
@@ -52,12 +57,7 @@ function showSettings() {
     // 刷新自定义提供商管理列表
     onSettingsOpenRefreshCustomProviders();
 
-    if (deepseekApiUrlInput) {
-        deepseekApiUrlInput.value = config.deepseek_api_url || "https://api.deepseek.com";
-    }
-    if (geminiApiUrlInput) {
-        geminiApiUrlInput.value = config.gemini_api_url || "";
-    }
+    PlatformSettings.loadAll(config);
 
     // 默认展示当前 active 平台的 Tab 和面板
     const currentPlatform = config.active_platform || "claude";
@@ -133,75 +133,15 @@ function showSettings() {
     
         // 更新当前模型的专属设置UI
     updateModelSettingsUI();
-    if (typeof renderPresetsList === "function") renderPresetsList();
-    showModal(settingsModal);
-
-    // Claude 网页搜索
-    if (claudeEnableSearchInput) {
-        claudeEnableSearchInput.checked = !!config.enable_web_search;
-        if (claudeSearchGroup) {
-            if (claudeEnableSearchInput.checked) {
-                claudeSearchGroup.classList.remove("hidden");
-            } else {
-                claudeSearchGroup.classList.add("hidden");
-            }
-        }
-    }
-    if (claudeEnableFetchInput) {
-        claudeEnableFetchInput.checked = config.enable_web_fetch !== false;
-    }
-    if (claudeSearchEngineSelect) {
-        claudeSearchEngineSelect.value = config.web_search_engine || "google";
-    }
-    if (claudeWebPageParserSelect) {
-        claudeWebPageParserSelect.value = config.web_page_parser || "local";
-    }
-    if (claudeWebFetchLimitInput) {
-        claudeWebFetchLimitInput.value = config.web_fetch_limit || 15000;
-    }
-    toggleSearchKeyGroups("claude", claudeSearchEngineSelect ? claudeSearchEngineSelect.value : "google", claudeWebPageParserSelect ? claudeWebPageParserSelect.value : "local");
-
-    // DeepSeek 网页搜索
-    if (deepseekEnableSearchInput) {
-        deepseekEnableSearchInput.checked = !!config.deepseek_enable_web_search;
-        if (deepseekSearchGroup) {
-            if (deepseekEnableSearchInput.checked) {
-                deepseekSearchGroup.classList.remove("hidden");
-            } else {
-                deepseekSearchGroup.classList.add("hidden");
-            }
-        }
-    }
-    if (deepseekEnableFetchInput) {
-        deepseekEnableFetchInput.checked = config.deepseek_enable_web_fetch !== false;
-    }
-    if (deepseekSearchEngineSelect) {
-        deepseekSearchEngineSelect.value = config.deepseek_web_search_engine || "google";
-    }
-    if (deepseekWebPageParserSelect) {
-        deepseekWebPageParserSelect.value = config.deepseek_web_page_parser || "local";
-    }
-    if (deepseekWebFetchLimitInput) {
-        deepseekWebFetchLimitInput.value = config.deepseek_web_fetch_limit || 15000;
-    }
-    toggleSearchKeyGroups("deepseek", deepseekSearchEngineSelect ? deepseekSearchEngineSelect.value : "google", deepseekWebPageParserSelect ? deepseekWebPageParserSelect.value : "local");
-
-    // Gemini 联网搜索
-    if (geminiEnableSearchInput) {
-        geminiEnableSearchInput.checked = !!config.gemini_enable_web_search;
-    }
-
-    // Gemini 代码沙盒
-    if (geminiEnableCodeSandboxInput) {
-        geminiEnableCodeSandboxInput.checked = !!config.gemini_enable_code_sandbox;
-    }
-    if (geminiCodeSandboxTypeSelect) {
-        geminiCodeSandboxTypeSelect.value = config.gemini_code_sandbox_type || "local";
-    }
-
     // 全局与服务器配置
+    if (enableCodeSandboxInput) {
+        enableCodeSandboxInput.checked = !!config.enable_code_sandbox;
+    }
     if (autoRunCodeInput) {
         autoRunCodeInput.checked = !!config.auto_run_code;
+    }
+    if (codeSandboxTimeoutInput) {
+        codeSandboxTimeoutInput.value = normalizeSandboxTimeout(config.code_sandbox_timeout);
     }
     if (fontModeSelect) {
         fontModeSelect.value = config.font_mode || "custom";
@@ -232,7 +172,6 @@ function showSettings() {
         serverTokenInput.value = config.security_token || "";
     }
 
-    updateThinkingSettingsUI();
     renderPresetsList();
     showModal(settingsModal);
 }
@@ -345,84 +284,9 @@ function initAllKeyControls() {
     }
 }
 
-// 平台温度滑块初始化
-function initPlatformSliders() {
-    const platforms = ["claude", "deepseek", "gemini"];
-    platforms.forEach(plat => {
-        const slider = document.getElementById(`${plat}-temp-slider`);
-        const label = document.getElementById(`${plat}-temp-label-title`);
-        if (slider && label) {
-            slider.oninput = (e) => {
-                label.textContent = `Temperature: ${parseFloat(e.target.value).toFixed(2)}`;
-            };
-        }
-    });
-}
-
-// 网页搜索 Key 显示切换
-function toggleSearchKeyGroups(platform, engine, parser) {
-    if (platform === "claude") {
-        if (claudeTavilyKeyGroup) {
-            claudeTavilyKeyGroup.style.display = (engine === "tavily") ? "block" : "none";
-        }
-        if (claudeJinaKeyGroup) {
-            claudeJinaKeyGroup.style.display = (engine === "jina" || parser === "jina") ? "block" : "none";
-        }
-    } else if (platform === "deepseek") {
-        if (deepseekTavilyKeyGroup) {
-            deepseekTavilyKeyGroup.style.display = (engine === "tavily") ? "block" : "none";
-        }
-        if (deepseekJinaKeyGroup) {
-            deepseekJinaKeyGroup.style.display = (engine === "jina" || parser === "jina") ? "block" : "none";
-        }
-    }
-}
-
 // 初始化绑定事件监听器
 initAllKeyControls();
-initPlatformSliders();
-
-// Claude Web Search Events
-if (claudeEnableSearchInput) {
-    claudeEnableSearchInput.onchange = () => {
-        if (claudeEnableSearchInput.checked) {
-            claudeSearchGroup.classList.remove("hidden");
-        } else {
-            claudeSearchGroup.classList.add("hidden");
-        }
-    };
-}
-if (claudeSearchEngineSelect) {
-    claudeSearchEngineSelect.onchange = () => {
-        toggleSearchKeyGroups("claude", claudeSearchEngineSelect.value, claudeWebPageParserSelect ? claudeWebPageParserSelect.value : "local");
-    };
-}
-if (claudeWebPageParserSelect) {
-    claudeWebPageParserSelect.onchange = () => {
-        toggleSearchKeyGroups("claude", claudeSearchEngineSelect ? claudeSearchEngineSelect.value : "google", claudeWebPageParserSelect.value);
-    };
-}
-
-// DeepSeek Web Search Events
-if (deepseekEnableSearchInput) {
-    deepseekEnableSearchInput.onchange = () => {
-        if (deepseekEnableSearchInput.checked) {
-            deepseekSearchGroup.classList.remove("hidden");
-        } else {
-            deepseekSearchGroup.classList.add("hidden");
-        }
-    };
-}
-if (deepseekSearchEngineSelect) {
-    deepseekSearchEngineSelect.onchange = () => {
-        toggleSearchKeyGroups("deepseek", deepseekSearchEngineSelect.value, deepseekWebPageParserSelect ? deepseekWebPageParserSelect.value : "local");
-    };
-}
-if (deepseekWebPageParserSelect) {
-    deepseekWebPageParserSelect.onchange = () => {
-        toggleSearchKeyGroups("deepseek", deepseekSearchEngineSelect ? deepseekSearchEngineSelect.value : "google", deepseekWebPageParserSelect.value);
-    };
-}
+PlatformSettings.bindAll();
 
 
 // 手动更新模型能力注册表
@@ -488,7 +352,7 @@ window.updateModelSettingsUI = function() {
         if (modelTempLabelTitle) modelTempLabelTitle.textContent = `Temperature: ${parseFloat(modelTempSlider.value).toFixed(2)}`;
     }
     if (modelMaxTokensInput) {
-        modelMaxTokensInput.value = mConfig.max_tokens || 4096;
+        modelMaxTokensInput.value = mConfig.max_tokens || DEFAULT_MODEL_MAX_TOKENS;
     }
 
     // 查找模型能力
@@ -665,13 +529,6 @@ saveSettingsBtn.onclick = async () => {
         }
     }
 
-    if (deepseekApiUrlInput) {
-        config.deepseek_api_url = deepseekApiUrlInput.value.trim() || "https://api.deepseek.com";
-    }
-    if (geminiApiUrlInput) {
-        config.gemini_api_url = geminiApiUrlInput.value.trim() || "";
-    }
-
     // OCR 识别模式保存
     if (ocrModeSelect) {
         config.ocr_mode = ocrModeSelect.value || "auto";
@@ -680,9 +537,14 @@ saveSettingsBtn.onclick = async () => {
         config.ocr_cloud_model = ocrCloudModelSelect.value || "gemini";
     }
     
-    // 保存 Token 验证字段
+    // 保存 Token 验证字段：留空时保持原值不覆盖，防止保存空 token 导致全部 /api 请求 401 锁死
     if (serverTokenInput) {
-        config.security_token = serverTokenInput.value.trim();
+        const newToken = serverTokenInput.value.trim();
+        if (newToken) {
+            config.security_token = newToken;
+        } else {
+            delete config.security_token;
+        }
     }
     
     // 保存当前模型的专属设置
@@ -694,7 +556,9 @@ saveSettingsBtn.onclick = async () => {
         const mConfig = config.model_configs[selectedModelId];
         
         if (modelTempSlider) mConfig.temperature = parseFloat(modelTempSlider.value);
-        if (modelMaxTokensInput) mConfig.max_tokens = parseInt(modelMaxTokensInput.value) || 4096;
+        if (modelMaxTokensInput) {
+            mConfig.max_tokens = parseInt(modelMaxTokensInput.value) || DEFAULT_MODEL_MAX_TOKENS;
+        }
         
         if (modelThinkingEnabledInput) mConfig.thinking_enabled = modelThinkingEnabledInput.checked;
         const thinkingModeRadio = document.querySelector("input[name='model-thinking-type']:checked");
@@ -707,56 +571,18 @@ saveSettingsBtn.onclick = async () => {
         config.max_tokens = mConfig.max_tokens;
     }
 
-    // Claude 网页搜索
-    if (claudeEnableSearchInput) {
-        config.enable_web_search = claudeEnableSearchInput.checked;
-    }
-    if (claudeSearchEngineSelect) {
-        config.web_search_engine = claudeSearchEngineSelect.value || "google";
-    }
-    if (claudeEnableFetchInput) {
-        config.enable_web_fetch = claudeEnableFetchInput.checked;
-    }
-    if (claudeWebPageParserSelect) {
-        config.web_page_parser = claudeWebPageParserSelect.value || "local";
-    }
-    if (claudeWebFetchLimitInput) {
-        config.web_fetch_limit = parseInt(claudeWebFetchLimitInput.value) || 15000;
-    }
-
-    // DeepSeek 网页搜索
-    if (deepseekEnableSearchInput) {
-        config.deepseek_enable_web_search = deepseekEnableSearchInput.checked;
-    }
-    if (deepseekSearchEngineSelect) {
-        config.deepseek_web_search_engine = deepseekSearchEngineSelect.value || "google";
-    }
-    if (deepseekEnableFetchInput) {
-        config.deepseek_enable_web_fetch = deepseekEnableFetchInput.checked;
-    }
-    if (deepseekWebPageParserSelect) {
-        config.deepseek_web_page_parser = deepseekWebPageParserSelect.value || "local";
-    }
-    if (deepseekWebFetchLimitInput) {
-        config.deepseek_web_fetch_limit = parseInt(deepseekWebFetchLimitInput.value) || 15000;
-    }
-
-    // Gemini 联网搜索
-    if (geminiEnableSearchInput) {
-        config.gemini_enable_web_search = geminiEnableSearchInput.checked;
-    }
-
-    // Gemini 代码沙盒
-    if (geminiEnableCodeSandboxInput) {
-        config.gemini_enable_code_sandbox = geminiEnableCodeSandboxInput.checked;
-    }
-    if (geminiCodeSandboxTypeSelect) {
-        config.gemini_code_sandbox_type = geminiCodeSandboxTypeSelect.value || "local";
-    }
+    PlatformSettings.saveAll(config);
 
     // 全局与服务器设置保存
+    if (enableCodeSandboxInput) {
+        config.enable_code_sandbox = !!(sandboxEnvironmentStatus && sandboxEnvironmentStatus.ready && enableCodeSandboxInput.checked);
+    }
     if (autoRunCodeInput) {
-        config.auto_run_code = autoRunCodeInput.checked;
+        config.auto_run_code = !!config.enable_code_sandbox && autoRunCodeInput.checked;
+    }
+    if (codeSandboxTimeoutInput) {
+        config.code_sandbox_timeout = normalizeSandboxTimeout(codeSandboxTimeoutInput.value);
+        codeSandboxTimeoutInput.value = config.code_sandbox_timeout;
     }
     if (fontModeSelect) {
         config.font_mode = fontModeSelect.value || "custom";

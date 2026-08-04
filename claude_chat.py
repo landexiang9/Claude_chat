@@ -5,7 +5,16 @@ Imports and runs the modularized ClaudeChatApp from the claude_chat package.
 # 导入系统与路径相关的标准库
 import sys
 import argparse
+import runpy
 from pathlib import Path
+
+
+if len(sys.argv) == 3 and sys.argv[1] == "--sandbox-worker":
+    # PyInstaller builds do not expose a separate python.exe.  This narrow
+    # entrypoint lets the copied executable act as the AppContainer Python
+    # runtime without initializing the GUI, database, config, or API clients.
+    runpy.run_path(sys.argv[2], run_name="__main__")
+    raise SystemExit(0)
 
 # 确保项目根目录在 Python 模块搜索路径（sys.path）的首位，避免导入子模块时出错
 sys.path.insert(0, str(Path(__file__).parent))

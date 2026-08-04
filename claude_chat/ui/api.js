@@ -63,20 +63,36 @@ async function readHttpStream(response, callback) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let sawTerminal = false;
+    const dispatchLine = (line) => {
+        try {
+            const parsed = JSON.parse(line);
+            if (parsed && (parsed.type === 'done' || parsed.type === 'aborted' || parsed.type === 'error')) {
+                sawTerminal = true;
+            }
+            dispatchStreamEvent(parsed, callback);
+        } catch (e) {
+            console.error("Failed to parse stream line:", line, e);
+        }
+    };
     try {
         while (true) {
             const { value, done } = await reader.read();
             if (done) {
                 // 处理遗留在 buffer 中没有以换行符分割的最后一条数据，防止断流或末行数据被截断丢弃
                 if (buffer.trim()) {
-                    try {
-                        const parsed = JSON.parse(buffer);
-                        if (callback) {
-                            callback(parsed.type, parsed.data);
-                        }
-                    } catch (e) {
-                        console.error("Failed to parse remaining stream buffer:", buffer, e);
-                    }
+                    dispatchLine(buffer);
+                }
+                // 服务端静默断流(超时/异常/进程退出)时不会下发 done/aborted/error 终止事件,
+                // 此时必须合成一个 error 事件复位 UI 的 isStreaming,否则"思考中..."占位永久卡死。
+                if (!sawTerminal) {
+                    console.warn("Stream ended without a terminal event; synthesizing error.");
+                    dispatchStreamEvent({
+                        version: 1,
+                        type: "error",
+                        data: "生成流意外中断，请重试。",
+                        sequence: 0
+                    }, callback);
                 }
                 break;
             }
@@ -85,23 +101,22 @@ async function readHttpStream(response, callback) {
             buffer = lines.pop();
             for (const line of lines) {
                 if (line.trim()) {
-                    try {
-                        const parsed = JSON.parse(line);
-                        if (callback) {
-                            callback(parsed.type, parsed.data);
-                        }
-                    } catch (e) {
-                        console.error("Failed to parse stream line:", line, e);
-                    }
+                    dispatchLine(line);
                 }
             }
         }
     } catch (e) {
         // M-fix#11: 中途 reader.read() 失败时显式通知前端出错,避免助手占位"思考中..."永久卡死
         console.error("readHttpStream 读取流失败:", e);
-        if (callback) {
-            try { callback('error', e?.message || String(e)); } catch (_) {}
+        if (!sawTerminal) {
+            dispatchStreamEvent({
+                version: 1,
+                type: "error",
+                data: e?.message || String(e),
+                sequence: 0
+            }, callback);
         }
+        e.streamEventDispatched = true;
         // 读流出错时由调用方/catch 处理 UI 复位,这里不让 finally 提前复位 isStreaming。
         throw e;
     } finally {
@@ -115,6 +130,14 @@ async function readHttpStream(response, callback) {
             const sendIcon = sendBtn.querySelector(".send-icon");
             if (sendIcon) sendIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
         }
+    }
+}
+
+function dispatchStreamEvent(event, legacyCallback) {
+    if (typeof window.onStreamEvent === "function") {
+        window.onStreamEvent(event);
+    } else if (legacyCallback) {
+        legacyCallback(event.type, event.data);
     }
 }
 
@@ -155,6 +178,18 @@ const apiBridge = {
             return fetchJson('/api/check_parsers');
         }
     },
+    check_code_sandbox_environment: () => {
+        if (checkIsNative() && typeof window.pywebview.api.check_code_sandbox_environment === 'function') {
+            return window.pywebview.api.check_code_sandbox_environment();
+        }
+        return fetchJson('/api/code_sandbox_environment');
+    },
+    install_code_sandbox_environment: () => {
+        if (checkIsNative() && typeof window.pywebview.api.install_code_sandbox_environment === 'function') {
+            return window.pywebview.api.install_code_sandbox_environment();
+        }
+        return fetchJson('/api/install_code_sandbox_environment', 'POST', {});
+    },
     load_conversations: () => checkIsNative() ? window.pywebview.api.load_conversations() : fetchJson('/api/conversations'),
     load_conversation: (id) => checkIsNative() ? window.pywebview.api.load_conversation(id) : fetchJson(`/api/conversation/${id}`),
     new_conversation: () => checkIsNative() ? window.pywebview.api.new_conversation() : fetchJson('/api/new_conversation', 'POST'),
@@ -162,6 +197,28 @@ const apiBridge = {
     get_message_packet: (id, idx) => checkIsNative() ? window.pywebview.api.get_message_packet(id, idx) : fetchJson(`/api/message_packet/${id}/${idx}`),
     paste_from_clipboard: () => checkIsNative() ? window.pywebview.api.paste_from_clipboard() : fetchJson('/api/paste_from_clipboard', 'POST'),
     upload_dropped_file: (name, size, data) => checkIsNative() ? window.pywebview.api.upload_dropped_file(name, size, data) : fetchJson('/api/upload_dropped_file', 'POST', { name, size, base64_data: data }),
+    get_attachment_preview: async (request, options = {}) => {
+        if (checkIsNative()) {
+            return window.pywebview.api.get_attachment_preview(request);
+        }
+        const response = await fetch('/api/attachment_preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request),
+            signal: options.signal
+        });
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch (_) {}
+        if (!response.ok) {
+            throw new Error(payload?.error || `附件预览请求失败 (HTTP ${response.status})`);
+        }
+        return payload;
+    },
+    discard_pending_attachment: (previewId) => checkIsNative()
+        ? window.pywebview.api.discard_pending_attachment(previewId)
+        : fetchJson('/api/discard_pending_attachment', 'POST', { preview_id: previewId }),
     branch_conversation: (id, idx) => checkIsNative() ? window.pywebview.api.branch_conversation(id, idx) : fetchJson('/api/branch_conversation', 'POST', { conv_id: id, msg_index: idx }),
     send_console_input: (id, txt) => checkIsNative() ? window.pywebview.api.send_console_input(id, txt) : fetchJson('/api/send_console_input', 'POST', { process_id: id, text: txt }),
     kill_console_process: (id) => checkIsNative() ? window.pywebview.api.kill_console_process(id) : fetchJson('/api/kill_console_process', 'POST', { process_id: id }),
@@ -207,33 +264,69 @@ const apiBridge = {
             return window.pywebview.api.select_attachments();
         } else {
             return new Promise((resolve, reject) => {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.multiple = true;
-            input.onchange = async () => {
-                // M-fix#4: 必须捕获 reject,否则 readFileAsBase64 拒绝(>20MB 或 FileReader 错误)
-                // 时 resolve 永不执行,外层 attachBtn.onclick 的 await 永久挂起,附件框失活。
-                const files = Array.from(input.files);
-                const uploaded = [];
-                try {
-                    for (const f of files) {
-                        const base64 = await readFileAsBase64(f);
-                        const result = await apiBridge.upload_dropped_file(f.name, f.size, base64);
-                        if (result) uploaded.push(result);
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.multiple = true;
+                input.accept = '.png,.jpg,.jpeg,.gif,.webp,.pdf,.docx,.xlsx,.pptx,.txt,.py,.js,.ts,.html,.css,.md,.json,.xml,.yaml,.yml,.toml,.ini,.cfg,.csv,.sql,.c,.cpp,.h,.hpp,.java,.go,.rs,.rb,.php,.sh,.bat,.ps1,.r,.swift,.kt,.scala,.lua';
+                input.hidden = true;
+                document.body.appendChild(input);
+
+                let settled = false;
+                const cleanup = () => {
+                    window.removeEventListener('focus', handleWindowFocus);
+                    input.remove();
+                };
+                const finish = (callback, value) => {
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
+                    callback(value);
+                };
+                const handleWindowFocus = () => {
+                    // Some WebView versions do not emit "cancel" for a dismissed file picker.
+                    setTimeout(() => {
+                        if (!settled && (!input.files || input.files.length === 0)) {
+                            finish(resolve, []);
+                        }
+                    }, 300);
+                };
+
+                input.oncancel = () => finish(resolve, []);
+                input.onchange = async () => {
+                    const files = Array.from(input.files || []);
+                    const uploaded = [];
+                    const errors = [];
+                    try {
+                        for (const file of files) {
+                            try {
+                                const base64 = await readFileAsBase64(file);
+                                const result = await apiBridge.upload_dropped_file(file.name, file.size, base64);
+                                if (result && !result.error) {
+                                    uploaded.push(result);
+                                } else {
+                                    errors.push(`${file.name}: ${result?.error || '上传失败'}`);
+                                }
+                            } catch (error) {
+                                errors.push(`${file.name}: ${error.message || String(error)}`);
+                            }
+                        }
+                        if (errors.length > 0) uploaded.uploadErrors = errors;
+                        finish(resolve, uploaded);
+                    } catch (error) {
+                        console.error("select_attachments 处理失败:", error);
+                        finish(reject, error);
                     }
-                    resolve(uploaded);
-                } catch (e) {
-                    console.error("select_attachments 处理失败:", e);
-                    reject(e);
-                }
-            };
-            input.click();
-        });
+                };
+                window.addEventListener('focus', handleWindowFocus);
+                input.click();
+            });
         }
     },
     send_message: async (convId, text, attachments) => {
         if (checkIsNative()) {
-            return window.pywebview.api.send_message(convId, text, attachments);
+            const started = await window.pywebview.api.send_message(convId, text, attachments);
+            if (!started) throw new Error("后端未能启动消息生成");
+            return true;
         } else {
             try {
                 const response = await fetch('/api/send_message', {
@@ -241,13 +334,20 @@ const apiBridge = {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ conv_id: convId, text, attachments })
                 });
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                if (!response.ok) {
+                    let detail = "";
+                    try {
+                        const payload = await response.json();
+                        detail = payload?.error || payload?.message || "";
+                    } catch (_) {}
+                    throw new Error(detail || `HTTP ${response.status}`);
+                }
                 await readHttpStream(response, window.onStreamMessage);
                 return true;
             } catch (e) {
                 console.error("send_message HTTP 请求失败:", e);
-                if (window.onStreamMessage) {
-                    window.onStreamMessage('error', e.message || String(e));
+                if (!e.streamEventDispatched) {
+                    dispatchStreamEvent({ version: 1, type: "error", data: e.message || String(e), sequence: 0 });
                 }
                 throw e;
             }
@@ -268,8 +368,8 @@ const apiBridge = {
                 return true;
             } catch (e) {
                 console.error("edit_and_resend HTTP 请求失败:", e);
-                if (window.onStreamMessage) {
-                    window.onStreamMessage('error', e.message || String(e));
+                if (!e.streamEventDispatched) {
+                    dispatchStreamEvent({ version: 1, type: "error", data: e.message || String(e), sequence: 0 });
                 }
                 throw e;
             }
@@ -290,8 +390,8 @@ const apiBridge = {
                 return true;
             } catch (e) {
                 console.error("retry_message HTTP 请求失败:", e);
-                if (window.onStreamMessage) {
-                    window.onStreamMessage('error', e.message || String(e));
+                if (!e.streamEventDispatched) {
+                    dispatchStreamEvent({ version: 1, type: "error", data: e.message || String(e), sequence: 0 });
                 }
                 throw e;
             }

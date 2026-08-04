@@ -104,7 +104,13 @@ const geminiEnableCodeSandboxInput = document.getElementById("gemini-enable-code
 const geminiCodeSandboxTypeSelect = document.getElementById("gemini-code-sandbox-type-select");
 
 // Global setting elements
+const enableCodeSandboxInput = document.getElementById("enable-code-sandbox-input");
 const autoRunCodeInput = document.getElementById("auto-run-code-input");
+const codeSandboxTimeoutInput = document.getElementById("code-sandbox-timeout-input");
+const codeSandboxStatusText = document.getElementById("code-sandbox-status-text");
+const codeSandboxComponents = document.getElementById("code-sandbox-components");
+const refreshCodeSandboxBtn = document.getElementById("refresh-code-sandbox-btn");
+const installCodeSandboxBtn = document.getElementById("install-code-sandbox-btn");
 const fontModeSelect = document.getElementById("font-mode-select");
 const enableServerInput = document.getElementById("enable-server-input");
 const syncConfigInput = document.getElementById("sync-config-input");

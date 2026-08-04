@@ -68,6 +68,8 @@ def extract_api_message(msg):
     api_content_list = []
     
     for item in items_source:
+        if isinstance(item, dict) and "_attachment" in item:
+            item = {key: value for key, value in item.items() if key != "_attachment"}
         if isinstance(item, dict) and item.get("type") == "image":
             # 处理图片附件并编码为 Base64
             source = item.get("source", {})

@@ -85,7 +85,7 @@
             <!-- Floating Input Box Panel -->
             <footer class="input-section">
                 <!-- Attachments list -->
-                <div id="attachments-area" class="attachments-area hidden">
+                <div id="attachments-area" class="attachments-area hidden" role="list" aria-label="待发送附件">
                     <!-- Files listed dynamically -->
                 </div>
 
@@ -96,7 +96,7 @@
                         <span class="send-icon">↑</span>
                     </button>
                 </div>
-                <div id="status-label" class="status-label">就绪</div>
+                <div id="status-label" class="status-label" role="status" aria-live="polite" aria-atomic="true">就绪</div>
             </footer>
         </main>
 
@@ -395,7 +395,7 @@
                     
                     <div class="form-group">
                         <label for="model-max-tokens-input">Max Tokens:</label>
-                        <input type="number" id="model-max-tokens-input" value="4096">
+                        <input type="number" id="model-max-tokens-input" value="16384">
                     </div>
 
                     <!-- Extended Thinking (Dynamic) -->
@@ -498,7 +498,15 @@
                     <div class="settings-section-title">🌐 全局与客户端设置 (Global & Server)</div>
                     <div class="form-group" style="display: flex; gap: 16px; flex-wrap: wrap;">
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                            <input type="checkbox" id="enable-code-sandbox-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用安全代码执行
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
                             <input type="checkbox" id="auto-run-code-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 自动运行代码 (Auto-run)
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text);">
+                            最长运行时间
+                            <input type="number" id="code-sandbox-timeout-input" min="1" max="600" step="1" value="30" style="width: 72px; padding: 4px 7px; border-radius: 5px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text);">
+                            秒
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
                             <input type="checkbox" id="enable-server-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用局域网 Web 服务
@@ -515,6 +523,20 @@
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
                             <input type="checkbox" id="enable-ssl-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用 SSL/HTTPS 传输
                         </label>
+                    </div>
+
+                    <div id="code-sandbox-status-card" class="form-group" style="margin-top: 12px; padding: 10px; border: 1px solid var(--surface0); border-radius: 8px; background: var(--crust);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                            <div>
+                                <div style="font-size: 12px; font-weight: 600; color: var(--text);">代码沙盒环境</div>
+                                <div id="code-sandbox-status-text" style="font-size: 11px; color: var(--subtext0); margin-top: 3px;">尚未检测</div>
+                            </div>
+                            <div style="display: flex; gap: 6px;">
+                                <button type="button" id="refresh-code-sandbox-btn" class="btn btn-secondary" style="font-size: 11px; padding: 4px 9px;">重新检测</button>
+                                <button type="button" id="install-code-sandbox-btn" class="btn" style="display: none; font-size: 11px; padding: 4px 9px; background: var(--blue); color: white;">下载运行环境</button>
+                            </div>
+                        </div>
+                        <div id="code-sandbox-components" style="display: grid; gap: 5px; margin-top: 8px; font-size: 11px;"></div>
                     </div>
                     
                     <div class="form-group" style="margin-top: 12px;">
@@ -731,6 +753,21 @@
         </div>
     </div>
 
+    <!-- Attachment Preview Modal -->
+    <div id="attachment-preview-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="attachment-preview-title" style="z-index: 10004;">
+        <div id="attachment-preview-dialog" class="modal-card attachment-preview-dialog">
+            <div class="modal-header attachment-preview-header">
+                <div class="attachment-preview-heading">
+                    <h2 id="attachment-preview-title">附件预览</h2>
+                    <span id="attachment-preview-meta" class="attachment-preview-meta"></span>
+                </div>
+                <button type="button" id="attachment-preview-close-btn" class="attachment-preview-close-btn" aria-label="关闭附件预览">&times;</button>
+            </div>
+            <div id="attachment-preview-status" class="attachment-preview-status" role="status" aria-live="polite"></div>
+            <div id="attachment-preview-body" class="attachment-preview-body"></div>
+        </div>
+    </div>
+
     <!-- Image Preview Modal -->
     <div id="image-modal" class="modal-overlay hidden" style="z-index: 10003;">
         <div class="modal-card" style="max-width: 90%; max-height: 90%; background: transparent; box-shadow: none; display: flex; flex-direction: column; align-items: center;">
@@ -743,11 +780,20 @@
     </div>
 
     <script src="state.js"></script>
+    <script src="stream_protocol.js"></script>
     <script src="dom.js"></script>
     <script src="utils.js"></script>
+    <script src="attachment_display.js"></script>
     <script src="api.js"></script>
+    <script src="attachment_preview.js"></script>
     <script src="ui.js"></script>
     <script src="chat.js"></script>
+    <script src="conversation_render.js"></script>
+    <script src="sandbox_settings.js"></script>
+    <script src="settings_components.js"></script>
+    <script src="settings_claude.js"></script>
+    <script src="settings_deepseek.js"></script>
+    <script src="settings_gemini.js"></script>
     <script src="settings.js"></script>
     <script src="events.js"></script>
     <script src="main.js"></script>

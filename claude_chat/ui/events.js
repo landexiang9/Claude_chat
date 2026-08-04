@@ -1,9 +1,21 @@
 // 打开附件选择对话框
 attachBtn.onclick = async () => {
-    const selected = await apiBridge.select_attachments();
-    if (selected && selected.length > 0) {
-        attachments = [...attachments, ...selected];
-        renderAttachments();
+    attachBtn.disabled = true;
+    try {
+        const selected = await apiBridge.select_attachments();
+        if (Array.isArray(selected) && selected.length > 0) {
+            attachments = [...attachments, ...selected];
+            renderAttachments();
+            statusLabel.textContent = `已添加 ${selected.length} 个附件`;
+        }
+        if (selected?.uploadErrors?.length) {
+            statusLabel.textContent = `部分文件添加失败: ${selected.uploadErrors.join("；")}`;
+        }
+    } catch (error) {
+        console.error("选择附件失败:", error);
+        statusLabel.textContent = `文件添加失败: ${error.message || String(error)}`;
+    } finally {
+        attachBtn.disabled = false;
     }
 };
 
@@ -16,17 +28,25 @@ function renderAttachments() {
     attachmentsArea.classList.remove("hidden");
     attachmentsArea.innerHTML = "";
     attachments.forEach((att, index) => {
-        const badge = document.createElement("div");
-        badge.className = "attachment-badge";
-        badge.innerHTML = `
-            <span>📎 ${att.name} (${Math.round(att.size / 1024)} KB)</span>
-            <button class="remove-att-btn">&times;</button>
-        `;
-        badge.querySelector(".remove-att-btn").onclick = () => {
-            attachments.splice(index, 1);
-            renderAttachments();
-        };
-        attachmentsArea.appendChild(badge);
+        const card = createAttachmentCard(att, {
+            mode: "composer",
+            onPreview: (attachment, triggerElement) => openAttachmentPreview(
+                attachment,
+                { scope: "pending" },
+                triggerElement
+            ),
+            onRemove: (attachment) => {
+                attachments.splice(index, 1);
+                renderAttachments();
+                if (attachment.previewId) {
+                    void apiBridge.discard_pending_attachment(attachment.previewId).catch(error => {
+                        console.warn("清理未发送附件失败:", error);
+                    });
+                }
+            }
+        });
+        card.setAttribute("role", "listitem");
+        attachmentsArea.appendChild(card);
     });
 }
 
@@ -507,11 +527,10 @@ async function handleDroppedFile(file) {
     }
     statusLabel.textContent = `正在读取文件: ${file.name}...`;
     
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-        const base64Data = event.target.result;
+    try {
+        const base64Data = await readFileAsBase64(file);
         const uploaded = await apiBridge.upload_dropped_file(file.name, file.size, base64Data);
-        if (uploaded) {
+        if (uploaded && !uploaded.error) {
             attachments.push(uploaded);
             renderAttachments();
             if (config.active_platform === "deepseek") {
@@ -521,13 +540,12 @@ async function handleDroppedFile(file) {
             }
             setTimeout(() => { if (statusLabel.textContent.startsWith("附件已添加")) statusLabel.textContent = "就绪"; }, 3000);
         } else {
-            statusLabel.textContent = `文件添加失败: ${file.name}`;
+            statusLabel.textContent = `文件添加失败: ${file.name}（${uploaded?.error || "上传失败"}）`;
         }
-    };
-    reader.onerror = () => {
-        statusLabel.textContent = `文件读取失败: ${file.name}`;
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+        console.error("拖入附件失败:", error);
+        statusLabel.textContent = `文件读取失败: ${file.name}（${error.message || String(error)}）`;
+    }
 }
 // ==========================================
 // 自定义系统提示词预设管理器
@@ -777,17 +795,31 @@ async function runCodeBlock(code, lang, preElement) {
     const inputBar = consoleBox.querySelector(".console-input-bar");
     const inputField = consoleBox.querySelector(".console-input");
     const stopBtn = consoleBox.querySelector(".console-stop-btn");
-    
-    outputDiv.innerHTML = `<span style="color: var(--yellow);">⚙️ 正在利用本地环境启动程序...</span>\n`;
+
+    const setConsoleStatus = (message, color, detail = "") => {
+        outputDiv.replaceChildren();
+        const statusSpan = document.createElement("span");
+        statusSpan.style.color = color;
+        statusSpan.textContent = message;
+        outputDiv.appendChild(statusSpan);
+        if (detail) outputDiv.appendChild(document.createTextNode(`\n${detail}`));
+        outputDiv.appendChild(document.createTextNode("\n"));
+    };
+
+    setConsoleStatus("⚙️ 正在启动安全代码沙盒...", "var(--yellow)");
     
     try {
         const result = await apiBridge.start_code_execution(code, lang);
         if (result.error) {
-            outputDiv.innerHTML = `<span style="color: var(--red);">❌ 启动失败:</span>\n${result.error}`;
+            setConsoleStatus("❌ 启动失败:", "var(--red)", String(result.error));
             if (inputBar) inputBar.style.display = "none";
         } else {
             const procId = result.process_id;
-            outputDiv.innerHTML = `<span style="color: var(--green);">[程序已启动，正在运行...]</span>\n`;
+            const timeoutText = result.timeout_seconds ? `，最长 ${result.timeout_seconds} 秒` : "";
+            setConsoleStatus(
+                `[${result.backend || "安全沙盒"} 已启动${timeoutText}，正在运行...]`,
+                "var(--green)"
+            );
             
             // Register process details
             activeConsoleProcesses.set(procId, {
@@ -833,7 +865,7 @@ async function runCodeBlock(code, lang, preElement) {
             inputField.focus();
         }
     } catch (e) {
-        outputDiv.innerHTML = `<span style="color: var(--red);">❌ 启动出错:</span>\n${e}`;
+        setConsoleStatus("❌ 启动出错:", "var(--red)", String(e));
         if (inputBar) inputBar.style.display = "none";
     }
     

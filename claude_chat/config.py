@@ -19,9 +19,14 @@ else:
 # 配置文件与对话目录路径
 CONFIG_PATH = BASE_DIR / "config.json"
 CONVERSATIONS_DIR = BASE_DIR / "conversations"
+ATTACHMENT_STORE_DIR = BASE_DIR / "attachments"
 
 # 日志文件路径
 LOG_PATH = BASE_DIR / "claude_chat.log"
+
+# 内置聊天模型的默认输出上限。4096 对开启高强度推理的模型过小，
+# 容易在生成正文前就耗尽；16384 在可用性、延迟和费用之间更均衡。
+DEFAULT_MAX_TOKENS = 16384
 
 def setup_logging():
     """
@@ -125,12 +130,19 @@ FALLBACK_MODELS_GEMINI = [
 # 支持上传/解析的文件扩展名分类
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 PDF_EXTENSIONS = {".pdf"}
+OFFICE_EXTENSIONS = {".docx", ".xlsx", ".pptx"}
 TEXT_EXTENSIONS = {
     ".txt", ".py", ".js", ".ts", ".html", ".css", ".md", ".json",
     ".xml", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".c", ".cpp",
     ".h", ".hpp", ".java", ".go", ".rs", ".rb", ".php", ".sh", ".bat",
     ".ps1", ".sql", ".r", ".swift", ".kt", ".scala", ".lua", ".csv"
 }
+SUPPORTED_ATTACHMENT_EXTENSIONS = IMAGE_EXTENSIONS | PDF_EXTENSIONS | OFFICE_EXTENSIONS | TEXT_EXTENSIONS
+MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024
+MAX_ATTACHMENT_PREVIEW_TEXT_BYTES = 256 * 1024
+MAX_ATTACHMENT_PREVIEW_IMAGE_BYTES = 2 * 1024 * 1024
+MAX_ATTACHMENT_PREVIEW_IMAGE_PIXELS = 40_000_000
+MAX_ATTACHMENT_PREVIEW_IMAGE_EDGE = 1600
 
 
 # ==========================================
@@ -249,7 +261,7 @@ class ConfigManager:
             "model": "claude-sonnet-4-6",
             # Claude settings (legacy flat keys)
             "temperature": 0.7,
-            "max_tokens": 4096,
+            "max_tokens": DEFAULT_MAX_TOKENS,
             "thinking_enabled": False,
             "thinking_type": "adaptive",
             "thinking_budget": 16000,
@@ -263,9 +275,10 @@ class ConfigManager:
             "web_page_parser": "local",
             "enable_code_sandbox": False,
             "auto_run_code": False,
+            "code_sandbox_timeout": 30,
             # DeepSeek settings
             "deepseek_temperature": 0.7,
-            "deepseek_max_tokens": 4096,
+            "deepseek_max_tokens": DEFAULT_MAX_TOKENS,
             "deepseek_enable_web_search": False,
             "deepseek_enable_web_fetch": True,
             "deepseek_web_fetch_limit": 15000,
@@ -275,7 +288,7 @@ class ConfigManager:
             "deepseek_web_page_parser": "local",
             # Gemini settings
             "gemini_temperature": 0.7,
-            "gemini_max_tokens": 4096,
+            "gemini_max_tokens": DEFAULT_MAX_TOKENS,
             "gemini_thinking_enabled": False,
             "gemini_thinking_budget": 1024,
             "gemini_thinking_level": "high",
@@ -326,6 +339,7 @@ class ConfigManager:
         "server_port": int,
         "web_fetch_limit": int,
         "deepseek_web_fetch_limit": int,
+        "code_sandbox_timeout": int,
     }
     _BOOL_KEYS = {
         "thinking_enabled", "enable_web_search", "enable_web_fetch", "enable_code_sandbox",
@@ -358,6 +372,10 @@ class ConfigManager:
                 self.data[k] = self._defaults.get(k, False)
             elif not isinstance(v, bool):
                 self.data[k] = bool(v)
+        self.data["code_sandbox_timeout"] = max(
+            1,
+            min(600, self.data.get("code_sandbox_timeout", 30)),
+        )
 
     def load(self):
         """

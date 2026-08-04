@@ -139,7 +139,18 @@ def main():
     assert app.refresh_count == 0
     assert api.save_config({"gemini_api_url": "https://example.com/v1"}) is True
     assert app.refresh_count == 1
-    with patch("claude_chat.api_bridge.fetch_available_models", return_value=[{"id": "deepseek-chat"}]) as fetch:
+    # 空 security_token 必须被拒绝,否则服务端所有 /api 请求 401 锁死 UI
+    assert api.save_config({"security_token": ""}) is True
+    assert app.config.get("security_token", "missing") == "missing"
+    assert app.refresh_count == 1
+    assert api.save_config({"security_token": "   "}) is True
+    assert app.config.get("security_token", "missing") == "missing"
+    assert api.save_config({"security_token": "new-token"}) is True
+    assert app.config.get("security_token") == "new-token"
+    with patch(
+        "claude_chat.services.model_service.fetch_available_models",
+        return_value=[{"id": "deepseek-chat"}],
+    ) as fetch:
         assert api.fetch_models("deepseek") == [{"id": "deepseek-chat"}]
         assert fetch.call_args.kwargs["active_platform"] == "deepseek"
         assert app.config.get("active_platform") == "gemini"
@@ -153,6 +164,8 @@ def main():
     custom_api = WebAPI(custom_app)
     assert custom_api.save_config({"active_platform": "custom:demo", "model": "demo-model"}) is True
     assert custom_app.current_conv["thinking"] == {"effort": "medium"}
+    assert custom_api.save_config({"code_sandbox_timeout": 9999}) is True
+    assert custom_app.config.get("code_sandbox_timeout") == 600
 
     branch = api.branch_conversation("source", 1)
     assert branch["platform"] == "gemini"
@@ -176,6 +189,56 @@ def main():
         )[0]
     assert "fetch_models" not in init_source
     assert init_source.index("loadConversations()") < init_source.index("selectConversation(")
+
+    ui_js = os.path.join(os.path.dirname(chat_js), "ui.js")
+    with open(ui_js, "r", encoding="utf-8") as handle:
+        ui_source = handle.read()
+        artifact_source = ui_source.split("const ARTIFACT_IFRAME_PERMISSIONS", 1)[1].split(
+            "// --- Image Preview", 1
+        )[0]
+    assert 'interactive ? "allow-scripts allow-forms allow-modals allow-popups" : ""' in artifact_source
+    assert 'iframe.referrerPolicy = "no-referrer"' in artifact_source
+    assert '"camera \'none\'"' in artifact_source
+    assert "artifactsPreviewContainer.replaceChildren()" in artifact_source
+    assert "安全净化组件未加载，已拒绝预览 SVG" in artifact_source
+    assert "artifactsPreviewContainer.innerHTML" not in artifact_source
+
+    # 存储型 XSS 修复:代码块语言标记必须先转义再拼入 innerHTML
+    assert "escapeHtml(String(lang).toUpperCase())" in ui_source
+    assert "${lang.toUpperCase()}" not in ui_source
+
+    # 前端 settings 修复:空 security_token 不覆盖原值
+    settings_js = os.path.join(os.path.dirname(chat_js), "settings.js")
+    with open(settings_js, "r", encoding="utf-8") as handle:
+        settings_source = handle.read()
+    assert "delete config.security_token" in settings_source
+    assert "config.security_token = serverTokenInput.value.trim();" not in settings_source
+
+    # api.js 修复:流 EOF 时若未收到终止事件必须合成 error,复位 isStreaming
+    api_js = os.path.join(os.path.dirname(chat_js), "api.js")
+    with open(api_js, "r", encoding="utf-8") as handle:
+        api_source = handle.read()
+    assert "sawTerminal" in api_source
+    assert "生成流意外中断，请重试。" in api_source
+
+    # server.py 修复:终止事件必须"先持久化+复位状态,再写回客户端",
+    # 且超时/异常路径必须向客户端写合成 error 事件
+    server_py = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "claude_chat", "server.py")
+    with open(server_py, "r", encoding="utf-8") as handle:
+        server_source = handle.read()
+    stream_src = server_source.split("def handle_streaming_generation", 1)[1].split(
+        "def handle_console_stream", 1
+    )[0]
+    done_branch = stream_src.split('elif msg_type == "aborted":', 1)[0]
+    assert done_branch.index("add_assistant_message_and_update_tokens") < done_branch.index(
+        "set_streaming_done(StreamTaskState.COMPLETED, task)"
+    )
+    assert done_branch.index("set_streaming_done(StreamTaskState.COMPLETED, task)") < done_branch.index(
+        "self._write_stream_line(event)"
+    )
+    timeout_branch = stream_src.split("except queue.Empty:", 1)[1].split("except Exception as e:", 1)[0]
+    assert "_emit_stream_error(q" in timeout_branch
+    assert "_emit_stream_error(q" in stream_src.split("except Exception as e:", 1)[1].split("def _emit_stream_error", 1)[0]
 
     blocked = RedirectClient([
         DummyResponse("https://8.8.8.8/start", 302, {"location": "http://127.0.0.1/private"})

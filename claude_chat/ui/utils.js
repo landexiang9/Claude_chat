@@ -61,67 +61,6 @@ document.addEventListener('focusin', (e) => {
         }, 30);
     }
 });
-// 渲染整段对话消息历史,采用与 selectConversation 一致的贪婪合并:
-// 把被 tool_result 用户消息隔开的连续 assistant 消息合并进同一个气泡。
-// M-fix#28: 抽出共享逻辑,供 selectConversation(chat.js) 与
-// reloadCurrentConversation(events.js) 调用,保证初始视图与流后重载视图一致。
-function renderConversationMessages(messages) {
-    for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-
-        // 跳过独立的 tool_result 用户消息气泡
-        if (msg.role === "user" && isToolResultMsg(msg.content)) {
-            continue;
-        }
-
-        let toolCalls = extractToolCallsFromMsg(msg, i + 1 < messages.length ? messages[i + 1] : null);
-        let mergedThinking = msg.thinking || "";
-        let mergedContent = msg.content;
-        const currentI = i;
-
-        if (msg.role === "assistant") {
-            if (Array.isArray(mergedContent)) {
-                mergedContent = [...mergedContent];
-            }
-            while (i + 2 < messages.length &&
-                   messages[i + 1].role === "user" && isToolResultMsg(messages[i + 1].content) &&
-                   messages[i + 2].role === "assistant") {
-
-                const nextAstMsg = messages[i + 2];
-
-                if (nextAstMsg.thinking) {
-                    mergedThinking = (mergedThinking ? mergedThinking + "\n\n" : "") + nextAstMsg.thinking;
-                }
-
-                let extraText = "";
-                if (typeof nextAstMsg.content === "string") {
-                    extraText = nextAstMsg.content;
-                } else if (Array.isArray(nextAstMsg.content)) {
-                    extraText = nextAstMsg.content.filter(x => x && x.type === "text").map(x => x.text).join("\n");
-                }
-
-                if (extraText) {
-                    if (typeof mergedContent === "string") {
-                        mergedContent += (mergedContent ? "\n\n" : "") + extraText;
-                    } else if (Array.isArray(mergedContent)) {
-                        mergedContent.push({ type: "text", text: "\n\n" + extraText });
-                    }
-                }
-
-                const nextToolCalls = extractToolCallsFromMsg(nextAstMsg, i + 3 < messages.length ? messages[i + 3] : null);
-                if (nextToolCalls) {
-                    if (!toolCalls) toolCalls = [];
-                    toolCalls = toolCalls.concat(nextToolCalls);
-                }
-
-                i += 2;
-            }
-        }
-
-        appendMessage(msg.role, mergedContent, mergedThinking, false, currentI, toolCalls);
-    }
-}
-
 // 向对话展示区追加一条消息气泡
 function isToolResultMsg(content) {
     if (Array.isArray(content)) {

@@ -1,4 +1,3 @@
-import os
 import base64
 import logging
 from pathlib import Path
@@ -93,7 +92,7 @@ def parse_docx(file_path):
         return "\n".join(markdown_lines)
     except Exception as e:
         logger.exception(f"解析 docx 失败: {e}")
-        return f"[解析 Word 文档出错: {e}]"
+        return "[解析 Word 文档失败]"
 
 def parse_xlsx(file_path):
     """解析 Excel (.xlsx) 文件并返回 Markdown 表格"""
@@ -152,7 +151,7 @@ def parse_xlsx(file_path):
         return "\n".join(markdown_lines)
     except Exception as e:
         logger.exception(f"解析 xlsx 失败: {e}")
-        return f"[解析 Excel 失败: {e}]"
+        return "[解析 Excel 失败]"
 
 def parse_pptx(file_path):
     """解析 PowerPoint (.pptx) 文件并返回 Markdown"""
@@ -190,7 +189,7 @@ def parse_pptx(file_path):
         return "\n".join(markdown_lines)
     except Exception as e:
         logger.exception(f"解析 pptx 失败: {e}")
-        return f"[解析 PPT 失败: {e}]"
+        return "[解析 PPT 失败]"
 
 def parse_pdf(file_path):
     """解析 PDF 文件并提取文本内容"""
@@ -216,7 +215,7 @@ def parse_pdf(file_path):
         return "\n".join(markdown_lines)
     except Exception as e:
         logger.exception(f"解析 pdf 失败: {e}")
-        return f"[解析 PDF 失败: {e}]"
+        return "[解析 PDF 失败]"
 
 def ocr_image_local_or_cloud(file_path, ocr_mode="auto", cloud_provider="gemini", api_key="", proxy_mode="system", proxy_url=""):
     """处理图像的 OCR 提取"""
@@ -240,7 +239,7 @@ def ocr_image_local_or_cloud(file_path, ocr_mode="auto", cloud_provider="gemini"
         except Exception as e:
             logger.info(f"本地 easyocr 识别不可用或失败，将尝试云端识别: {e}")
             if ocr_mode == "local":
-                return f"[本地 OCR 不可用或执行出错: {e}]"
+                return "[本地 OCR 不可用或执行出错]"
                 
     # 尝试云端 OCR
     if not api_key:
@@ -276,7 +275,7 @@ def ocr_image_local_or_cloud(file_path, ocr_mode="auto", cloud_provider="gemini"
                     return "[云端 Gemini OCR 识别响应空或解析失败]"
             except Exception as gemini_err:
                 logger.error(f"Gemini OCR 失败: {gemini_err}")
-                return f"[云端 Gemini OCR 识别失败: {gemini_err}]"
+                return "[云端 Gemini OCR 识别失败]"
                 
         elif cloud_provider == "claude":
             try:
@@ -318,13 +317,13 @@ def ocr_image_local_or_cloud(file_path, ocr_mode="auto", cloud_provider="gemini"
                 return ocr_text.strip()
             except Exception as claude_err:
                 logger.error(f"Claude OCR 失败: {claude_err}")
-                return f"[云端 Claude OCR 识别失败: {claude_err}]"
+                return "[云端 Claude OCR 识别失败]"
         else:
             return f"[未知的云端 OCR 服务商: {cloud_provider}]"
             
     except Exception as outer_err:
         logger.error(f"云端 OCR 外层失败: {outer_err}")
-        return f"[云端 OCR 执行出错: {outer_err}]"
+        return "[云端 OCR 执行出错]"
 
 
 def parse_attachment_to_markdown(att, ocr_mode="auto", cloud_provider="gemini", api_key="", proxy_mode="system", proxy_url=""):
@@ -332,7 +331,7 @@ def parse_attachment_to_markdown(att, ocr_mode="auto", cloud_provider="gemini", 
     file_path = att["path"]
     ext = Path(file_path).suffix.lower()
     
-    from claude_chat.config import IMAGE_EXTENSIONS, PDF_EXTENSIONS
+    from claude_chat.config import IMAGE_EXTENSIONS, PDF_EXTENSIONS, TEXT_EXTENSIONS
     
     if ext in IMAGE_EXTENSIONS:
         return ocr_image_local_or_cloud(
@@ -351,13 +350,14 @@ def parse_attachment_to_markdown(att, ocr_mode="auto", cloud_provider="gemini", 
         return parse_xlsx(file_path)
     elif ext == ".pptx":
         return parse_pptx(file_path)
-    else:
-        # 默认使用纯文本解析兜底
+    elif ext in TEXT_EXTENSIONS:
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                return f.read()
+            from claude_chat.services.conversation_service import read_text_file
+            return read_text_file(file_path)
         except Exception as e:
-            return f"[读取文件文本内容失败: {e}]"
+            logger.exception(f"读取附件文本失败: {e}")
+            return "[读取文件文本内容失败]"
+    return f"[不支持的附件格式: {ext or '无扩展名'}]"
 
 # 兼容性别名，供旧版测试用例导入使用
 parse_docx_to_markdown = parse_docx

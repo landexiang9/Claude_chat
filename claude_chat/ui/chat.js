@@ -164,6 +164,7 @@ newChatBtn.onclick = startNewChat;
 async function sendMessage() {
     if (isStreaming) {
         statusLabel.textContent = "正在停止生成...";
+        requestUiStreamCancellation();
         await apiBridge.abort_generation();
         return;
     }
@@ -195,18 +196,17 @@ async function sendMessage() {
     inputBox.style.height = "auto";
     
     // 1. 在聊天面板展示用户发送的消息气泡
-    let displayContent = text;
-    if (attachments.length > 0) {
-        displayContent += "\n[附件: " + attachments.map(a => a.name).join(", ") + "]";
-    }
+    const displayContent = attachments.length > 0
+        ? buildPendingAttachmentContent(text, attachments)
+        : text;
     const userMsgIndex = currentConv ? currentConv.messages.length : -1;
-    appendMessage("user", displayContent, "", false, userMsgIndex);
+    const optimisticUserRow = appendMessage("user", displayContent, "", false, userMsgIndex);
     scrollChatBottom();
 
     // 2. 在聊天面板生成一个空的 Assistant 占位气泡准备流式打字机输入
-    appendMessage("assistant", "思考中...", "", true);
+    const optimisticAssistantRow = appendMessage("assistant", "思考中...", "", true);
     
-    isStreaming = true;
+    startUiStreamTask(currentConvId);
     streamingText = "";
     streamingThinking = "";
     
@@ -241,7 +241,14 @@ async function sendMessage() {
     } catch (e) {
         console.error("send_message 调用失败:", e);
         statusLabel.textContent = "发送失败: " + (e.message || String(e));
-        isStreaming = false;
+        inputBox.value = text;
+        inputBox.style.height = "auto";
+        inputBox.style.height = `${inputBox.scrollHeight}px`;
+        attachments = [...oldAttachments, ...attachments];
+        renderAttachments();
+        optimisticUserRow?.remove();
+        optimisticAssistantRow?.remove();
+        finishUiStreamTask("failed");
         sendBtn.classList.remove("stop-active");
         sendBtn.title = "发送 (Ctrl+Enter)";
         const sendIcon = sendBtn.querySelector(".send-icon");
@@ -511,8 +518,6 @@ window.onStreamMessage = async (type, data) => {
         await loadConversations();
         await reloadCurrentConversation();
         
-        isStreaming = false;
-        
     } else if (type === "aborted") {
         
         // Restore send button state
@@ -538,11 +543,7 @@ window.onStreamMessage = async (type, data) => {
         await loadConversations();
         await reloadCurrentConversation();
         
-        isStreaming = false;
-        
     } else if (type === "error") {
-        isStreaming = false;
-
         // Restore send button state
         sendBtn.classList.remove("stop-active");
         sendBtn.title = "发送 (Ctrl+Enter)";
@@ -577,16 +578,12 @@ async function editUserMessage(msgIndex) {
     if (!body) return;
     
     const rawContent = currentConv.messages[msgIndex].content;
-    let textVal = "";
-    if (typeof rawContent === 'string') {
-        textVal = rawContent;
-    } else if (Array.isArray(rawContent)) {
-        rawContent.forEach(item => {
-            if (item.type === "text") textVal += item.text;
-        });
-    }
+    const editableContent = normalizeMessageDisplayContent(rawContent, { extractAttachments: true });
+    const textVal = editableContent.text;
     
     const originalHTML = body.innerHTML;
+    const bodyWasHidden = body.classList.contains("hidden");
+    body.classList.remove("hidden");
     body.innerHTML = `
         <div class="edit-msg-container" style="display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 4px;">
             <textarea class="edit-msg-textarea" style="width: 100%; min-height: 80px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px; color: var(--text); padding: 8px; font-family: inherit; font-size: 13px; outline: none; resize: vertical;"></textarea>
@@ -611,13 +608,14 @@ async function editUserMessage(msgIndex) {
     body.querySelector(".edit-cancel-btn").onclick = (e) => {
         e.stopPropagation();
         body.innerHTML = originalHTML;
+        body.classList.toggle("hidden", bodyWasHidden);
         highlightCodeBlocks(msgRow);
     };
     
     body.querySelector(".edit-save-btn").onclick = async (e) => {
         e.stopPropagation();
         const newText = textarea.value.trim();
-        if (!newText) return;
+        if (!newText && editableContent.attachments.length === 0) return;
         
         // Remove msgRow and all subsequent elements from DOM
         let current = messageList.lastChild;
@@ -628,12 +626,15 @@ async function editUserMessage(msgIndex) {
             current = prev;
         }
         
-        appendMessage("user", newText, "", false, msgIndex);
+        const editedDisplayContent = editableContent.attachments.length > 0
+            ? buildPendingAttachmentContent(newText, editableContent.attachments)
+            : newText;
+        appendMessage("user", editedDisplayContent, "", false, msgIndex);
         scrollChatBottom();
         
         appendMessage("assistant", "思考中...", "", true);
         
-        isStreaming = true;
+        startUiStreamTask(currentConvId);
         streamingText = "";
         streamingThinking = "";
         
@@ -649,7 +650,7 @@ async function editUserMessage(msgIndex) {
         } catch (e) {
             console.error("edit_and_resend 调用失败:", e);
             statusLabel.textContent = "编辑重发失败: " + (e.message || String(e));
-            isStreaming = false;
+            finishUiStreamTask("failed");
             sendBtn.classList.remove("stop-active");
             sendBtn.title = "发送 (Ctrl+Enter)";
             const sendIcon = sendBtn.querySelector(".send-icon");
@@ -688,7 +689,7 @@ async function retryAssistantMessage(msgIndex) {
     
     appendMessage("assistant", "思考中...", "", true);
     
-    isStreaming = true;
+    startUiStreamTask(currentConvId);
     streamingText = "";
     streamingThinking = "";
     
@@ -703,7 +704,7 @@ async function retryAssistantMessage(msgIndex) {
     } catch (e) {
         console.error("retry_message 调用失败:", e);
         statusLabel.textContent = "重试失败: " + (e.message || String(e));
-        isStreaming = false;
+        finishUiStreamTask("failed");
         sendBtn.classList.remove("stop-active");
         sendBtn.title = "发送 (Ctrl+Enter)";
         const sendIcon = sendBtn.querySelector(".send-icon");

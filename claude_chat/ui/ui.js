@@ -247,7 +247,19 @@ function renderConversations() {
         convList.appendChild(item);
     });
 }
-function appendMessage(role, content, thinking, isStreamingPlaceholder = false, msgIndex = -1, toolCalls = null) {
+
+function appendMessage(
+    role,
+    content,
+    thinking,
+    isStreamingPlaceholder = false,
+    msgIndex = -1,
+    toolCalls = null,
+    targetContainer = messageList
+) {
+    const displayContent = normalizeMessageDisplayContent(content, {
+        extractAttachments: role === "user"
+    });
     const row = document.createElement("div");
     row.className = `message-row ${role}`;
     if (msgIndex !== -1) {
@@ -281,7 +293,7 @@ function appendMessage(role, content, thinking, isStreamingPlaceholder = false, 
         copy.className = "copy-btn";
         copy.textContent = "📋";
         copy.title = "复制消息内容";
-        copy.onclick = () => copyText(typeof content === 'string' ? content : JSON.stringify(content));
+        copy.onclick = () => copyText(messageContentForCopy(content, role));
         meta.appendChild(copy);
 
         if (msgIndex !== -1) {
@@ -355,18 +367,28 @@ function appendMessage(role, content, thinking, isStreamingPlaceholder = false, 
     body.className = "message-body";
     body.id = isStreamingPlaceholder ? "streaming-message-body" : "";
     
-    if (typeof content === "string") {
-        body.innerHTML = parseMarkdown(content);
-    } else if (Array.isArray(content)) {
-        // 处理包含多媒体及 PDF 的复杂消息数组结构
-        let textContent = "";
-        content.forEach(item => {
-            if (item.type === "text") {
-                textContent += item.text;
-            }
-        });
-        body.innerHTML = parseMarkdown(textContent);
+    if (displayContent.text) {
+        body.innerHTML = parseMarkdown(displayContent.text);
+    } else {
+        body.classList.add("hidden");
     }
+
+    const attachmentCards = displayContent.attachments.length > 0
+        ? renderMessageAttachmentCards(displayContent.attachments, {
+            onPreview: (attachment, triggerElement) => {
+                const isPendingPreview = attachment.previewScope === "pending";
+                const previewContext = isPendingPreview
+                    ? { scope: "pending" }
+                    : {
+                        scope: "message",
+                        convId: currentConvId,
+                        messageIndex: msgIndex,
+                        blockIndex: attachment.blockIndex
+                    };
+                openAttachmentPreview(attachment, previewContext, triggerElement);
+            }
+        })
+        : null;
     
     // 渲染静态联网搜索与网页内容卡片
     if (role === "assistant" && Array.isArray(toolCalls) && toolCalls.length > 0) {
@@ -501,14 +523,17 @@ function appendMessage(role, content, thinking, isStreamingPlaceholder = false, 
     }
     
     card.appendChild(body);
+    if (attachmentCards) card.appendChild(attachmentCards);
     row.appendChild(card);
-    messageList.appendChild(row);
+    targetContainer.appendChild(row);
     
     // 对代码块进行语法高亮并注入复制与保存操作头部
     highlightCodeBlocks(card);
+    return row;
 }
-// 语法高亮代码块并在 pre 上方注入操作头部
-function highlightCodeBlocks(container) {
+// 语法高亮代码块；对话默认附带操作栏，附件预览可只复用静态高亮。
+function highlightCodeBlocks(container, options = {}) {
+    const includeActions = options.includeActions !== false;
     container.querySelectorAll('pre code').forEach((block) => {
         const pre = block.parentNode;
         
@@ -523,7 +548,7 @@ function highlightCodeBlocks(container) {
             }
         }
         
-        if (!pre.querySelector('.code-header')) {
+        if (includeActions && !pre.querySelector('.code-header')) {
             let lang = 'code';
             block.classList.forEach(cls => {
                 if (cls.startsWith('language-')) {
@@ -537,10 +562,13 @@ function highlightCodeBlocks(container) {
                 runBtnHtml = `<button class="code-run-btn" style="background-color: var(--green) !important; color: var(--crust) !important; border: none; border-radius: 4px; padding: 2px 8px; font-size: 11.5px; cursor: pointer; font-weight: 600; margin-right: 6px;">▶️ 运行</button>`;
             }
 
+            // 安全修复:语言标记来自模型可控的 markdown fence 信息串,必须先转义再入 innerHTML,
+            // 否则 ```lang"><img src=x onerror=...> 会在净化后被拼入 DOM 造成存储型 XSS。
+            const langLabel = escapeHtml(String(lang).toUpperCase()) || "CODE";
             const header = document.createElement('div');
             header.className = 'code-header';
             header.innerHTML = `
-                <span>${lang.toUpperCase()}</span>
+                <span>${langLabel}</span>
                 <div class="code-header-actions">
                     ${runBtnHtml}
                     <button class="code-save-btn">保存为文件</button>
@@ -600,10 +628,14 @@ const artifactsCodeView = document.getElementById("artifacts-code-view");
 
 let currentArtifactContent = "";
 let currentArtifactType = "";
+let artifactRenderVersion = 0;
 
 if (closeArtifactsBtn) {
     closeArtifactsBtn.onclick = () => {
         artifactsPanel.classList.add("collapsed");
+        artifactRenderVersion += 1;
+        // Removing the iframe also stops timers, media and scripts owned by the preview.
+        clearArtifactPreview();
     };
 }
 
@@ -659,32 +691,82 @@ function showArtifact(content, type) {
     renderArtifactPreview(content, type);
 }
 
+const ARTIFACT_IFRAME_PERMISSIONS = [
+    "camera 'none'",
+    "microphone 'none'",
+    "geolocation 'none'",
+    "payment 'none'",
+    "usb 'none'",
+    "serial 'none'",
+    "clipboard-read 'none'",
+    "clipboard-write 'none'",
+    "display-capture 'none'"
+].join("; ");
+
+function clearArtifactPreview() {
+    if (!artifactsPreviewContainer) return;
+    artifactsPreviewContainer.replaceChildren();
+    artifactsPreviewContainer.classList.remove("svg-mode", "mermaid-mode");
+}
+
+function createArtifactIframe(content, { interactive = false, title = "Artifact preview" } = {}) {
+    const iframe = document.createElement("iframe");
+    iframe.title = title;
+    iframe.style.width = "100%";
+    iframe.style.height = "100%";
+    iframe.style.border = "none";
+    iframe.style.backgroundColor = "#ffffff";
+    iframe.referrerPolicy = "no-referrer";
+    iframe.setAttribute("allow", ARTIFACT_IFRAME_PERMISSIONS);
+
+    // Never grant allow-same-origin: srcdoc would otherwise inherit the application origin and
+    // could read the parent page's storage. Interactive HTML keeps its existing client-side
+    // capabilities, while SVG is rendered as a script-free document.
+    iframe.setAttribute(
+        "sandbox",
+        interactive ? "allow-scripts allow-forms allow-modals allow-popups" : ""
+    );
+    iframe.srcdoc = content;
+    return iframe;
+}
+
+function showArtifactPreviewMessage(message, color = "var(--red)") {
+    clearArtifactPreview();
+    const messageEl = document.createElement("span");
+    messageEl.style.color = color;
+    messageEl.textContent = message;
+    artifactsPreviewContainer.appendChild(messageEl);
+}
+
 function renderArtifactPreview(content, type) {
-    artifactsPreviewContainer.innerHTML = "";
+    const renderVersion = ++artifactRenderVersion;
+    clearArtifactPreview();
     
     if (type === "html" || type === "xml") {
-        const iframe = document.createElement("iframe");
-        iframe.style.width = "100%";
-        iframe.style.height = "100%";
-        iframe.style.border = "none";
-        iframe.style.backgroundColor = "#ffffff";
-        // M-fix#29: 移除 allow-same-origin。srcdoc iframe 继承父域,allow-same-origin 会让
-// 内嵌 LLM 生成的 HTML 脚本能读取 parent.localStorage(security_token) 并打认证 /api/*。
-// 预览脚本无需同源能力,故仅保留脚本/表单/弹窗执行权限,沙箱真正生效。
-iframe.sandbox = "allow-scripts allow-forms allow-modals allow-popups";
-        iframe.srcdoc = content;
-        
-        artifactsPreviewContainer.appendChild(iframe);
+        artifactsPreviewContainer.appendChild(createArtifactIframe(content, {
+            interactive: true,
+            title: `${type.toUpperCase()} Artifact preview`
+        }));
         
     } else if (type === "svg") {
-        artifactsPreviewContainer.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(content) : content;
-        const svgEl = artifactsPreviewContainer.querySelector("svg");
-        if (svgEl) {
-            svgEl.style.maxWidth = "100%";
-            svgEl.style.height = "auto";
-            svgEl.style.display = "block";
-            svgEl.style.margin = "0 auto";
+        if (typeof DOMPurify === "undefined") {
+            showArtifactPreviewMessage("安全净化组件未加载，已拒绝预览 SVG。");
+            return;
         }
+
+        const sanitizedSvg = DOMPurify.sanitize(content, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+            FORBID_TAGS: ["script", "foreignobject"]
+        });
+        const svgDocument = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">
+<style>html,body{margin:0;min-height:100%;display:grid;place-items:center;background:#fff}svg{max-width:100%;height:auto}</style>
+</head><body>${sanitizedSvg}</body></html>`;
+        artifactsPreviewContainer.classList.add("svg-mode");
+        artifactsPreviewContainer.appendChild(createArtifactIframe(svgDocument, {
+            interactive: false,
+            title: "SVG Artifact preview"
+        }));
         
     } else if (type === "mermaid") {
         if (typeof mermaid !== 'undefined') {
@@ -701,12 +783,19 @@ iframe.sandbox = "allow-scripts allow-forms allow-modals allow-popups";
                     theme: 'dark',
                     securityLevel: 'strict'
                 });
-                mermaid.init(undefined, `#${uniqueId}`);
+                const renderResult = mermaid.init(undefined, `#${uniqueId}`);
+                if (renderResult && typeof renderResult.catch === "function") {
+                    renderResult.catch((err) => {
+                        if (renderVersion === artifactRenderVersion) {
+                            showArtifactPreviewMessage(`Mermaid 渲染错误: ${err.message || String(err)}`);
+                        }
+                    });
+                }
             } catch (err) {
-                artifactsPreviewContainer.innerHTML = `<span style="color: var(--red);">Mermaid 渲染错误: ${err.message}</span>`;
+                showArtifactPreviewMessage(`Mermaid 渲染错误: ${err.message || String(err)}`);
             }
         } else {
-            artifactsPreviewContainer.innerHTML = '<span style="color: var(--yellow);">Mermaid 库未加载，无法预览图表</span>';
+            showArtifactPreviewMessage("Mermaid 库未加载，无法预览图表", "var(--yellow)");
         }
     }
 }

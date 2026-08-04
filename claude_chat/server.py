@@ -8,12 +8,18 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from datetime import datetime
-from urllib.parse import parse_qs, urlparse
 
 import logging
 logger = logging.getLogger("claude_chat")
 
-from claude_chat.clients import extract_final_response_text
+from claude_chat.clients import extract_final_response_text, sanitize_error_message
+from claude_chat.http_router import HttpApiRouter
+from claude_chat.stream_protocol import (
+    StreamEvent,
+    StreamEventQueue,
+    StreamEventType,
+    StreamTaskState,
+)
 
 def get_local_ip():
     """
@@ -256,6 +262,8 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(res_bytes)))
             self._send_cors_headers()
             self.send_header("Referrer-Policy", "same-origin")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(res_bytes)
         except Exception as e:
@@ -314,7 +322,7 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             if not self.is_request_authorized():
                 self.send_unauthorized_response()
                 return
-            self.handle_api_get(path)
+            HttpApiRouter(self).dispatch_get(path)
         else:
             self.serve_static(path)
 
@@ -328,7 +336,7 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                 self.send_unauthorized_response()
                 return
             try:
-                self.handle_api_post(path)
+                HttpApiRouter(self).dispatch_post(path)
             except ValueError as ve:
                 if str(ve) == "Payload too large":
                     self.send_error(413, "Payload Too Large")
@@ -346,218 +354,18 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             if not self.is_request_authorized():
                 self.send_unauthorized_response()
                 return
-            self.handle_api_delete(path)
+            HttpApiRouter(self).dispatch_delete(path)
         else:
             self.send_error(404)
 
-    def handle_api_get(self, path):
-        """
-        处理所有 GET 类型的 API 路由
-        """
-        # GET /api/config -> 读取当前配置 (已在 WebAPI 层完成 API Key 脱敏)
-        if path == "/api/config":
-            config_data = dict(self.server.api.get_config())
-            self.send_json_response(config_data)
-            
-        # GET /api/models -> 读取可用模型列表
-        elif path == "/api/models":
-            query = parse_qs(urlparse(self.path).query)
-            requested_platform = query.get("platform", [None])[0]
-            self.send_json_response(self.server.api.fetch_models(requested_platform))
-            
-        # GET /api/check_parsers -> 检查本地可选解析依赖库安装状态
-        elif path == "/api/check_parsers":
-            self.send_json_response(self.server.api.check_parsers())
-            
-        # GET /api/conversations -> 获取历史对话列表（无具体内容，仅展示列表）
-        elif path == "/api/conversations":
-            self.send_json_response(self.server.api.load_conversations())
-            
-        # GET /api/conversation/<id> -> 加载指定的某个对话及消息详情
-        elif path.startswith("/api/conversation/"):
-            conv_id = path.split("/")[-1]
-            self.send_json_response(self.server.api.load_conversation(conv_id))
-            
-        # GET /api/message_packet/<conv_id>/<index> -> 获取对话中某条消息的数据库原始记录和发送给 API 的 Payload
-        elif path.startswith("/api/message_packet/"):
-            parts = path.split("/")
-            if len(parts) >= 5:
-                conv_id = parts[-2]
-                # M-fix#31: 索引段可能非数字(如 /abc),int 会抛 ValueError 漏到顶层变 500,补 400。
-                try:
-                    index = int(parts[-1])
-                except (ValueError, TypeError):
-                    self.send_error(400, "Bad Request")
-                    return
-                self.send_json_response(self.server.api.get_message_packet(conv_id, index))
-            else:
-                self.send_error(400, "Bad Request")
-                
-        # GET /api/get_logs -> 拉取本地最新的系统日志
-        elif path == "/api/get_logs":
-            logs = self.server.api.get_logs()
-            self.send_json_response(logs)
-            
-        # GET /api/console_stream/<process_id> -> SSE 形式推送终端进程的输出数据
-        elif path.startswith("/api/console_stream/"):
-            proc_id = path.split("/")[-1]
-            self.handle_console_stream(proc_id)
-            
-        # GET /api/custom_providers -> 获取自定义模型提供商列表
-        elif path == "/api/custom_providers":
-            self.send_json_response(self.server.api.list_custom_providers())
-            
-        else:
-            self.send_error(404, "Endpoint Not Found")
 
-    def handle_api_post(self, path):
-        """
-        处理所有 POST 类型的 API 路由
-        """
-        body = self.read_json_body()
-        
-        # POST /api/save_config -> 保存新配置
-        if path == "/api/save_config":
-            # 禁止通过网络接口篡改 sync_config_to_web 本身的值，防止安全绕过
-            if "sync_config_to_web" in body:
-                body["sync_config_to_web"] = self.server.app.config.get("sync_config_to_web", True)
-                
-            if not self.server.app.config.get("sync_config_to_web", True):
-                # 隐藏保存通道：若关闭了向 Web 同步，网络端提交的全部敏感凭证在后端强制以本地现有数据覆盖，保证存储隔离
-                from claude_chat.config import get_sensitive_api_keys
-                keys_to_preserve = get_sensitive_api_keys(self.server.app.config.data)
-                for key in keys_to_preserve:
-                    body[key] = self.server.app.config.get(key)
-                    # 避免触发清除逻辑
-                    body.pop(f"clear_{key}", None)
-            success = self.server.api.save_config(body)
-            self.send_json_response({"success": success})
 
-        # POST /api/update_model_registry -> 手动刷新模型能力注册表
-        elif path == "/api/update_model_registry":
-            self.send_json_response(self.server.api.update_model_registry())
-            
-        # POST /api/add_custom_provider -> 新增自定义模型提供商并保存到服务器
-        elif path == "/api/add_custom_provider":
-            result = self.server.api.add_custom_provider(
-                name=body.get("name", ""),
-                api_url=body.get("api_url", ""),
-                api_key=body.get("api_key", ""),
-                models=body.get("models", []),
-                temperature=body.get("temperature", 0.7),
-                max_tokens=body.get("max_tokens", 4096),
-                models_api_url=body.get("models_api_url", "")
-            )
-            self.send_json_response(result)
-            
-        # POST /api/update_custom_provider -> 更新自定义提供商元数据 / API Key
-        elif path == "/api/update_custom_provider":
-            result = self.server.api.update_custom_provider(
-                provider_id=body.get("id", ""),
-                name=body.get("name"),
-                api_url=body.get("api_url"),
-                api_key=body.get("api_key"),
-                models=body.get("models"),
-                temperature=body.get("temperature"),
-                max_tokens=body.get("max_tokens"),
-                models_api_url=body.get("models_api_url"),
-                clear_api_key=body.get("clear_api_key", False)
-            )
-            self.send_json_response(result)
-            
-        # POST /api/remove_custom_provider -> 删除自定义提供商
-        elif path == "/api/remove_custom_provider":
-            result = self.server.api.remove_custom_provider(body.get("id", ""))
-            self.send_json_response(result)
-            
-        # POST /api/new_conversation -> 新建对话
-        elif path == "/api/new_conversation":
-            self.send_json_response(self.server.api.new_conversation())
-            
-        # POST /api/upload_dropped_file -> 处理前端拖拽上传的附件文件并保存到临时目录
-        elif path == "/api/upload_dropped_file":
-            name = body.get("name")
-            size = body.get("size")
-            base64_data = body.get("base64_data")
-            uploaded = self.server.api.upload_dropped_file(name, size, base64_data)
-            self.send_json_response(uploaded)
-            
-        # POST /api/branch_conversation -> 从当前对话中某条消息分裂出一个新分支对话
-        elif path == "/api/branch_conversation":
-            conv_id = body.get("conv_id")
-            msg_index = body.get("msg_index")
-            new_conv = self.server.api.branch_conversation(conv_id, msg_index)
-            self.send_json_response(new_conv)
-            
-        # POST /api/send_console_input -> 写入输入到正在执行的代码进程 stdin
-        elif path == "/api/send_console_input":
-            process_id = body.get("process_id")
-            text = body.get("text")
-            success = self.server.api.send_console_input(process_id, text)
-            self.send_json_response({"success": success})
-            
-        # POST /api/kill_console_process -> 强制结束正在执行的代码进程
-        elif path == "/api/kill_console_process":
-            process_id = body.get("process_id")
-            success = self.server.api.kill_console_process(process_id)
-            self.send_json_response({"success": success})
-            
-        # POST /api/abort_generation -> 强行中止当前的模型输出流生成
-        elif path == "/api/abort_generation":
-            success = self.server.api.abort_generation()
-            self.send_json_response({"success": success})
-            
-        # POST /api/clear_logs -> 清空系统日志
-        elif path == "/api/clear_logs":
-            success = self.server.api.clear_logs()
-            self.send_json_response(success)
-            
-        # POST /api/send_message -> 用户发送消息，走流式响应接口
-        elif path == "/api/send_message":
-            conv_id = body.get("conv_id")
-            text = body.get("text")
-            attachments = body.get("attachments", [])
-            self.handle_streaming_generation("send_message", conv_id, text, attachments)
-            
-        # POST /api/edit_and_resend -> 用户修改历史消息并重新发送生成，走流式响应接口
-        elif path == "/api/edit_and_resend":
-            conv_id = body.get("conv_id")
-            msg_index = body.get("msg_index")
-            new_content = body.get("new_content")
-            self.handle_streaming_generation("edit_and_resend", conv_id, new_content, msg_index)
-            
-        # POST /api/retry_message -> 重新生成某条 Assistant 消息，走流式响应接口
-        elif path == "/api/retry_message":
-            conv_id = body.get("conv_id")
-            msg_index = body.get("msg_index")
-            self.handle_streaming_generation("retry_message", conv_id, msg_index)
-            
-        # POST /api/start_code_execution -> 在本地安全沙盒环境中异步执行代码块 (JS/Python)
-        elif path == "/api/start_code_execution":
-            code = body.get("code")
-            lang = body.get("lang")
-            result = self.server.api.start_code_execution(code, lang)
-            self.send_json_response(result)
-            
-        # POST /api/paste_from_clipboard -> 从主机系统剪贴板读取数据 (主要解决 Webview2 下剪贴板受阻问题)
-        elif path == "/api/paste_from_clipboard":
-            txt = self.server.api.paste_from_clipboard()
-            self.send_json_response(txt)
-            
-        else:
-            self.send_error(404, "Endpoint Not Found")
 
-    def handle_api_delete(self, path):
-        """
-        处理所有 DELETE 类型的 API 路由
-        """
-        # DELETE /api/conversation/<id> -> 删除某个对话记录
-        if path.startswith("/api/conversation/"):
-            conv_id = path.split("/")[-1]
-            success = self.server.api.delete_conversation(conv_id)
-            self.send_json_response({"success": success})
-        else:
-            self.send_error(404, "Endpoint Not Found")
+    def _write_stream_line(self, event):
+        """将单个流事件编码为 NDJSON 行写回客户端。"""
+        line = json.dumps(event.to_wire(), ensure_ascii=False) + "\n"
+        self.wfile.write(line.encode('utf-8'))
+        self.wfile.flush()
 
     def handle_streaming_generation(self, action, *args):
         """
@@ -565,30 +373,35 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         使用一个局域队列 `q` 订阅 API 客户端后台线程的生成事件，
         然后将队列中读取到的消息块实时通过 HTTP 响应流 (分块传输编码) 写回前端。
         """
-        q = queue.Queue()
+        q = StreamEventQueue(conversation_id=args[0] if args else None)
         
         # 触发对应的 WebAPI 接口函数在后台线程建立 Anthropic 生成流
         conv_id = None
-        if action == "send_message":
-            conv_id, text, attachments = args
-            success = self.server.api.send_message(conv_id, text, attachments, custom_queue=q)
-        elif action == "edit_and_resend":
-            conv_id, new_content, msg_index = args
-            success = self.server.api.edit_and_resend(conv_id, msg_index, new_content, custom_queue=q)
-        elif action == "retry_message":
-            conv_id, msg_index = args
-            success = self.server.api.retry_message(conv_id, msg_index, custom_queue=q)
-        else:
-            self.send_error(400, "Invalid action")
+        try:
+            if action == "send_message":
+                conv_id, text, attachments = args
+                success = self.server.api.send_message(conv_id, text, attachments, custom_queue=q)
+            elif action == "edit_and_resend":
+                conv_id, new_content, msg_index = args
+                success = self.server.api.edit_and_resend(conv_id, msg_index, new_content, custom_queue=q)
+            elif action == "retry_message":
+                conv_id, msg_index = args
+                success = self.server.api.retry_message(conv_id, msg_index, custom_queue=q)
+            else:
+                self.send_error(400, "Invalid action")
+                return
+        except ValueError as exc:
+            self.send_json_response({"error": str(exc)}, status=400)
             return
             
         if not success:
             self.send_json_response({"error": "Failed to start generation / 无法开启流生成通道"}, status=500)
             return
+        task = self.server.api._app.stream_task
             
         # 发送流式 HTTP 响应头
         self.send_response(200)
-        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
         self._send_cors_headers()
         self.send_header("Referrer-Policy", "same-origin")
         self.end_headers()
@@ -600,20 +413,19 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         while True:
             try:
                 # 60 秒无事件代表网络中断，作安全超时处理
-                msg = q.get(timeout=60)
-                msg_type, msg_data = msg
-                
-                # 将每次获得的事件编码为一行标准的 JSON 数据推回前端
-                line = json.dumps({"type": msg_type, "data": msg_data}, ensure_ascii=False) + "\n"
-                self.wfile.write(line.encode('utf-8'))
-                self.wfile.flush()
+                event = q.get_event(timeout=60)
+                msg_type, msg_data = event.to_legacy()
                 
                 if msg_type == "text":
                     streaming_text += msg_data
                 elif msg_type == "thinking":
                     streaming_thinking_text += msg_data
                 elif msg_type == "done":
-                    # 增量安全写入 AI 响应及 Token，在首轮对话自动生成标题，规避并发覆盖冲突
+                    # 终止事件必须先完成副作用再写回客户端:
+                    # 1) 增量安全写入 AI 响应及 Token,首轮对话自动生成标题;
+                    # 2) 同步内存 current_conv 并复位流任务状态。
+                    # 否则客户端收到 done 后立即 reload,而 is_streaming 仍为 true,
+                    # load_conversation 会返回旧缓存,新消息被判定为"缺失"(done 竞态)。
                     input_tokens = msg_data.get("input_tokens", 0)
                     output_tokens = msg_data.get("output_tokens", 0)
                     final_text = extract_final_response_text(msg_data, streaming_text)
@@ -635,7 +447,8 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                         if curr and curr.get("id") == conv_id:
                             self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
 
-                    self.server.api._app.set_streaming_done()
+                    self.server.api._app.set_streaming_done(StreamTaskState.COMPLETED, task)
+                    self._write_stream_line(event)
                     break
                 elif msg_type == "aborted":
                     # 被强行中止，增量对已生成的内容作局部保存存档
@@ -652,7 +465,8 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                         if curr and curr.get("id") == conv_id:
                             self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
 
-                    self.server.api._app.set_streaming_done()
+                    self.server.api._app.set_streaming_done(StreamTaskState.ABORTED, task)
+                    self._write_stream_line(event)
                     break
                 elif msg_type == "error":
                     # 发生错误，将当前已生成文本增量妥善存档
@@ -668,8 +482,12 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                             if curr and curr.get("id") == conv_id:
                                 self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
 
-                    self.server.api._app.set_streaming_done()
+                    self.server.api._app.set_streaming_done(StreamTaskState.FAILED, task)
+                    self._write_stream_line(event)
                     break
+                else:
+                    # 普通事件(text/thinking/search_*/fetch_*)立即透传
+                    self._write_stream_line(event)
             except queue.Empty:
                 logger.warning("模型流输出队列超时。")
                 # M-fix#19: 超时不能直接丢已累积的流式文本;按 error 模式增量存档并停止后端生成线程
@@ -685,7 +503,10 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                     self.server.api._app.abort_generation()
                 except Exception:
                     pass
-                self.server.api._app.set_streaming_done()
+                self.server.api._app.set_streaming_done(StreamTaskState.FAILED, task)
+                # 超时/异常路径必须向客户端写一个终止事件,否则前端 isStreaming
+                # 永远不复位,UI 锁死在"思考中..."(客户端仅在收到终止事件后复位状态)。
+                self._emit_stream_error(q, "生成流超时，已中止并保存部分内容。")
                 break
             except Exception as e:
                 logger.error(f"推送流事件数据时出错: {e}")
@@ -702,8 +523,23 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                     self.server.api._app.abort_generation()
                 except Exception:
                     pass
-                self.server.api._app.set_streaming_done()
+                self.server.api._app.set_streaming_done(StreamTaskState.FAILED, task)
+                self._emit_stream_error(q, f"生成流异常终止: {sanitize_error_message(e)}")
                 break
+
+    def _emit_stream_error(self, q, message):
+        """向客户端写入一个合成的 error 终止事件(客户端已断开时静默失败)。"""
+        fallback_event = StreamEvent(
+            task_id=q.task_id,
+            conversation_id=q.conversation_id,
+            sequence=0,
+            type=StreamEventType.ERROR,
+            data=message,
+        )
+        try:
+            self._write_stream_line(fallback_event)
+        except Exception as write_err:
+            logger.debug(f"客户端已断开,无法写入合成错误事件: {write_err}")
 
     def handle_console_stream(self, process_id):
         """

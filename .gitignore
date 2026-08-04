@@ -5,6 +5,7 @@ conversations/
 .antigravitycli
 claude_chat.db
 conversations_backup/
+attachments/
 *.log
 .venv/
 build/
@@ -19,6 +20,16 @@ test/
 test/*
 !test/test_thinking_tag_parser.py
 !test/test_fixed_regressions.py
+!test/test_file_upload.py
+!test/test_sandbox.py
+!test/test_stream_protocol.py
+!test/test_architecture_refactor.py
+!test/test_service_architecture.py
+!test/test_conversation_render.js
+!test/test_attachment_display.js
+!test/test_attachment_preview.py
+!test/test_settings_components.js
+!test/test_stream_protocol_ui.js
 scratch/
 test.db
 debug.txt
