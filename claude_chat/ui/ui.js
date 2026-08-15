@@ -30,15 +30,62 @@ function applyFontMode() {
     }
 }
 
+function getActiveSearchPreference() {
+    const platform = config.active_platform || "claude";
+    if (platform === "claude") return { enabledKey: "enable_web_search", engineKey: "web_search_engine", label: "Claude" };
+    if (platform === "deepseek") return { enabledKey: "deepseek_enable_web_search", engineKey: "deepseek_web_search_engine", label: "DeepSeek" };
+    if (platform === "gemini") return { enabledKey: "gemini_enable_web_search", engineKey: null, label: "Gemini" };
+    return null;
+}
+
+let disclosureControlCounter = 0;
+function makeDisclosureHeaderAccessible(header, card) {
+    if (!header || !card) return;
+    const body = card.querySelector(".search-card-body");
+    header.setAttribute("role", "button");
+    header.setAttribute("tabindex", "0");
+    header.setAttribute("aria-expanded", card.classList.contains("collapsed") ? "false" : "true");
+    if (body) {
+        if (!body.id) body.id = `disclosure-panel-${++disclosureControlCounter}`;
+        header.setAttribute("aria-controls", body.id);
+    }
+    header.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        header.click();
+    });
+    header.addEventListener("click", () => {
+        requestAnimationFrame(() => {
+            header.setAttribute("aria-expanded", card.classList.contains("collapsed") ? "false" : "true");
+        });
+    });
+}
+
 function updateSearchBtnUI() {
     if (!webSearchBtn) return;
-    if (config.enable_web_search) {
+    const preference = getActiveSearchPreference();
+    if (!preference) {
+        webSearchBtn.classList.remove("active");
+        webSearchBtn.disabled = true;
+        webSearchBtn.title = "当前自定义提供商不支持内置联网搜索开关";
+        webSearchBtn.setAttribute("aria-pressed", "false");
+        webSearchBtn.setAttribute("aria-label", webSearchBtn.title);
+        return;
+    }
+
+    webSearchBtn.disabled = false;
+    const enabled = !!config[preference.enabledKey];
+    if (enabled) {
         webSearchBtn.classList.add("active");
-        webSearchBtn.title = `联网搜索：开启 (引擎: ${config.web_search_engine || "google"})`;
+        const engine = preference.engineKey ? (config[preference.engineKey] || "google") : "Google Search";
+        webSearchBtn.title = `${preference.label} 联网搜索：开启 (${engine})`;
+        webSearchBtn.setAttribute("aria-pressed", "true");
     } else {
         webSearchBtn.classList.remove("active");
-        webSearchBtn.title = "联网搜索：关闭";
+        webSearchBtn.title = `${preference.label} 联网搜索：关闭`;
+        webSearchBtn.setAttribute("aria-pressed", "false");
     }
+    webSearchBtn.setAttribute("aria-label", webSearchBtn.title);
 }
 
 if (webSearchBtn) {
@@ -47,12 +94,17 @@ if (webSearchBtn) {
             statusLabel.textContent = "正在生成中，无法切换联网搜索状态";
             return;
         }
-        config.enable_web_search = !config.enable_web_search;
+        const preference = getActiveSearchPreference();
+        if (!preference) {
+            statusLabel.textContent = "当前提供商未提供内置联网搜索";
+            return;
+        }
+        config[preference.enabledKey] = !config[preference.enabledKey];
         updateSearchBtnUI();
         await apiBridge.save_config({
-            enable_web_search: config.enable_web_search
+            [preference.enabledKey]: config[preference.enabledKey]
         });
-        statusLabel.textContent = config.enable_web_search ? "🌐 联网搜索已开启" : "🔍 联网搜索已关闭";
+        statusLabel.textContent = config[preference.enabledKey] ? `${preference.label} 联网搜索已开启` : `${preference.label} 联网搜索已关闭`;
         setTimeout(() => { if (statusLabel.textContent.includes("联网搜索")) statusLabel.textContent = "就绪"; }, 1500);
     };
 }
@@ -78,6 +130,18 @@ function updateLedStatus() {
         apiStatusLed.className = "status-led";
         apiStatusLed.title = `API 未连接 (${platform})`;
     }
+    apiStatusLed.setAttribute("role", "status");
+    apiStatusLed.setAttribute("aria-label", apiStatusLed.title);
+}
+
+function setSendButtonState(isGenerating) {
+    if (!sendBtn) return;
+    sendBtn.classList.toggle("stop-active", isGenerating);
+    sendBtn.title = isGenerating ? "停止生成" : "发送 (Ctrl+Enter)";
+    sendBtn.setAttribute("aria-label", isGenerating ? "停止生成" : "发送消息");
+    sendBtn.setAttribute("aria-pressed", isGenerating ? "true" : "false");
+    const icon = sendBtn.querySelector(".send-icon");
+    if (icon) icon.textContent = isGenerating ? "■" : "↑";
 }
 
 // 渲染下拉菜单中的模型选项列表
@@ -208,6 +272,7 @@ if (platformSelect) {
             if (conv) conv.platform = config.active_platform;
         }
         updateLedStatus();
+        updateSearchBtnUI();
         const models = await apiBridge.fetch_models(config.active_platform);
         if (models) {
             modelCache.set(config.active_platform, models);
@@ -225,19 +290,45 @@ async function loadConversations() {
 // 渲染侧边栏中的对话卡片列表
 function renderConversations() {
     convList.innerHTML = "";
-    conversations.forEach(c => {
+    const normalizedQuery = (conversationSearchInput?.value || "").trim().toLocaleLowerCase();
+    const visibleConversations = conversations.filter(c => {
+        if (!normalizedQuery) return true;
+        return String(c.title || "新对话").toLocaleLowerCase().includes(normalizedQuery);
+    });
+
+    if (visibleConversations.length === 0) {
+        const emptyState = document.createElement("div");
+        emptyState.className = "conversation-empty";
+        emptyState.textContent = normalizedQuery ? "没有找到匹配的对话" : "还没有历史对话";
+        convList.appendChild(emptyState);
+    }
+
+    visibleConversations.forEach(c => {
         const item = document.createElement("div");
-        item.className = `conv-item ${c.id === currentConvId ? "active" : ""}`;
-        item.onclick = () => selectConversation(c.id);
+        const isActiveConversation = String(c.id) === String(currentConvId);
+        item.className = `conv-item ${isActiveConversation ? "active" : ""}`;
+        item.dataset.convId = String(c.id);
+        item.setAttribute("aria-current", isActiveConversation ? "true" : "false");
+
+        const selectBtn = document.createElement("button");
+        selectBtn.className = "conv-select-btn";
+        selectBtn.type = "button";
+        selectBtn.setAttribute("aria-current", isActiveConversation ? "page" : "false");
+        selectBtn.setAttribute("aria-label", `打开对话：${c.title || "新对话"}`);
+        selectBtn.onclick = () => selectConversation(c.id);
         
         const title = document.createElement("span");
         title.className = "conv-title";
         title.textContent = c.title || "新对话";
-        item.appendChild(title);
+        selectBtn.appendChild(title);
+        item.appendChild(selectBtn);
         
         const delBtn = document.createElement("button");
         delBtn.className = "delete-conv-btn";
+        delBtn.type = "button";
         delBtn.innerHTML = "&times;";
+        delBtn.title = `删除对话：${c.title || "新对话"}`;
+        delBtn.setAttribute("aria-label", delBtn.title);
         delBtn.onclick = (e) => {
             e.stopPropagation();
             showDeleteConfirm(c.id);
@@ -246,6 +337,45 @@ function renderConversations() {
         
         convList.appendChild(item);
     });
+
+    const activeConversation = conversations.find(c => String(c.id) === String(currentConvId));
+    if (currentConversationTitle) {
+        currentConversationTitle.textContent = activeConversation?.title || currentConv?.title || "新对话";
+    }
+    document.title = activeConversation?.title
+        ? `${activeConversation.title} · Claude Chat`
+        : "Claude Chat · AI 工作台";
+}
+
+conversationSearchInput?.addEventListener("input", renderConversations);
+
+function updateChatEmptyState() {
+    if (!chatEmptyState || !messageList) return;
+    chatEmptyState.classList.toggle("hidden", Boolean(messageList.querySelector(".message-row")));
+}
+
+if (messageList && chatEmptyState) {
+    new MutationObserver(updateChatEmptyState).observe(messageList, { childList: true });
+    updateChatEmptyState();
+    chatEmptyState.querySelectorAll(".prompt-suggestion").forEach(button => {
+        button.addEventListener("click", () => {
+            inputBox.value = button.dataset.prompt || "";
+            inputBox.dispatchEvent(new Event("input", { bubbles: true }));
+            inputBox.focus();
+        });
+    });
+}
+
+function getAssistantDisplayName() {
+    const platform = currentConv?.platform || config.active_platform || "claude";
+    if (platform === "deepseek") return "DeepSeek";
+    if (platform === "gemini") return "Gemini";
+    if (platform === "claude") return "Claude";
+    if (platform.startsWith("custom:")) {
+        const selectedOption = Array.from(platformSelect?.options || []).find(option => option.value === platform);
+        return selectedOption?.textContent || "Assistant";
+    }
+    return "Assistant";
 }
 
 function appendMessage(
@@ -278,7 +408,8 @@ function appendMessage(
     
     const sender = document.createElement("div");
     sender.className = "sender-info";
-    sender.innerHTML = role === "user" ? "👤 You" : "🤖 Claude";
+    sender.dataset.role = role;
+    sender.textContent = role === "user" ? "You" : getAssistantDisplayName();
     header.appendChild(sender);
     
     const meta = document.createElement("div");
@@ -291,8 +422,10 @@ function appendMessage(
     if (!isStreamingPlaceholder) {
         const copy = document.createElement("button");
         copy.className = "copy-btn";
-        copy.textContent = "📋";
+        copy.type = "button";
+        copy.textContent = "⧉";
         copy.title = "复制消息内容";
+        copy.setAttribute("aria-label", copy.title);
         copy.onclick = () => copyText(messageContentForCopy(content, role));
         meta.appendChild(copy);
 
@@ -300,16 +433,20 @@ function appendMessage(
             const packet = document.createElement("button");
             packet.className = "copy-btn";
             packet.style.marginLeft = "6px";
-            packet.textContent = "📦";
+            packet.type = "button";
+            packet.textContent = "{}";
             packet.title = "查看原始数据包";
+            packet.setAttribute("aria-label", packet.title);
             packet.onclick = () => showPacketModal(currentConvId, msgIndex);
             meta.appendChild(packet);
             
             const branch = document.createElement("button");
             branch.className = "copy-btn";
             branch.style.marginLeft = "6px";
-            branch.textContent = "🌿";
+            branch.type = "button";
+            branch.textContent = "⑂";
             branch.title = "从此消息创建分支对话";
+            branch.setAttribute("aria-label", branch.title);
             branch.onclick = () => branchConversation(msgIndex);
             meta.appendChild(branch);
             
@@ -317,8 +454,10 @@ function appendMessage(
                 const edit = document.createElement("button");
                 edit.className = "copy-btn";
                 edit.style.marginLeft = "6px";
-                edit.textContent = "✏️";
+                edit.type = "button";
+                edit.textContent = "✎";
                 edit.title = "编辑并重新发送";
+                edit.setAttribute("aria-label", edit.title);
                 edit.onclick = () => editUserMessage(msgIndex);
                 meta.appendChild(edit);
             }
@@ -327,8 +466,10 @@ function appendMessage(
                 const retry = document.createElement("button");
                 retry.className = "copy-btn";
                 retry.style.marginLeft = "6px";
-                retry.textContent = "🔄";
+                retry.type = "button";
+                retry.textContent = "↻";
                 retry.title = "不满意，重新生成";
+                retry.setAttribute("aria-label", retry.title);
                 retry.onclick = () => retryAssistantMessage(msgIndex);
                 meta.appendChild(retry);
             }
@@ -345,6 +486,8 @@ function appendMessage(
         
         const thinkToggle = document.createElement("button");
         thinkToggle.className = "thinking-toggle";
+        thinkToggle.type = "button";
+        thinkToggle.setAttribute("aria-expanded", "false");
         const tokenEstimate = thinking ? Math.floor(thinking.length / 2) : 0;
         thinkToggle.textContent = `▶ 思考过程 (~${tokenEstimate} tokens)`;
         
@@ -354,6 +497,7 @@ function appendMessage(
         
         thinkToggle.onclick = () => {
             const isHidden = thinkBox.classList.toggle("hidden");
+            thinkToggle.setAttribute("aria-expanded", isHidden ? "false" : "true");
             thinkToggle.textContent = `${isHidden ? "▶" : "▼"} 思考过程 (~${Math.floor(thinkBox.textContent.length / 2)} tokens)`;
         };
         
@@ -418,6 +562,7 @@ function appendMessage(
                     const toggleIcon = sHeader.querySelector(".search-card-toggle-icon");
                     if (toggleIcon) toggleIcon.textContent = collapsed ? "▶" : "▼";
                 };
+                makeDisclosureHeaderAccessible(sHeader, searchCard);
                 
                 if (results.length === 0) {
                     sBody.innerHTML = `<div style="font-size: 11.5px; color: var(--subtext0); padding: 4px;">未找到相关搜索结果。</div>`;
@@ -430,7 +575,7 @@ function appendMessage(
                         const sSnippet = res.snippet ? escapeHtml(res.snippet) : "";
                         item.innerHTML = `
                             <div class="search-result-title">
-                                <a href="${sUrl}" target="_blank">${sTitle}</a>
+                                <a href="${sUrl}" target="_blank" rel="noopener noreferrer">${sTitle}</a>
                                 <span class="search-result-link-icon">↗</span>
                             </div>
                             <span class="search-result-url">${sUrl}</span>
@@ -507,13 +652,14 @@ function appendMessage(
                     const toggleIcon = sHeader.querySelector(".search-card-toggle-icon");
                     if (toggleIcon) toggleIcon.textContent = collapsed ? "▶" : "▼";
                 };
+                makeDisclosureHeaderAccessible(sHeader, fetchCard);
                 
                 sBody.innerHTML = `
                     <div class="search-engine-info" style="margin-top: 0px; border-top: none; padding-top: 0px;">
                         <span>读取工具：</span>
                         <span class="search-engine-badge" style="background-color: var(--overlay0);">${parserName}</span>
                         <span style="font-size: 11.5px; color: var(--subtext0); margin-left: 8px;">${usageStr}</span>
-                        <div style="font-size: 11px; color: var(--subtext0); word-break: break-all; margin-top: 4px;">URL: <a href="${safeUrl(tc.url)}" target="_blank" style="color: var(--blue); text-decoration: underline;">${escapeHtml(tc.url)}</a></div>  <!-- M-fix#15: 对齐流式卡,safeUrl 过滤 + escapeHtml 转义,防 javascript:/onerror XSS -->
+                        <div style="font-size: 11px; color: var(--subtext0); word-break: break-all; margin-top: 4px;">URL: <a href="${safeUrl(tc.url)}" target="_blank" rel="noopener noreferrer" style="color: var(--blue); text-decoration: underline;">${escapeHtml(tc.url)}</a></div>  <!-- M-fix#15: 对齐流式卡,safeUrl 过滤 + escapeHtml 转义,防 javascript:/onerror XSS -->
                     </div>
                 `;
                 
@@ -559,7 +705,7 @@ function highlightCodeBlocks(container, options = {}) {
             let runBtnHtml = "";
             const normLang = lang.toLowerCase();
             if (normLang === 'python' || normLang === 'javascript' || normLang === 'js') {
-                runBtnHtml = `<button class="code-run-btn" style="background-color: var(--green) !important; color: var(--crust) !important; border: none; border-radius: 4px; padding: 2px 8px; font-size: 11.5px; cursor: pointer; font-weight: 600; margin-right: 6px;">▶️ 运行</button>`;
+                runBtnHtml = `<button type="button" class="code-run-btn" style="background-color: var(--green) !important; color: var(--crust) !important; border: none; border-radius: 4px; padding: 2px 8px; font-size: 11.5px; cursor: pointer; font-weight: 600; margin-right: 6px;">运行</button>`;
             }
 
             // 安全修复:语言标记来自模型可控的 markdown fence 信息串,必须先转义再入 innerHTML,
@@ -571,8 +717,8 @@ function highlightCodeBlocks(container, options = {}) {
                 <span>${langLabel}</span>
                 <div class="code-header-actions">
                     ${runBtnHtml}
-                    <button class="code-save-btn">保存为文件</button>
-                    <button class="code-copy-btn">复制</button>
+                    <button type="button" class="code-save-btn">保存为文件</button>
+                    <button type="button" class="code-copy-btn">复制</button>
                 </div>
             `;
             
@@ -603,7 +749,8 @@ function highlightCodeBlocks(container, options = {}) {
             if (normLang === 'html' || normLang === 'svg' || normLang === 'mermaid' || normLang === 'xml') {
                 const showBtn = document.createElement('button');
                 showBtn.className = 'show-artifact-btn';
-                showBtn.innerHTML = '👁️ 预览 Artifact';
+                showBtn.type = 'button';
+                showBtn.textContent = '预览 Artifact';
                 showBtn.onclick = () => {
                     showArtifact(block.innerText, normLang);
                 };
@@ -642,16 +789,21 @@ if (closeArtifactsBtn) {
 if (artifactsFullscreenBtn) {
     artifactsFullscreenBtn.onclick = () => {
         const isFullscreen = artifactsPanel.classList.toggle("fullscreen");
-        artifactsFullscreenBtn.textContent = isFullscreen ? "🗖" : "🖥️";
+        artifactsFullscreenBtn.textContent = isFullscreen ? "↙" : "⛶";
         artifactsFullscreenBtn.title = isFullscreen ? "还原" : "全屏";
+        artifactsFullscreenBtn.setAttribute("aria-label", artifactsFullscreenBtn.title);
     };
 }
 
-artifactsTabBtns.forEach(btn => {
+artifactsTabBtns.forEach((btn, index) => {
     btn.onclick = () => {
         const tabName = btn.getAttribute("data-tab");
-        artifactsTabBtns.forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
+        artifactsTabBtns.forEach(b => {
+            const isActive = b === btn;
+            b.classList.toggle("active", isActive);
+            b.setAttribute("aria-selected", isActive ? "true" : "false");
+            b.setAttribute("tabindex", isActive ? "0" : "-1");
+        });
         
         artifactsTabContents.forEach(content => {
             if (content.id === `artifacts-${tabName}-tab`) {
@@ -667,6 +819,14 @@ artifactsTabBtns.forEach(btn => {
             }
         }
     };
+    btn.addEventListener("keydown", event => {
+        if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+        event.preventDefault();
+        const direction = event.key === "ArrowRight" ? 1 : -1;
+        const target = artifactsTabBtns[(index + direction + artifactsTabBtns.length) % artifactsTabBtns.length];
+        target.focus();
+        target.click();
+    });
 });
 
 function showArtifact(content, type) {
@@ -811,26 +971,25 @@ if (messageList) {
             const src = e.target.src;
             if (src) {
                 previewImageEl.src = src;
-                imageModal.classList.remove("hidden");
+                showModal(imageModal);
             }
         }
     });
 }
 
+function closeImagePreview() {
+    hideModal(imageModal);
+    previewImageEl.src = "";
+}
+
 if (closeImageModalBtn) {
-    closeImageModalBtn.addEventListener("click", () => {
-        imageModal.classList.add("hidden");
-        previewImageEl.src = "";
-    });
+    closeImageModalBtn.addEventListener("click", closeImagePreview);
 }
 
 if (imageModal) {
     imageModal.addEventListener("click", (e) => {
         // Close if clicking outside the image content
-        if (e.target === imageModal || e.target.closest(".modal-card") === null || e.target.classList.contains("modal-card")) {
-            imageModal.classList.add("hidden");
-            previewImageEl.src = "";
-        }
+        if (e.target === imageModal) closeImagePreview();
     });
 }
 

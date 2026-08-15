@@ -15,34 +15,34 @@ function handleUnauthorized() {
     if (existing) {
         const errorMsg = existing.querySelector('#auth-error-msg');
         if (errorMsg) errorMsg.style.display = 'block';
+        existing.querySelector('#auth-token-input')?.focus();
         return;
     }
     
     const overlay = document.createElement('div');
     overlay.id = 'auth-overlay';
-    overlay.className = 'modal-overlay';
-    overlay.style.zIndex = '9999';
-    overlay.style.display = 'flex';
-    overlay.style.justifyContent = 'center';
-    overlay.style.alignItems = 'center';
+    overlay.className = 'modal-overlay auth-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'auth-dialog-title');
     
     overlay.innerHTML = `
-        <div class="modal-card" style="width: 380px;">
+        <div class="modal-card auth-card">
             <div class="modal-header">
-                <h2>🔒 安全访问认证</h2>
+                <h2 id="auth-dialog-title">安全访问认证</h2>
             </div>
-            <div class="modal-body" style="gap: 12px; padding: 20px;">
-                <p style="font-size: 12px; color: var(--subtext1); line-height: 1.5;">
-                    本服务已开启安全防护。若您正在从局域网或外部浏览器访问，请输入终端或日志中打印的 <b>Security Token</b>。
+            <div class="modal-body auth-modal-body">
+                <p class="auth-description">
+                    本服务已开启安全防护。若您正在从局域网或外部浏览器访问，请输入终端打印的 <b>Security Token</b>。
                 </p>
                 <div class="form-group">
-                    <label for="auth-token-input">安全验证 Token (Security Token):</label>
-                    <input type="password" id="auth-token-input" placeholder="输入 Security Token..." style="padding: 8px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text);">
+                    <label for="auth-token-input">安全验证 Token</label>
+                    <input type="password" id="auth-token-input" placeholder="输入 Security Token" autocomplete="current-password">
                 </div>
-                <div id="auth-error-msg" style="color: var(--red); font-size: 11px; display: none;">Token 错误或无效，请重新输入。</div>
+                <div id="auth-error-msg" class="auth-error" role="alert">Token 错误或无效，请重新输入。</div>
             </div>
-            <div class="modal-footer" style="padding: 12px 18px;">
-                <button id="auth-submit-btn" class="btn btn-primary" style="width: 100%;">验证并连接</button>
+            <div class="modal-footer auth-footer">
+                <button type="button" id="auth-submit-btn" class="btn btn-primary">验证并连接</button>
             </div>
         </div>
     `;
@@ -52,13 +52,28 @@ function handleUnauthorized() {
     const input = document.getElementById('auth-token-input');
     const submitBtn = document.getElementById('auth-submit-btn');
     const errorMsg = document.getElementById('auth-error-msg');
+    const appShell = document.querySelector('.app-container');
+    const previousAppAriaHidden = appShell?.getAttribute('aria-hidden');
+    if (appShell) {
+        if ('inert' in appShell) appShell.inert = true;
+        appShell.setAttribute('aria-hidden', 'true');
+    }
+
+    const cleanupAuthDialog = () => {
+        if (appShell) {
+            if ('inert' in appShell) appShell.inert = false;
+            if (previousAppAriaHidden === null) appShell.removeAttribute('aria-hidden');
+            else appShell.setAttribute('aria-hidden', previousAppAriaHidden);
+        }
+        overlay.remove();
+    };
     
     const submitToken = () => {
         const val = input.value.trim();
         if (val) {
             securityToken = val;
             localStorage.setItem('security_token', val);
-            document.body.removeChild(overlay);
+            cleanupAuthDialog();
             isInitialized = false;
             isInitializing = false;
             initApp();
@@ -71,6 +86,25 @@ function handleUnauthorized() {
     input.onkeydown = (e) => {
         if (e.key === 'Enter') submitToken();
     };
+    overlay.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const focusable = Array.from(overlay.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
+    requestAnimationFrame(() => input.focus({ preventScroll: true }));
 }
 let isInitialized = false;
 let isInitializing = false;

@@ -13,7 +13,6 @@ dist/
 .ruff_cache/
 server.crt
 server.key
-AGENTS.md
 test_dialog.py
 test/
 !test/

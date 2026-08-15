@@ -163,10 +163,42 @@ function getExtensionFromLang(lang) {
     };
     return langMap[lang.toLowerCase()] || '.txt';
 }
-// 滚动聊天视口至最底部
-function scrollChatBottom() {
-    scrollAnchor.scrollIntoView({ behavior: "smooth" });
+// 仅在用户停留于最新消息附近时自动跟随流式输出；向上阅读时不再抢夺滚动位置。
+let chatShouldFollowLatest = true;
+let chatScrollFrame = null;
+let chatProgrammaticScrollTimer = null;
+
+function updateChatFollowState() {
+    if (!chatViewport) return;
+    const distanceFromBottom = chatViewport.scrollHeight - chatViewport.scrollTop - chatViewport.clientHeight;
+    chatShouldFollowLatest = distanceFromBottom <= 120;
+    if (scrollToBottomBtn) {
+        scrollToBottomBtn.classList.toggle("hidden", chatShouldFollowLatest);
+    }
 }
+
+function scrollChatBottom(force = false, smooth = false) {
+    if (!force && !chatShouldFollowLatest) return;
+    if (force) chatShouldFollowLatest = true;
+    if (chatScrollFrame !== null) cancelAnimationFrame(chatScrollFrame);
+    chatScrollFrame = requestAnimationFrame(() => {
+        const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+        const useSmoothScroll = smooth && !reduceMotion;
+        if (chatProgrammaticScrollTimer !== null) window.clearTimeout(chatProgrammaticScrollTimer);
+        chatProgrammaticScrollTimer = window.setTimeout(() => {
+            chatProgrammaticScrollTimer = null;
+            updateChatFollowState();
+        }, useSmoothScroll ? 420 : 0);
+        scrollAnchor.scrollIntoView({ behavior: useSmoothScroll ? "smooth" : "auto" });
+        chatScrollFrame = null;
+        if (scrollToBottomBtn) scrollToBottomBtn.classList.add("hidden");
+    });
+}
+
+chatViewport?.addEventListener("scroll", () => {
+    if (chatProgrammaticScrollTimer === null) updateChatFollowState();
+}, { passive: true });
+scrollToBottomBtn?.addEventListener("click", () => scrollChatBottom(true, true));
 
 // 复制文本工具函数
 function copyText(text) {

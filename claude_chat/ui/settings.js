@@ -1,12 +1,32 @@
 // 弹窗显示/隐藏控制逻辑
 const DEFAULT_MODEL_MAX_TOKENS = 16384;
+const modalReturnFocus = new WeakMap();
+
+function getModalFocusableElements(modal) {
+    return Array.from(modal?.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ) || []).filter(element => element.offsetParent !== null);
+}
 
 function showModal(modal) {
+    if (!modal) return;
+    modalReturnFocus.set(modal, document.activeElement);
     modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+    requestAnimationFrame(() => {
+        const preferred = modal.querySelector('[autofocus]') || getModalFocusableElements(modal)[0];
+        preferred?.focus({ preventScroll: true });
+    });
 }
 
 function hideModal(modal) {
+    if (!modal) return;
     modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+    const returnTarget = modalReturnFocus.get(modal);
+    if (returnTarget && document.contains(returnTarget)) {
+        returnTarget.focus({ preventScroll: true });
+    }
 }
 
 document.querySelectorAll(".close-modal-btn, .cancel-modal-btn").forEach(btn => {
@@ -15,6 +35,98 @@ document.querySelectorAll(".close-modal-btn, .cancel-modal-btn").forEach(btn => 
         hideModal(modal);
     };
 });
+
+document.querySelectorAll(".modal-overlay").forEach((modal, index) => {
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-hidden", modal.classList.contains("hidden") ? "true" : "false");
+    const heading = modal.querySelector(".modal-header h2");
+    if (heading) {
+        if (!heading.id) heading.id = `dialog-title-${index + 1}`;
+        modal.setAttribute("aria-labelledby", heading.id);
+    }
+});
+
+document.addEventListener("keydown", event => {
+    const authOverlay = document.getElementById("auth-overlay");
+    if (authOverlay && document.body.contains(authOverlay)) return;
+    if (attachmentPreviewModal && !attachmentPreviewModal.classList.contains("hidden")) return;
+    const visibleModals = Array.from(document.querySelectorAll(".modal-overlay:not(.hidden)"))
+        .filter(modal => modal.id !== "auth-overlay");
+    const modal = visibleModals[visibleModals.length - 1];
+    if (!modal) return;
+
+    if (event.key === "Escape") {
+        event.preventDefault();
+        hideModal(modal);
+        return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = getModalFocusableElements(modal);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!modal.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+    } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+});
+
+const settingsNavItems = Array.from(document.querySelectorAll(".settings-nav-item[data-settings-nav]"));
+const settingsSections = Array.from(document.querySelectorAll("[data-settings-section]"));
+const settingsContent = document.querySelector(".settings-content");
+
+function activateSettingsNav(sectionKey, shouldScroll = true) {
+    settingsNavItems.forEach(item => {
+        const active = item.dataset.settingsNav === sectionKey;
+        item.classList.toggle("active", active);
+        item.setAttribute("aria-current", active ? "page" : "false");
+    });
+    if (shouldScroll) {
+        document.querySelector(`[data-settings-section="${sectionKey}"]`)?.scrollIntoView({
+            behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth",
+            block: "start"
+        });
+    }
+}
+
+settingsNavItems.forEach((item, index) => {
+    item.addEventListener("click", () => activateSettingsNav(item.dataset.settingsNav));
+    item.addEventListener("keydown", event => {
+        if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+        event.preventDefault();
+        const direction = (event.key === "ArrowDown" || event.key === "ArrowRight") ? 1 : -1;
+        const target = settingsNavItems[(index + direction + settingsNavItems.length) % settingsNavItems.length];
+        target.focus();
+        activateSettingsNav(target.dataset.settingsNav);
+    });
+});
+
+let settingsScrollFrame = null;
+settingsContent?.addEventListener("scroll", () => {
+    if (settingsScrollFrame !== null) cancelAnimationFrame(settingsScrollFrame);
+    settingsScrollFrame = requestAnimationFrame(() => {
+        const contentTop = settingsContent.getBoundingClientRect().top;
+        const atBottom = settingsContent.scrollHeight - settingsContent.scrollTop - settingsContent.clientHeight <= 4;
+        let activeSection = settingsSections[0];
+        if (atBottom) {
+            activeSection = settingsSections[settingsSections.length - 1];
+        } else {
+            const activationLine = contentTop + 36;
+            settingsSections.forEach(section => {
+                if (section.getBoundingClientRect().top <= activationLine) activeSection = section;
+            });
+        }
+        if (activeSection) activateSettingsNav(activeSection.dataset.settingsSection, false);
+        settingsScrollFrame = null;
+    });
+}, { passive: true });
 
 
 // 配置对话框模块
@@ -65,7 +177,11 @@ function showSettings() {
     const tabButtons = document.querySelectorAll(".platform-tabs .tab-btn");
     const tabPanels = document.querySelectorAll(".platform-panel");
     tabButtons.forEach(btn => {
-        if (btn.getAttribute("data-platform-tab") === currentPlatform) {
+        const isActiveTab = btn.getAttribute("data-platform-tab") === currentPlatform;
+        btn.setAttribute("aria-selected", isActiveTab ? "true" : "false");
+        btn.setAttribute("aria-controls", `platform-panel-${btn.getAttribute("data-platform-tab")}`);
+        btn.setAttribute("tabindex", isActiveTab ? "0" : "-1");
+        if (isActiveTab) {
             btn.classList.add("active");
             btn.style.background = "var(--surface0)";
             btn.style.color = "var(--text)";
@@ -88,6 +204,8 @@ function showSettings() {
         // 取消所有内置 tab 的高亮（自定义平台不属于任何内置 tab）
         tabButtons.forEach(btn => {
             btn.classList.remove("active");
+            btn.setAttribute("aria-selected", "false");
+            btn.setAttribute("tabindex", "-1");
             btn.style.background = "transparent";
             btn.style.color = "var(--subtext0)";
         });
@@ -173,7 +291,22 @@ function showSettings() {
     }
 
     renderPresetsList();
+    activateSettingsNav(isCustom ? "custom" : "providers", false);
     showModal(settingsModal);
+    requestAnimationFrame(() => {
+        if (!settingsContent) return;
+        if (isCustom) {
+            const targetSection = document.querySelector('[data-settings-section="custom"]');
+            if (targetSection) {
+                const targetTop = settingsContent.scrollTop
+                    + targetSection.getBoundingClientRect().top
+                    - settingsContent.getBoundingClientRect().top;
+                settingsContent.scrollTo({ top: targetTop, behavior: "auto" });
+            }
+        } else {
+            settingsContent.scrollTo({ top: 0, behavior: "auto" });
+        }
+    });
 }
 
 // 密钥控件映射字典，用于统一进行加载、状态渲染、保存和清除
@@ -476,27 +609,39 @@ if (modelTempSlider) {
 const settingsTabButtons = document.querySelectorAll(".platform-tabs .tab-btn");
 const settingsTabPanels = document.querySelectorAll(".platform-panel");
 
-settingsTabButtons.forEach(btn => {
-    btn.onclick = () => {
-        settingsTabButtons.forEach(b => {
-            b.classList.remove("active");
-            b.style.background = "transparent";
-            b.style.color = "var(--subtext0)";
-        });
-        btn.classList.add("active");
-        btn.style.background = "var(--surface0)";
-        btn.style.color = "var(--text)";
-        
-        const platform = btn.getAttribute("data-platform-tab");
-        if (typeof updateOcrNotices === "function") updateOcrNotices(platform);
-        settingsTabPanels.forEach(p => {
-            if (p.id === `platform-panel-${platform}`) {
-                p.classList.remove("hidden");
-            } else {
-                p.classList.add("hidden");
-            }
-        });
-    };
+function activatePlatformSettingsTab(btn) {
+    settingsTabButtons.forEach(b => {
+        const isActive = b === btn;
+        b.classList.toggle("active", isActive);
+        b.setAttribute("aria-selected", isActive ? "true" : "false");
+        b.setAttribute("tabindex", isActive ? "0" : "-1");
+        b.style.background = isActive ? "var(--surface0)" : "transparent";
+        b.style.color = isActive ? "var(--text)" : "var(--subtext0)";
+    });
+
+    const platform = btn.getAttribute("data-platform-tab");
+    if (typeof updateOcrNotices === "function") updateOcrNotices(platform);
+    settingsTabPanels.forEach(panel => {
+        panel.classList.toggle("hidden", panel.id !== `platform-panel-${platform}`);
+    });
+}
+
+settingsTabButtons.forEach((btn, index) => {
+    const platform = btn.getAttribute("data-platform-tab");
+    const panel = document.getElementById(`platform-panel-${platform}`);
+    btn.id = btn.id || `platform-tab-${platform}`;
+    btn.setAttribute("aria-controls", `platform-panel-${platform}`);
+    panel?.setAttribute("role", "tabpanel");
+    panel?.setAttribute("aria-labelledby", btn.id);
+    btn.onclick = () => activatePlatformSettingsTab(btn);
+    btn.addEventListener("keydown", event => {
+        if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+        event.preventDefault();
+        const direction = event.key === "ArrowRight" ? 1 : -1;
+        const target = settingsTabButtons[(index + direction + settingsTabButtons.length) % settingsTabButtons.length];
+        target.focus();
+        activatePlatformSettingsTab(target);
+    });
 });
 
 if (toggleTokenVisibility && serverTokenInput) {

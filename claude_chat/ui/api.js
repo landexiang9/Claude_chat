@@ -125,10 +125,14 @@ async function readHttpStream(response, callback) {
         // 覆盖刚写入的 messageList DOM。复位动作移至调用方 catch / done 处理器统一处理。
         try { reader.releaseLock(); } catch (_) {}
         if (sendBtn) {
-            sendBtn.classList.remove("stop-active");
-            sendBtn.title = "发送 (Ctrl+Enter)";
-            const sendIcon = sendBtn.querySelector(".send-icon");
-            if (sendIcon) sendIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
+            if (typeof setSendButtonState === "function") {
+                setSendButtonState(false);
+            } else {
+                sendBtn.classList.remove("stop-active");
+                sendBtn.title = "发送 (Ctrl+Enter)";
+                const sendIcon = sendBtn.querySelector(".send-icon");
+                if (sendIcon) sendIcon.textContent = "↑";
+            }
         }
     }
 }

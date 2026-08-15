@@ -141,12 +141,42 @@ async function reloadCurrentConversation() {
     if (!currentConvId) return;
     const conv = await apiBridge.load_conversation(currentConvId);
     if (!conv) return;
+    const preserveReadingPosition = typeof chatShouldFollowLatest !== "undefined" && !chatShouldFollowLatest;
+    const previousScrollTop = chatViewport.scrollTop;
+    let readingAnchor = null;
+    if (preserveReadingPosition) {
+        const viewportTop = chatViewport.getBoundingClientRect().top;
+        const visibleRow = Array.from(messageList.querySelectorAll(".message-row[data-msg-index]"))
+            .find(row => row.getBoundingClientRect().bottom >= viewportTop);
+        if (visibleRow) {
+            readingAnchor = {
+                messageIndex: visibleRow.dataset.msgIndex,
+                offset: visibleRow.getBoundingClientRect().top - viewportTop
+            };
+        }
+    }
     currentConv = conv;
     messageList.innerHTML = "";
 
     const messages = conv.messages || [];
     renderConversationMessages(messages);  // M-fix#28: 与 selectConversation 共用合并逻辑,保证视图一致
-    scrollChatBottom();
+    let restoredReadingPosition = false;
+    if (readingAnchor) {
+        const restoredRow = Array.from(messageList.querySelectorAll(".message-row[data-msg-index]"))
+            .find(row => row.dataset.msgIndex === readingAnchor.messageIndex);
+        if (restoredRow) {
+            const viewportTop = chatViewport.getBoundingClientRect().top;
+            chatViewport.scrollTop += restoredRow.getBoundingClientRect().top - viewportTop - readingAnchor.offset;
+            updateChatFollowState();
+            restoredReadingPosition = true;
+        }
+    }
+    if (!restoredReadingPosition && preserveReadingPosition) {
+        chatViewport.scrollTop = Math.min(previousScrollTop, Math.max(0, chatViewport.scrollHeight - chatViewport.clientHeight));
+        updateChatFollowState();
+    } else if (!preserveReadingPosition) {
+        scrollChatBottom();
+    }
     
     if (config.auto_run_code) {
         autoRunLastAssistantCode();
@@ -644,20 +674,20 @@ function renderPresetsList() {
 function showPresetEditor(id = null) {
     editingPresetId = id;
     if (id) {
-        presetModalTitle.textContent = "📝 编辑系统提示词预设";
+        presetModalTitle.textContent = "编辑系统提示词预设";
         const p = config.system_prompts.find(x => x.id === id);
         presetNameInput.value = p ? p.name : "";
         presetContentInput.value = p ? p.content : "";
     } else {
-        presetModalTitle.textContent = "📝 添加系统提示词预设";
+        presetModalTitle.textContent = "添加系统提示词预设";
         presetNameInput.value = "";
         presetContentInput.value = "";
     }
-    presetModal.classList.remove("hidden");
+    showModal(presetModal);
 }
 
 function hidePresetEditor() {
-    presetModal.classList.add("hidden");
+    hideModal(presetModal);
     editingPresetId = null;
 }
 

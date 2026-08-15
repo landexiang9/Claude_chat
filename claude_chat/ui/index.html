@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Chat</title>
+    <meta name="theme-color" content="#0b1020">
+    <meta name="color-scheme" content="dark">
+    <title>Claude Chat · AI 工作台</title>
     <!-- Local CSS and syntax highlighting styles -->
     <link rel="stylesheet" href="fonts.css">
     
@@ -18,24 +20,44 @@
     <script src="libs/mermaid.min.js"></script>
 </head>
 <body>
+    <a class="skip-link" href="#input-box">跳转到消息输入框</a>
     <div class="app-container">
         <!-- Sidebar overlay for mobile collapsible drawer -->
         <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
         <!-- Sidebar -->
-        <aside class="sidebar">
+        <aside class="sidebar" aria-label="对话导航">
             <div class="sidebar-header">
                 <div class="brand">
-                    <span class="brand-logo">🤖</span>
-                    <span class="brand-name">Claude Chat</span>
+                    <span class="brand-logo" aria-hidden="true"><span>C</span></span>
+                    <span class="brand-copy">
+                        <span class="brand-name">Claude Chat</span>
+                        <span class="brand-subtitle">多模型工作台</span>
+                    </span>
                 </div>
-                <button id="new-chat-btn" class="btn btn-primary btn-capsule">+ 新建对话</button>
+                <button type="button" id="new-chat-btn" class="btn btn-primary new-chat-btn">
+                    <span class="button-icon" aria-hidden="true">＋</span>
+                    <span>新建对话</span>
+                </button>
+                <label class="sidebar-search" for="conversation-search-input">
+                    <span class="sidebar-search-icon" aria-hidden="true">⌕</span>
+                    <input id="conversation-search-input" type="search" placeholder="搜索历史对话" autocomplete="off" aria-label="搜索历史对话">
+                </label>
             </div>
-            
+
+            <div class="sidebar-section-heading">
+                <span>最近对话</span>
+                <span class="sidebar-section-dot" aria-hidden="true"></span>
+            </div>
             <div class="conv-list-container">
                 <div id="conv-list" class="conv-list">
                     <!-- Conversations list generated via JS -->
                 </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <span class="privacy-indicator" aria-hidden="true"></span>
+                <span>密钥加密存储 · 本地会话</span>
             </div>
         </aside>
 
@@ -44,43 +66,76 @@
             <!-- Top Navigation Bar -->
             <header class="top-bar">
                 <div class="top-bar-left">
-                    <button id="sidebar-toggle-btn" class="icon-btn sidebar-toggle-btn" title="切换菜单">☰</button>
-                    <div class="platform-select-wrapper">
+                    <button type="button" id="sidebar-toggle-btn" class="icon-btn sidebar-toggle-btn" title="切换菜单" aria-label="切换对话菜单">≡</button>
+                    <div class="conversation-context">
+                        <span class="conversation-context-label">当前对话</span>
+                        <strong id="current-conversation-title" class="conversation-context-title">新对话</strong>
+                    </div>
+                </div>
+
+                <div class="top-bar-center" aria-label="模型与提示词选择">
+                    <label class="toolbar-field platform-select-wrapper">
+                        <span class="toolbar-field-label">平台</span>
                         <select id="platform-select" class="select-menu">
                             <option value="claude">Anthropic Claude</option>
                             <option value="deepseek">DeepSeek AI</option>
                             <option value="gemini">Google Gemini</option>
                         </select>
-                    </div>
-                    <div class="model-select-wrapper">
+                    </label>
+                    <label class="toolbar-field model-select-wrapper">
+                        <span class="toolbar-field-label">模型</span>
                         <select id="model-select" class="select-menu">
                             <option value="">正在加载模型...</option>
                         </select>
                         <span id="api-status-led" class="status-led" title="API 连接状态"></span>
-                    </div>
-                    <div class="system-prompt-wrapper">
+                    </label>
+                    <label class="toolbar-field system-prompt-wrapper">
+                        <span class="toolbar-field-label">提示词</span>
                         <select id="system-prompt-select" class="select-menu" title="预设系统提示词">
                             <option value="">无系统提示词 (默认)</option>
                         </select>
-                    </div>
-                    <span id="token-label" class="token-label">Token: --</span>
+                    </label>
                 </div>
                 
                 <div class="top-bar-right">
-                    <button id="web-search-btn" class="icon-btn" title="开启联网搜索 (当前: 关闭)">🔍</button>
-                    <button id="proxy-btn" class="icon-btn" title="网络代理设置">🌐</button>
-                    <button id="settings-btn" class="icon-btn" title="参数配置">⚙️</button>
-                    <button id="clear-chat-btn" class="icon-btn" title="清空/删除当前对话">🗑️</button>
+                    <button type="button" id="web-search-btn" class="icon-btn topbar-action-btn" title="开启联网搜索 (当前: 关闭)" aria-label="切换联网搜索">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+                    </button>
+                    <button type="button" id="proxy-btn" class="icon-btn topbar-action-btn" title="网络代理设置" aria-label="网络代理设置">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M3.5 12h17M12 3.5c2.3 2.4 3.5 5.2 3.5 8.5S14.3 18.1 12 20.5C9.7 18.1 8.5 15.3 8.5 12S9.7 5.9 12 3.5Z"></path></svg>
+                    </button>
+                    <button type="button" id="settings-btn" class="icon-btn topbar-action-btn" title="参数配置" aria-label="打开参数配置">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"></path><path d="M19.2 13.7a7.7 7.7 0 0 0 0-3.4l2-1.5-2-3.4-2.4 1a8 8 0 0 0-2.9-1.7L13.6 2h-4l-.4 2.7a8 8 0 0 0-2.9 1.7l-2.4-1-2 3.4 2 1.5a7.7 7.7 0 0 0 0 3.4l-2 1.5 2 3.4 2.4-1a8 8 0 0 0 2.9 1.7l.4 2.7h4l.4-2.7a8 8 0 0 0 2.9-1.7l2.4 1 2-3.4-2.1-1.5Z"></path></svg>
+                    </button>
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+                    <button type="button" id="clear-chat-btn" class="icon-btn topbar-action-btn danger-icon-btn" title="删除当前对话" aria-label="删除当前对话">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M7 7l.7 13h8.6L17 7M10 10.5v6M14 10.5v6"></path></svg>
+                    </button>
                 </div>
             </header>
 
             <!-- Chat Message Display Stream -->
-            <section id="chat-viewport" class="chat-viewport">
-                <div id="message-list" class="message-list">
-                    <!-- Messages will be rendered here -->
-                </div>
-                <div id="scroll-anchor"></div>
-            </section>
+            <div class="chat-stage">
+                <section id="chat-viewport" class="chat-viewport">
+                    <div id="chat-empty-state" class="chat-empty-state">
+                        <div class="empty-state-mark" aria-hidden="true">C</div>
+                        <span class="empty-state-eyebrow">多模型 AI 工作台</span>
+                        <h1>今天想一起完成什么？</h1>
+                        <p>选择 Claude、DeepSeek 或 Gemini，开始写作、分析、编程与研究。</p>
+                        <div class="prompt-suggestions" aria-label="快捷提示">
+                            <button type="button" class="prompt-suggestion" data-prompt="帮我梳理一个清晰、可执行的方案">梳理执行方案 <span aria-hidden="true">↗</span></button>
+                            <button type="button" class="prompt-suggestion" data-prompt="请帮我解释这段代码的逻辑和潜在问题">解释一段代码 <span aria-hidden="true">↗</span></button>
+                            <button type="button" class="prompt-suggestion" data-prompt="请总结我接下来上传的附件，并提炼关键结论">总结附件内容 <span aria-hidden="true">↗</span></button>
+                            <button type="button" class="prompt-suggestion" data-prompt="请联网调研这个主题，并给出带来源的结论：">联网调研主题 <span aria-hidden="true">↗</span></button>
+                        </div>
+                    </div>
+                    <div id="message-list" class="message-list">
+                        <!-- Messages will be rendered here -->
+                    </div>
+                    <div id="scroll-anchor"></div>
+                </section>
+                <button type="button" id="scroll-to-bottom-btn" class="scroll-to-bottom-btn hidden" aria-label="回到最新消息" title="回到最新消息">↓</button>
+            </div>
 
             <!-- Floating Input Box Panel -->
             <footer class="input-section">
@@ -90,13 +145,19 @@
                 </div>
 
                 <div class="input-capsule">
-                    <button id="attach-btn" class="input-action-btn" title="添加附件 (支持文本/图片/PDF)">📎</button>
-                    <textarea id="input-box" class="input-box" placeholder="给 Claude 发送消息... (Ctrl+Enter 发送)" rows="1"></textarea>
-                    <button id="send-btn" class="send-btn" title="发送 (Ctrl+Enter)">
+                    <button type="button" id="attach-btn" class="input-action-btn" title="添加附件 (支持文本/图片/PDF)" aria-label="添加附件">＋</button>
+                    <textarea id="input-box" class="input-box" placeholder="输入消息，支持 Markdown…" rows="1" aria-label="消息内容"></textarea>
+                    <button type="button" id="send-btn" class="send-btn" title="发送 (Ctrl+Enter)" aria-label="发送消息">
                         <span class="send-icon">↑</span>
                     </button>
                 </div>
-                <div id="status-label" class="status-label" role="status" aria-live="polite" aria-atomic="true">就绪</div>
+                <div class="composer-meta">
+                    <div id="status-label" class="status-label" role="status" aria-live="polite" aria-atomic="true">就绪</div>
+                    <div class="composer-meta-right">
+                        <span id="token-label" class="token-label">Token: --</span>
+                        <span class="composer-shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><span>发送</span></span>
+                    </div>
+                </div>
             </footer>
         </main>
 
@@ -104,23 +165,23 @@
         <aside id="artifacts-panel" class="artifacts-panel collapsed">
             <div class="artifacts-header">
                 <div class="artifacts-title">
-                    <span class="artifacts-icon">🎨</span>
+                    <span class="artifacts-icon" aria-hidden="true">◇</span>
                     <span>Artifact 预览</span>
                 </div>
                 <div class="artifacts-header-actions">
-                    <button id="artifacts-fullscreen-btn" class="icon-btn" title="全屏">🖥️</button>
-                    <button id="close-artifacts-btn" class="icon-btn" title="关闭">&times;</button>
+                    <button type="button" id="artifacts-fullscreen-btn" class="icon-btn" title="全屏" aria-label="全屏预览">⛶</button>
+                    <button type="button" id="close-artifacts-btn" class="icon-btn" title="关闭" aria-label="关闭预览">&times;</button>
                 </div>
             </div>
-            <div class="artifacts-tabs">
-                <button class="artifacts-tab-btn active" data-tab="preview">预览</button>
-                <button class="artifacts-tab-btn" data-tab="code">代码</button>
+            <div class="artifacts-tabs" role="tablist" aria-label="Artifact 视图">
+                <button type="button" id="artifacts-preview-tab-btn" class="artifacts-tab-btn active" data-tab="preview" role="tab" aria-selected="true" aria-controls="artifacts-preview-tab">预览</button>
+                <button type="button" id="artifacts-code-tab-btn" class="artifacts-tab-btn" data-tab="code" role="tab" aria-selected="false" aria-controls="artifacts-code-tab">代码</button>
             </div>
             <div class="artifacts-body">
-                <div id="artifacts-preview-tab" class="artifacts-tab-content active">
+                <div id="artifacts-preview-tab" class="artifacts-tab-content active" role="tabpanel" aria-labelledby="artifacts-preview-tab-btn">
                     <div id="artifacts-preview-container"></div>
                 </div>
-                <div id="artifacts-code-tab" class="artifacts-tab-content">
+                <div id="artifacts-code-tab" class="artifacts-tab-content" role="tabpanel" aria-labelledby="artifacts-code-tab-btn">
                     <pre><code id="artifacts-code-view" class="language-xml"></code></pre>
                 </div>
             </div>
@@ -128,21 +189,59 @@
     </div>
 
     <!-- Settings Dialog Modal -->
-    <div id="settings-modal" class="modal-overlay hidden">
-        <div class="modal-card">
+    <div id="settings-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+        <div class="modal-card settings-modal-card">
             <div class="modal-header">
-                <h2>⚙️ 对话参数配置</h2>
-                <button class="close-modal-btn">&times;</button>
+                <div class="modal-heading">
+                    <span class="modal-eyebrow">工作区偏好</span>
+                    <h2 id="settings-modal-title">设置中心</h2>
+                    <p>管理模型、连接、工具与界面偏好</p>
+                </div>
+                <button type="button" class="close-modal-btn" aria-label="关闭设置">&times;</button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body settings-modal-body">
+                <nav class="settings-nav" aria-label="设置分类">
+                    <button type="button" class="settings-nav-item active" data-settings-nav="providers">
+                        <span class="settings-nav-icon" aria-hidden="true">◫</span>
+                        <span><strong>模型连接</strong><small>API 与平台</small></span>
+                    </button>
+                    <button type="button" class="settings-nav-item" data-settings-nav="model">
+                        <span class="settings-nav-icon" aria-hidden="true">◇</span>
+                        <span><strong>模型参数</strong><small>输出与思考</small></span>
+                    </button>
+                    <button type="button" class="settings-nav-item" data-settings-nav="custom">
+                        <span class="settings-nav-icon" aria-hidden="true">＋</span>
+                        <span><strong>自定义服务</strong><small>兼容端点</small></span>
+                    </button>
+                    <button type="button" class="settings-nav-item" data-settings-nav="general">
+                        <span class="settings-nav-icon" aria-hidden="true">◎</span>
+                        <span><strong>通用与服务</strong><small>沙盒和网络</small></span>
+                    </button>
+                    <button type="button" class="settings-nav-item" data-settings-nav="appearance">
+                        <span class="settings-nav-icon" aria-hidden="true">Aa</span>
+                        <span><strong>外观与预设</strong><small>字体和提示词</small></span>
+                    </button>
+                    <button type="button" class="settings-nav-item" data-settings-nav="files">
+                        <span class="settings-nav-icon" aria-hidden="true">▤</span>
+                        <span><strong>文件解析</strong><small>OCR 与文档</small></span>
+                    </button>
+                </nav>
+
+                <div class="settings-content">
                 <!-- Group 1: Base Parameters & Platform Settings -->
-                <div class="settings-section-card">
-                    <div class="settings-section-title">💬 API 密钥与平台参数设置 (Platform Settings)</div>
+                <div class="settings-section-card" data-settings-section="providers">
+                    <div class="settings-section-header">
+                        <div>
+                            <span class="settings-section-kicker">连接管理</span>
+                            <div class="settings-section-title">模型连接与平台参数</div>
+                        </div>
+                        <span class="settings-section-badge">加密存储</span>
+                    </div>
                     
-                    <div class="platform-tabs" style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--surface0); padding-bottom: 8px;">
-                        <button type="button" class="tab-btn active" data-platform-tab="claude" style="padding: 6px 12px; border-radius: 6px; border: none; background: var(--surface0); color: var(--text); cursor: pointer; font-size: 12px;">Claude</button>
-                        <button type="button" class="tab-btn" data-platform-tab="deepseek" style="padding: 6px 12px; border-radius: 6px; border: none; background: transparent; color: var(--subtext0); cursor: pointer; font-size: 12px;">DeepSeek</button>
-                        <button type="button" class="tab-btn" data-platform-tab="gemini" style="padding: 6px 12px; border-radius: 6px; border: none; background: transparent; color: var(--subtext0); cursor: pointer; font-size: 12px;">Gemini</button>
+                    <div class="platform-tabs" role="tablist" aria-label="内置模型平台">
+                        <button type="button" class="tab-btn active" data-platform-tab="claude" role="tab">Claude</button>
+                        <button type="button" class="tab-btn" data-platform-tab="deepseek" role="tab">DeepSeek</button>
+                        <button type="button" class="tab-btn" data-platform-tab="gemini" role="tab">Gemini</button>
                     </div>
 
                     <!-- Claude Panel -->
@@ -373,9 +472,12 @@
 
                 
                 <!-- Group 2: Model Specific Settings -->
-                <div class="settings-section-card" id="model-specific-settings-card">
-                    <div class="settings-section-title">
-                        🧠 当前模型专属设置 (Per-Model Settings)
+                <div class="settings-section-card" id="model-specific-settings-card" data-settings-section="model">
+                    <div class="settings-section-header">
+                        <div>
+                            <span class="settings-section-kicker">模型参数</span>
+                            <div class="settings-section-title">当前模型专属设置</div>
+                        </div>
                         <span id="current-model-indicator" style="float: right; color: var(--blue); font-size: 13px;"></span>
                     </div>
                     
@@ -438,8 +540,12 @@
                 </div>
 
                 <!-- Custom Provider Management -->
-                <div class="settings-section-card">
-                    <div class="settings-section-title">➕ 自定义模型提供商 (Custom OpenAI-Compatible Providers)
+                <div class="settings-section-card" data-settings-section="custom">
+                    <div class="settings-section-header settings-section-header-wrap">
+                        <div>
+                            <span class="settings-section-kicker">兼容服务</span>
+                            <div class="settings-section-title">自定义模型提供商</div>
+                        </div>
                         <button type="button" id="add-custom-provider-btn" class="btn btn-secondary btn-sm" style="margin-left: 12px; font-size: 11px; padding: 3px 10px;">＋ 新增提供商</button>
                     </div>
                     <p style="font-size: 11px; color: var(--subtext0); margin: 4px 0 10px 0;">添加任意 OpenAI 兼容的 API 端点（如 OpenRouter / Groq / Together / 本地 Ollama 等），保存至服务器配置后可在顶部平台下拉中切换使用。</p>
@@ -494,8 +600,13 @@
                         </div>
                     </div>
                 </div>
-                <div class="settings-section-card">
-                    <div class="settings-section-title">🌐 全局与客户端设置 (Global & Server)</div>
+                <div class="settings-section-card" data-settings-section="general">
+                    <div class="settings-section-header">
+                        <div>
+                            <span class="settings-section-kicker">运行环境</span>
+                            <div class="settings-section-title">全局与客户端设置</div>
+                        </div>
+                    </div>
                     <div class="form-group" style="display: flex; gap: 16px; flex-wrap: wrap;">
                         <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
                             <input type="checkbox" id="enable-code-sandbox-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 启用安全代码执行
@@ -555,8 +666,13 @@
 
 
                 <!-- Group 5: Fonts & System Prompts Presets -->
-                <div class="settings-section-card">
-                    <div class="settings-section-title">📝 字体与提示词预设 (Fonts & Presets)</div>
+                <div class="settings-section-card" data-settings-section="appearance">
+                    <div class="settings-section-header">
+                        <div>
+                            <span class="settings-section-kicker">个性化</span>
+                            <div class="settings-section-title">字体与提示词预设</div>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label for="font-mode-select">界面字体设置 (Font Settings):</label>
                         <select id="font-mode-select">
@@ -575,8 +691,13 @@
                 </div>
 
                 <!-- Group 6: OCR & Document Parser Settings -->
-                <div class="settings-section-card">
-                    <div class="settings-section-title">📷 图像与文档解析设置 (OCR & File Parser)</div>
+                <div class="settings-section-card" data-settings-section="files">
+                    <div class="settings-section-header">
+                        <div>
+                            <span class="settings-section-kicker">文档智能</span>
+                            <div class="settings-section-title">图像与文档解析</div>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label for="ocr-mode-select">图像 OCR 识别模式:</label>
                         <select id="ocr-mode-select" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); width: 100%;">
@@ -604,9 +725,10 @@
                         </div>
                     </div>
                 </div>
+                </div>
             </div>
             <div class="modal-footer">
-                <button id="view-logs-btn" class="btn btn-secondary" style="margin-right: auto;">📋 查看日志</button>
+                <button type="button" id="view-logs-btn" class="btn btn-secondary modal-footer-leading">查看运行日志</button>
                 <button id="save-settings-btn" class="btn btn-primary">保存设置</button>
                 <button class="btn btn-secondary cancel-modal-btn">取消</button>
             </div>
@@ -730,31 +852,31 @@
     </div>
 
     <!-- Preset Edit Dialog Modal -->
-    <div id="preset-modal" class="modal-overlay hidden" style="z-index: 10001;">
+    <div id="preset-modal" class="modal-overlay hidden preset-modal-overlay">
         <div class="modal-card">
             <div class="modal-header">
-                <h2 id="preset-modal-title">📝 编辑系统提示词预设</h2>
-                <button class="close-modal-btn" id="close-preset-modal-btn">&times;</button>
+                <h2 id="preset-modal-title">编辑系统提示词预设</h2>
+                <button type="button" class="close-modal-btn" id="close-preset-modal-btn" aria-label="关闭预设编辑器">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
                     <label for="preset-name-input">预设名称:</label>
-                    <input type="text" id="preset-name-input" placeholder="例如: 编程助手">
+                    <input type="text" id="preset-name-input" placeholder="例如: 编程助手" autofocus>
                 </div>
                 <div class="form-group">
                     <label for="preset-content-input">提示词内容:</label>
-                    <textarea id="preset-content-input" placeholder="输入系统提示词内容..." rows="6" style="width: 100%; resize: vertical; border-radius: 8px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text); padding: 8px; font-family: inherit; font-size: 13px;"></textarea>
+                    <textarea id="preset-content-input" placeholder="输入系统提示词内容..." rows="6" class="preset-content-input"></textarea>
                 </div>
             </div>
             <div class="modal-footer">
-                <button id="save-preset-btn" class="btn btn-primary">保存预设</button>
-                <button class="btn btn-secondary" id="cancel-preset-btn">取消</button>
+                <button type="button" id="save-preset-btn" class="btn btn-primary">保存预设</button>
+                <button type="button" class="btn btn-secondary" id="cancel-preset-btn">取消</button>
             </div>
         </div>
     </div>
 
     <!-- Attachment Preview Modal -->
-    <div id="attachment-preview-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="attachment-preview-title" style="z-index: 10004;">
+    <div id="attachment-preview-modal" class="modal-overlay hidden attachment-preview-overlay" role="dialog" aria-modal="true" aria-labelledby="attachment-preview-title">
         <div id="attachment-preview-dialog" class="modal-card attachment-preview-dialog">
             <div class="modal-header attachment-preview-header">
                 <div class="attachment-preview-heading">
@@ -769,13 +891,13 @@
     </div>
 
     <!-- Image Preview Modal -->
-    <div id="image-modal" class="modal-overlay hidden" style="z-index: 10003;">
-        <div class="modal-card" style="max-width: 90%; max-height: 90%; background: transparent; box-shadow: none; display: flex; flex-direction: column; align-items: center;">
-            <div style="width: 100%; display: flex; justify-content: flex-end; margin-bottom: 10px;">
-                <button class="btn btn-secondary" id="download-image-btn" style="margin-right: 10px; padding: 6px 12px; border-radius: 6px;">📥 下载保存</button>
-                <button class="close-modal-btn" id="close-image-modal-btn" style="background: var(--surface0); border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">&times;</button>
+    <div id="image-modal" class="modal-overlay hidden image-modal-overlay" aria-label="图片预览">
+        <div class="modal-card image-preview-card">
+            <div class="image-preview-actions">
+                <button type="button" class="btn btn-secondary" id="download-image-btn">下载图片</button>
+                <button type="button" class="close-modal-btn" id="close-image-modal-btn" aria-label="关闭图片预览">&times;</button>
             </div>
-            <img id="preview-image-el" src="" style="max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <img id="preview-image-el" src="" class="preview-image" alt="生成图片预览">
         </div>
     </div>
 

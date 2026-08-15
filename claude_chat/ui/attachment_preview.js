@@ -98,7 +98,8 @@ function closeAttachmentPreview() {
     attachmentPreviewVersion += 1;
     attachmentPreviewAbortController?.abort();
     attachmentPreviewAbortController = null;
-    attachmentPreviewModal?.classList.add("hidden");
+    if (typeof hideModal === "function") hideModal(attachmentPreviewModal);
+    else attachmentPreviewModal?.classList.add("hidden");
     attachmentPreviewModal?.removeAttribute("aria-busy");
     resetAttachmentPreviewBody();
     setAttachmentPreviewBackgroundInactive(false);
@@ -192,7 +193,8 @@ async function openAttachmentPreview(attachment, context = {}, triggerElement = 
     resetAttachmentPreviewBody();
     attachmentPreviewStatus.className = "attachment-preview-status is-loading";
     attachmentPreviewStatus.textContent = "正在加载预览…";
-    attachmentPreviewModal.classList.remove("hidden");
+    if (typeof showModal === "function") showModal(attachmentPreviewModal);
+    else attachmentPreviewModal.classList.remove("hidden");
     attachmentPreviewModal.setAttribute("aria-busy", "true");
     attachmentPreviewCloseBtn?.focus();
     setAttachmentPreviewBackgroundInactive(true);

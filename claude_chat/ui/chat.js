@@ -69,21 +69,29 @@ async function selectConversation(id) {
         appContainer.classList.remove("sidebar-open");
     }
     
-    // 更新选中卡片的高亮样式
+    // 更新选中卡片的高亮样式（不依赖筛选后的 DOM 顺序）
     const items = convList.querySelectorAll(".conv-item");
-    items.forEach((item, index) => {
-        if (conversations[index] && conversations[index].id === id) {
-            item.className = "conv-item active";
-        } else {
-            item.className = "conv-item";
-        }
+    items.forEach(item => {
+        const isActive = item.dataset.convId === String(id);
+        item.classList.toggle("active", isActive);
+        item.setAttribute("aria-current", isActive ? "true" : "false");
+        item.querySelector(".conv-select-btn")?.setAttribute("aria-current", isActive ? "page" : "false");
     });
+
+    const summary = conversations.find(conversation => String(conversation.id) === String(id));
+    if (currentConversationTitle) {
+        currentConversationTitle.textContent = summary?.title || "新对话";
+    }
 
     messageList.innerHTML = "";
     
     const conv = await apiBridge.load_conversation(id);
     if (!conv || currentConvId !== id) return;
     currentConv = conv;
+    if (currentConversationTitle) {
+        currentConversationTitle.textContent = conv.title || summary?.title || "新对话";
+    }
+    document.title = `${conv.title || summary?.title || "新对话"} · Claude Chat`;
     
     // 设置 Token 统计标签展示
     if (conv.input_tokens !== undefined && conv.output_tokens !== undefined) {
@@ -96,7 +104,7 @@ async function selectConversation(id) {
     // must never sit on the critical path of switching conversations.
     const messages = conv.messages || [];
     renderConversationMessages(messages);
-    scrollChatBottom();
+    scrollChatBottom(true);
 
     if (conv.model) {
         // 优先使用对话持久化的 platform 字段（新数据），避免靠模型名子串推断导致自定义供应商被误判
@@ -115,6 +123,8 @@ async function selectConversation(id) {
             if (typeof platformSelect !== 'undefined' && platformSelect) {
                 platformSelect.value = targetPlatform;
             }
+            updateLedStatus();
+            updateSearchBtnUI();
         }
         config.model = conv.model;
 
@@ -201,7 +211,7 @@ async function sendMessage() {
         : text;
     const userMsgIndex = currentConv ? currentConv.messages.length : -1;
     const optimisticUserRow = appendMessage("user", displayContent, "", false, userMsgIndex);
-    scrollChatBottom();
+    scrollChatBottom(true);
 
     // 2. 在聊天面板生成一个空的 Assistant 占位气泡准备流式打字机输入
     const optimisticAssistantRow = appendMessage("assistant", "思考中...", "", true);
@@ -211,10 +221,7 @@ async function sendMessage() {
     streamingThinking = "";
     
     // 激活“停止生成”按钮的视觉样式
-    sendBtn.classList.add("stop-active");
-    sendBtn.title = "停止生成";
-    const sendIcon = sendBtn.querySelector(".send-icon");
-    if (sendIcon) sendIcon.textContent = "■";
+    setSendButtonState(true);
 
     // 3. 消息发送后，清除本地已选择的附件列表
     const oldAttachments = [...attachments];
@@ -249,10 +256,7 @@ async function sendMessage() {
         optimisticUserRow?.remove();
         optimisticAssistantRow?.remove();
         finishUiStreamTask("failed");
-        sendBtn.classList.remove("stop-active");
-        sendBtn.title = "发送 (Ctrl+Enter)";
-        const sendIcon = sendBtn.querySelector(".send-icon");
-        if (sendIcon) sendIcon.textContent = "↑";
+        setSendButtonState(false);
         const body = document.getElementById("streaming-message-body");
         if (body) {
             body.innerHTML = `<span style="color: var(--red);">❌ 发送失败: ${escapeHtml(e.message || String(e))}</span>`;
@@ -342,6 +346,7 @@ window.onStreamMessage = async (type, data) => {
                     const toggleIcon = header.querySelector(".search-card-toggle-icon");
                     if (toggleIcon) toggleIcon.textContent = collapsed ? "▶" : "▼";
                 };
+                makeDisclosureHeaderAccessible(header, searchCard);
             }
             
             if (sBody) {
@@ -357,7 +362,7 @@ window.onStreamMessage = async (type, data) => {
                         const sSnippet = res.snippet ? escapeHtml(res.snippet) : "";
                         item.innerHTML = `
                             <div class="search-result-title">
-                                <a href="${sUrl}" target="_blank">${sTitle}</a>
+                                <a href="${sUrl}" target="_blank" rel="noopener noreferrer">${sTitle}</a>
                                 <span class="search-result-link-icon">↗</span>
                             </div>
                             <span class="search-result-url">${sUrl}</span>
@@ -465,6 +470,7 @@ window.onStreamMessage = async (type, data) => {
                     const toggleIcon = header.querySelector(".search-card-toggle-icon");
                     if (toggleIcon) toggleIcon.textContent = collapsed ? "▶" : "▼";
                 };
+                makeDisclosureHeaderAccessible(header, fetchCard);
             }
             
             if (fBody) {
@@ -475,7 +481,7 @@ window.onStreamMessage = async (type, data) => {
                         <span>读取工具：</span>
                         <span class="search-engine-badge" style="background-color: var(--overlay0);">${parserName}</span>
                         <span style="font-size: 11.5px; color: var(--subtext0); margin-left: 8px;">${usageStr}</span>
-                        <div style="font-size: 11px; color: var(--subtext0); word-break: break-all; margin-top: 4px;">URL: <a href="${sUrl}" target="_blank" style="color: var(--blue); text-decoration: underline;">${escapedUrl}</a></div>
+                        <div style="font-size: 11px; color: var(--subtext0); word-break: break-all; margin-top: 4px;">URL: <a href="${sUrl}" target="_blank" rel="noopener noreferrer" style="color: var(--blue); text-decoration: underline;">${escapedUrl}</a></div>
                     </div>
                 `;
             }
@@ -498,10 +504,7 @@ window.onStreamMessage = async (type, data) => {
         // 结束流式输出，还原发送按钮状态
         
         // 还原发送图标为原本的箭头样式
-        sendBtn.classList.remove("stop-active");
-        sendBtn.title = "发送 (Ctrl+Enter)";
-        const sendIcon = sendBtn.querySelector(".send-icon");
-        if (sendIcon) sendIcon.textContent = "↑";
+        setSendButtonState(false);
         
         statusLabel.textContent = "就绪";
         
@@ -521,10 +524,7 @@ window.onStreamMessage = async (type, data) => {
     } else if (type === "aborted") {
         
         // Restore send button state
-        sendBtn.classList.remove("stop-active");
-        sendBtn.title = "发送 (Ctrl+Enter)";
-        const sendIcon = sendBtn.querySelector(".send-icon");
-        if (sendIcon) sendIcon.textContent = "↑";
+        setSendButtonState(false);
         
         statusLabel.textContent = "已中止生成";
         setTimeout(() => { if (statusLabel.textContent === "已中止生成") statusLabel.textContent = "就绪"; }, 2000);
@@ -545,10 +545,7 @@ window.onStreamMessage = async (type, data) => {
         
     } else if (type === "error") {
         // Restore send button state
-        sendBtn.classList.remove("stop-active");
-        sendBtn.title = "发送 (Ctrl+Enter)";
-        const sendIcon = sendBtn.querySelector(".send-icon");
-        if (sendIcon) sendIcon.textContent = "↑";
+        setSendButtonState(false);
 
         const errText = typeof data === 'object' && data !== null ? (data.text || JSON.stringify(data)) : data;
         statusLabel.textContent = `错误: ${errText}`;
@@ -630,7 +627,7 @@ async function editUserMessage(msgIndex) {
             ? buildPendingAttachmentContent(newText, editableContent.attachments)
             : newText;
         appendMessage("user", editedDisplayContent, "", false, msgIndex);
-        scrollChatBottom();
+        scrollChatBottom(true);
         
         appendMessage("assistant", "思考中...", "", true);
         
@@ -638,10 +635,7 @@ async function editUserMessage(msgIndex) {
         streamingText = "";
         streamingThinking = "";
         
-        sendBtn.classList.add("stop-active");
-        sendBtn.title = "停止生成";
-        const sendIcon = sendBtn.querySelector(".send-icon");
-        if (sendIcon) sendIcon.textContent = "■";
+        setSendButtonState(true);
         statusLabel.textContent = "Claude 思考中...";
         
         isSending = true;
@@ -651,10 +645,7 @@ async function editUserMessage(msgIndex) {
             console.error("edit_and_resend 调用失败:", e);
             statusLabel.textContent = "编辑重发失败: " + (e.message || String(e));
             finishUiStreamTask("failed");
-            sendBtn.classList.remove("stop-active");
-            sendBtn.title = "发送 (Ctrl+Enter)";
-            const sendIcon = sendBtn.querySelector(".send-icon");
-            if (sendIcon) sendIcon.textContent = "↑";
+            setSendButtonState(false);
             const body = document.getElementById("streaming-message-body");
             if (body) {
                 body.innerHTML = `<span style="color: var(--red);">❌ 编辑重发失败: ${escapeHtml(e.message || String(e))}</span>`;
@@ -685,7 +676,7 @@ async function retryAssistantMessage(msgIndex) {
     if (isStreaming) return;
     
     messageList.removeChild(messageList.lastChild);
-    scrollChatBottom();
+    scrollChatBottom(true);
     
     appendMessage("assistant", "思考中...", "", true);
     
@@ -693,10 +684,7 @@ async function retryAssistantMessage(msgIndex) {
     streamingText = "";
     streamingThinking = "";
     
-    sendBtn.classList.add("stop-active");
-    sendBtn.title = "停止生成";
-    const sendIcon = sendBtn.querySelector(".send-icon");
-    if (sendIcon) sendIcon.textContent = "■";
+    setSendButtonState(true);
     statusLabel.textContent = "Claude 思考中...";
     
     try {
@@ -705,10 +693,7 @@ async function retryAssistantMessage(msgIndex) {
         console.error("retry_message 调用失败:", e);
         statusLabel.textContent = "重试失败: " + (e.message || String(e));
         finishUiStreamTask("failed");
-        sendBtn.classList.remove("stop-active");
-        sendBtn.title = "发送 (Ctrl+Enter)";
-        const sendIcon = sendBtn.querySelector(".send-icon");
-        if (sendIcon) sendIcon.textContent = "↑";
+        setSendButtonState(false);
         const body = document.getElementById("streaming-message-body");
         if (body) {
             body.innerHTML = `<span style="color: var(--red);">❌ 重试失败: ${escapeHtml(e.message || String(e))}</span>`;

@@ -1,13 +1,17 @@
 // 绑定 DOM 界面元素
 const convList = document.getElementById("conv-list");
 const newChatBtn = document.getElementById("new-chat-btn");
+const conversationSearchInput = document.getElementById("conversation-search-input");
+const currentConversationTitle = document.getElementById("current-conversation-title");
 const modelSelect = document.getElementById("model-select");
 const apiStatusLed = document.getElementById("api-status-led");
 const tokenLabel = document.getElementById("token-label");
 const statusLabel = document.getElementById("status-label");
+const chatEmptyState = document.getElementById("chat-empty-state");
 const messageList = document.getElementById("message-list");
 const chatViewport = document.getElementById("chat-viewport");
 const scrollAnchor = document.getElementById("scroll-anchor");
+const scrollToBottomBtn = document.getElementById("scroll-to-bottom-btn");
 
 const attachBtn = document.getElementById("attach-btn");
 const attachmentsArea = document.getElementById("attachments-area");

@@ -149,6 +149,26 @@
     "max_output": 128000,
     "thinking_supported": true
   },
+  "microsoft/mai-code-1.1-flash": {
+    "max_context": 256000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "mai-code-1.1-flash": {
+    "max_context": 256000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "microsoft/phi-4-mini": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "phi-4-mini": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
   "cohere/command-r7b-arabic-02-2025": {
     "max_context": 128000,
     "max_output": 4000,
@@ -418,6 +438,16 @@
     "max_context": 32768,
     "max_output": 2048,
     "thinking_supported": false
+  },
+  "nvidia/nemotron-3.5-lightning": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "nemotron-3.5-lightning": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": true
   },
   "nvidia/nemotron-content-safety-reasoning-4b": {
     "max_context": 128000,
@@ -979,6 +1009,36 @@
     "max_output": 64000,
     "thinking_supported": true
   },
+  "sdaia/allam-2-7b": {
+    "max_context": 4096,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "allam-2-7b": {
+    "max_context": 4096,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "ibm/granite-4-h-small": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": false
+  },
+  "granite-4-h-small": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": false
+  },
+  "meta/muse-glimmer-30b": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "muse-glimmer-30b": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
   "meta/muse-spark-1.1": {
     "max_context": 1000000,
     "max_output": 32000,
@@ -997,6 +1057,16 @@
   "llama-4-scout-17b-instruct": {
     "max_context": 3500000,
     "max_output": 16384,
+    "thinking_supported": false
+  },
+  "meta/llama-3.2-1b": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "llama-3.2-1b": {
+    "max_context": 131072,
+    "max_output": 8192,
     "thinking_supported": false
   },
   "meta/llama-3.3-70b-instruct": {
@@ -1019,6 +1089,36 @@
     "max_output": 16384,
     "thinking_supported": false
   },
+  "meta/llama-3.2-3b": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "llama-3.2-3b": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "meta/muse-spark-1.2": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "muse-spark-1.2": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "swiss-ai/apertus-70b": {
+    "max_context": 65536,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "apertus-70b": {
+    "max_context": 65536,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
   "meituan/longcat-2.0": {
     "max_context": 1000000,
     "max_output": 131072,
@@ -1028,6 +1128,16 @@
     "max_context": 1000000,
     "max_output": 131072,
     "thinking_supported": true
+  },
+  "xai/grok-4.1-fast": {
+    "max_context": 2000000,
+    "max_output": 30000,
+    "thinking_supported": false
+  },
+  "grok-4.1-fast": {
+    "max_context": 2000000,
+    "max_output": 30000,
+    "thinking_supported": false
   },
   "xai/grok-4.3": {
     "max_context": 1000000,
@@ -1065,6 +1175,16 @@
     "thinking_supported": true
   },
   "grok-4.5": {
+    "max_context": 500000,
+    "max_output": 500000,
+    "thinking_supported": true
+  },
+  "xai/grok-4.6": {
+    "max_context": 500000,
+    "max_output": 500000,
+    "thinking_supported": true
+  },
+  "grok-4.6": {
     "max_context": 500000,
     "max_output": 500000,
     "thinking_supported": true
@@ -1129,6 +1249,16 @@
     "max_output": 16384,
     "thinking_supported": true
   },
+  "mistral/ministral-8b-instruct-2410": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "ministral-8b-instruct-2410": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
   "mistral/mistral-large-2411": {
     "max_context": 131072,
     "max_output": 16384,
@@ -1179,6 +1309,16 @@
     "max_output": 256000,
     "thinking_supported": true
   },
+  "mistral/mistral-small-3-1-24b-instruct-2503": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "mistral-small-3-1-24b-instruct-2503": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
   "mistral/mistral-nemo": {
     "max_context": 128000,
     "max_output": 128000,
@@ -1209,6 +1349,16 @@
     "max_output": 262144,
     "thinking_supported": true
   },
+  "mistral/codestral-22b-v0.1": {
+    "max_context": 32768,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "codestral-22b-v0.1": {
+    "max_context": 32768,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
   "mistral/codestral-latest": {
     "max_context": 256000,
     "max_output": 4096,
@@ -1238,6 +1388,16 @@
     "max_context": 262144,
     "max_output": 262144,
     "thinking_supported": false
+  },
+  "mistral/magistral-small-2506": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "magistral-small-2506": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": true
   },
   "mistral/mistral-large-latest": {
     "max_context": 262144,
@@ -1379,6 +1539,16 @@
     "max_output": 128000,
     "thinking_supported": true
   },
+  "deepseek/deepseek-v3.1": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "deepseek-v3.1": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
   "deepseek/deepseek-v4-flash": {
     "max_context": 1000000,
     "max_output": 384000,
@@ -1399,6 +1569,46 @@
     "max_output": 384000,
     "thinking_supported": true
   },
+  "deepseek/deepseek-v4-flash-0731": {
+    "max_context": 1000000,
+    "max_output": 384000,
+    "thinking_supported": true
+  },
+  "deepseek-v4-flash-0731": {
+    "max_context": 1000000,
+    "max_output": 384000,
+    "thinking_supported": true
+  },
+  "deepseek/deepseek-v3": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "deepseek-v3": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "deepseek/deepseek-v3.2": {
+    "max_context": 128000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "deepseek-v3.2": {
+    "max_context": 128000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "deepseek/deepseek-ocr-2": {
+    "max_context": 8192,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "deepseek-ocr-2": {
+    "max_context": 8192,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
   "deepseek/deepseek-r1": {
     "max_context": 128000,
     "max_output": 32768,
@@ -1418,6 +1628,16 @@
     "max_context": 1000000,
     "max_output": 384000,
     "thinking_supported": false
+  },
+  "deepseek/deepseek-v4-pro-0813": {
+    "max_context": 1000000,
+    "max_output": 384000,
+    "thinking_supported": true
+  },
+  "deepseek-v4-pro-0813": {
+    "max_context": 1000000,
+    "max_output": 384000,
+    "thinking_supported": true
   },
   "deepseek/deepseek-reasoner": {
     "max_context": 1000000,
@@ -1478,6 +1698,16 @@
     "max_context": 262144,
     "max_output": 65536,
     "thinking_supported": false
+  },
+  "alibaba/qwen3.7-flash": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.7-flash": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
   },
   "alibaba/qwen3.7-plus": {
     "max_context": 1000000,
@@ -1659,6 +1889,16 @@
     "max_output": 16384,
     "thinking_supported": true
   },
+  "alibaba/qwen3.5-flash": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.5-flash": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
   "alibaba/qwen3-max": {
     "max_context": 262144,
     "max_output": 65536,
@@ -1679,6 +1919,16 @@
     "max_output": 65536,
     "thinking_supported": false
   },
+  "alibaba/qwen3.8-max": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "qwen3.8-max": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
   "alibaba/qwen3-coder-flash": {
     "max_context": 1000000,
     "max_output": 65536,
@@ -1687,6 +1937,16 @@
   "qwen3-coder-flash": {
     "max_context": 1000000,
     "max_output": 65536,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3-235b-a22b-instruct-2507": {
+    "max_context": 262144,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "qwen3-235b-a22b-instruct-2507": {
+    "max_context": 262144,
+    "max_output": 16384,
     "thinking_supported": false
   },
   "alibaba/qwen-flash": {
@@ -1749,6 +2009,16 @@
     "max_output": 65536,
     "thinking_supported": true
   },
+  "alibaba/qwen2.5-coder-0.5b": {
+    "max_context": 32768,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "qwen2.5-coder-0.5b": {
+    "max_context": 32768,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
   "alibaba/qwen3.6-max-preview": {
     "max_context": 262144,
     "max_output": 65536,
@@ -1758,6 +2028,16 @@
     "max_context": 262144,
     "max_output": 65536,
     "thinking_supported": true
+  },
+  "alibaba/qwen3-coder-next": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "qwen3-coder-next": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": false
   },
   "alibaba/qwen3.6-plus": {
     "max_context": 1000000,
@@ -1887,6 +2167,16 @@
   "claude-haiku-4-5": {
     "max_context": 200000,
     "max_output": 64000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-mythos-5": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "claude-mythos-5": {
+    "max_context": 1000000,
+    "max_output": 128000,
     "thinking_supported": true
   },
   "anthropic/claude-3-7-sonnet-20250219": {
@@ -2766,6 +3056,16 @@
   },
   "sarvam-105b": {
     "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "bytedance-seed/seed-2.0-code": {
+    "max_context": 262144,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "seed-2.0-code": {
+    "max_context": 262144,
     "max_output": 131072,
     "thinking_supported": true
   },
