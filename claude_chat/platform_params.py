@@ -1,5 +1,6 @@
 """Normalize per-provider configuration into the shared client parameter shape."""
 
+from claude_chat.custom_params import validate_custom_params
 from claude_chat.config import DEFAULT_MAX_TOKENS, custom_platform_id, find_custom_provider
 
 
@@ -8,6 +9,8 @@ class PlatformParamMapper:
     def map_params(active_platform, config, model_id=None):
         model_config = config.get("model_configs", {}).get(model_id, {}) if model_id else {}
         params = {
+            "request_params": model_config.get("request_params"),
+            "custom_params": validate_custom_params(model_config.get("custom_params", {})),
             "api_key": "",
             "max_tokens": DEFAULT_MAX_TOKENS,
             "temperature": 0.7,
@@ -23,6 +26,9 @@ class PlatformParamMapper:
             "api_url": "",
             "enable_code_sandbox": False,
             "code_sandbox_type": "local",
+            "file_upload_enabled": True,
+            "file_upload_expires_in_seconds": 172800,
+            "file_upload_purpose": "user_data",
         }
 
         if active_platform == "claude":
@@ -37,6 +43,11 @@ class PlatformParamMapper:
                 tavily_api_key=config.get("tavily_api_key", ""),
                 jina_api_key=config.get("jina_api_key", ""),
                 web_page_parser=config.get("web_page_parser", "local"),
+                file_upload_enabled=bool(config.get("claude_file_upload_enabled", True)),
+                file_upload_expires_in_seconds=max(
+                    3600,
+                    min(7776000, int(config.get("claude_file_upload_expires_in_seconds", 172800))),
+                ),
             )
             if model_config.get("thinking_enabled", config.get("thinking_enabled", False)):
                 thinking_type = model_config.get("thinking_type", config.get("thinking_type", "adaptive"))
@@ -64,6 +75,11 @@ class PlatformParamMapper:
                 tavily_api_key=config.get("deepseek_tavily_api_key", ""),
                 jina_api_key=config.get("deepseek_jina_api_key", ""),
                 web_page_parser=config.get("deepseek_web_page_parser", "local"),
+                file_upload_enabled=bool(config.get("deepseek_file_upload_enabled", True)),
+                file_upload_expires_in_seconds=max(
+                    3600,
+                    min(2592000, int(config.get("deepseek_file_upload_expires_in_seconds", 172800))),
+                ),
             )
             if model_config.get("thinking_enabled", config.get("deepseek_thinking_enabled", False)):
                 effort = model_config.get("thinking_level", config.get("deepseek_thinking_level", "high"))
@@ -80,6 +96,7 @@ class PlatformParamMapper:
                 enable_search=bool(config.get("gemini_enable_web_search", False)),
                 enable_code_sandbox=bool(config.get("gemini_enable_code_sandbox", False)),
                 code_sandbox_type=config.get("gemini_code_sandbox_type", "local"),
+                file_upload_enabled=bool(config.get("gemini_file_upload_enabled", True)),
             )
             if model_config.get("thinking_enabled", config.get("gemini_thinking_enabled", False)):
                 params["thinking_config"] = {
@@ -100,6 +117,12 @@ class PlatformParamMapper:
                 temperature=float(model_config.get("temperature", provider.get("temperature", 0.7))),
                 enable_search=False,
                 enable_web_fetch=False,
+                file_upload_enabled=bool(provider.get("file_upload_enabled", False)),
+                file_upload_purpose=provider.get("file_upload_purpose", "user_data") or "user_data",
+                file_upload_expires_in_seconds=max(
+                    3600,
+                    min(2592000, int(provider.get("file_upload_expires_in_seconds", 172800))),
+                ),
             )
             if model_config.get("thinking_enabled", provider.get("thinking_enabled", False)):
                 params["thinking_config"] = {

@@ -34,6 +34,7 @@ from claude_chat.stream_protocol import (
     StreamTask,
     StreamTaskState,
     ensure_stream_event_queue,
+    stream_error_text,
 )
 
 from claude_chat.api_bridge import WebAPI
@@ -498,26 +499,28 @@ class ClaudeChatApp:
                     break
  
                 elif msg_type == "error":
-                    # 出错,通知前端弹窗并在本地数据库记录已生成的这部分文本内容
-                    if conv_id and streaming_text:
-                        thinking = streaming_thinking_text if streaming_thinking_text else None
-                        self.conv_manager.add_assistant_message_and_update_tokens(
-                            conv_id,
-                            streaming_text,
-                            thinking
-                        )
-                        with self.lock:
-                            if self.current_conv and self.current_conv.get("id") == conv_id:
-                                self.current_conv = self.conv_manager.load_conversation(conv_id)
+                    # Persist the failure before notifying the UI. The UI reloads the
+                    # conversation after an error, so an unsaved error would only flash.
+                    self._persist_stream_failure(
+                        conv_id,
+                        msg_data,
+                        streaming_text,
+                        streaming_thinking_text,
+                    )
                         
                     self._push_stream_event(event)
                     
                     self.set_streaming_done(StreamTaskState.FAILED, task)
                     break
             except Exception as e:
+                cleaned_err = sanitize_error_message(e)
+                self._persist_stream_failure(
+                    conv_id,
+                    cleaned_err,
+                    streaming_text,
+                    streaming_thinking_text,
+                )
                 if self.window:
-                    from claude_chat.clients import sanitize_error_message
-                    cleaned_err = sanitize_error_message(e)
                     fallback_event = StreamEvent(
                         task_id=task.task_id,
                         conversation_id=conv_id,
@@ -528,4 +531,26 @@ class ClaudeChatApp:
                     self._push_stream_event(fallback_event)
                 self.set_streaming_done(StreamTaskState.FAILED, task)
                 break
+
+    def _persist_stream_failure(self, conv_id, error, streaming_text="", streaming_thinking_text=""):
+        """Log and archive a terminal model error so it survives a UI reload."""
+        error_text = sanitize_error_message(stream_error_text(error))
+        logger.error("模型生成失败（会话 %s）: %s", conv_id or "unknown", error_text)
+        if not conv_id:
+            return
+        try:
+            thinking = streaming_thinking_text or None
+            if streaming_text:
+                self.conv_manager.add_assistant_message_and_update_tokens(
+                    conv_id,
+                    streaming_text,
+                    thinking,
+                )
+                thinking = None
+            self.conv_manager.add_stream_error_message(conv_id, error_text, thinking=thinking)
+            with self.lock:
+                if self.current_conv and self.current_conv.get("id") == conv_id:
+                    self.current_conv = self.conv_manager.load_conversation(conv_id)
+        except Exception:
+            logger.exception("保存模型生成错误到会话失败（会话 %s）", conv_id)
 

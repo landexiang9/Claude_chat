@@ -1,6 +1,8 @@
 import base64
 import json
 import logging
+from claude_chat.request_params import generation_params
+from claude_chat.clients.file_uploads import prepare_openai_compatible_files, upload_cache_namespace
 from pathlib import Path
 import httpx
 from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestError
@@ -19,6 +21,7 @@ def convert_messages_to_openai(messages):
         if isinstance(content, list):
             text_parts = []
             thinking_parts = []
+            file_parts = []
             tool_calls = []
             tool_results = []
             
@@ -28,9 +31,23 @@ def convert_messages_to_openai(messages):
                     if btype == "text":
                         text_parts.append(block.get("text", ""))
                     elif btype == "image":
-                        text_parts.append("[图片]")
-                    elif btype == "document":
-                        text_parts.append("[文档]")
+                        source = block.get("source", {})
+                        if source.get("file_id"):
+                            file_parts.append({"type": "file", "file_id": source["file_id"]})
+                        elif source.get("type") == "base64" and source.get("data"):
+                            media_type = source.get("media_type", "image/png")
+                            file_parts.append({
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{media_type};base64,{source['data']}"},
+                            })
+                        else:
+                            text_parts.append("[图片不可用]")
+                    elif btype in ("document", "file"):
+                        source = block.get("source", {})
+                        if source.get("file_id"):
+                            file_parts.append({"type": "file", "file_id": source["file_id"]})
+                        else:
+                            text_parts.append("[文档不可用]")
                     elif btype == "thinking":
                         thinking_parts.append(block.get("thinking", ""))
                     elif btype in ("tool_use", "server_tool_use"):
@@ -69,7 +86,14 @@ def convert_messages_to_openai(messages):
                     msg_dict["reasoning_content"] = thinking_str
                 openai_msgs.append(msg_dict)
             else:
-                msg_dict = {"role": role, "content": text_str}
+                if file_parts:
+                    content_parts = []
+                    if text_str:
+                        content_parts.append({"type": "text", "text": text_str})
+                    content_parts.extend(file_parts)
+                    msg_dict = {"role": role, "content": content_parts}
+                else:
+                    msg_dict = {"role": role, "content": text_str}
                 if thinking_str:
                     msg_dict["reasoning_content"] = thinking_str
                 openai_msgs.append(msg_dict)
@@ -83,7 +107,7 @@ def convert_messages_to_openai(messages):
             
     return openai_msgs
 
-def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", web_fetch_limit=15000, conv_id=None, conv_manager=None, previous_content_blocks=None, depth=0, thinking_config=None, accumulated_input_tokens=0, accumulated_output_tokens=0):
+def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", web_fetch_limit=15000, conv_id=None, conv_manager=None, previous_content_blocks=None, depth=0, thinking_config=None, accumulated_input_tokens=0, accumulated_output_tokens=0, custom_params=None, request_params=None, file_upload_enabled=True, file_upload_purpose="user_data", file_upload_image_only=True, file_upload_expires_in_seconds=172800):
     response_stream = None  # M-fix#10: 保证 finally 中一定可关闭,避免 abort/异常路径泄漏 HTTP 连接
     try:
         if depth >= 5:
@@ -93,25 +117,26 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
         from openai import OpenAI
         http_client = build_http_client(proxy_mode, proxy_url)
         client = OpenAI(api_key=api_key, base_url=api_url, http_client=http_client)
+        if file_upload_enabled:
+            messages = prepare_openai_compatible_files(
+                client,
+                messages,
+                upload_cache_namespace("openai-compatible", api_key, api_url),
+                purpose=file_upload_purpose,
+                image_only=file_upload_image_only,
+                expires_after_seconds=file_upload_expires_in_seconds,
+            )
         
         openai_msgs = convert_messages_to_openai(messages)
         if system and system.strip():
             openai_msgs.insert(0, {"role": "system", "content": system.strip()})
             
-        kwargs = {
-            "model": model,
-            "messages": openai_msgs,
-            "stream": True,
-            "temperature": temperature,
-            "stream_options": {"include_usage": True}
-        }
-        if max_tokens is not None and max_tokens > 0:
-            kwargs["max_tokens"] = max_tokens
-            
-        if thinking_config and isinstance(thinking_config, dict):
-            effort = thinking_config.get("effort")
-            if effort:
-                kwargs["reasoning_effort"] = effort
+        effective = generation_params("deepseek", model, max_tokens, temperature, thinking_config,
+                                      custom=custom_params, override=request_params)
+        kwargs = {"model": model, "messages": openai_msgs, "stream": True,
+                  "stream_options": {"include_usage": True}}
+        if effective:
+            kwargs["extra_body"] = effective
 
         tools = None
         if enable_search and "reasoner" not in model.lower():
@@ -358,6 +383,8 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                 stream_deepseek_response(
                     api_key=api_key,
                     api_url=api_url,
+                    request_params=request_params,
+                    custom_params=custom_params,
                     proxy_mode=proxy_mode,
                     proxy_url=proxy_url,
                     messages=messages,
@@ -380,7 +407,11 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                     depth=depth + 1,
                     thinking_config=thinking_config,
                     accumulated_input_tokens=accumulated_input_tokens + input_tokens,
-                    accumulated_output_tokens=accumulated_output_tokens + output_tokens
+                    accumulated_output_tokens=accumulated_output_tokens + output_tokens,
+                    file_upload_enabled=file_upload_enabled,
+                    file_upload_purpose=file_upload_purpose,
+                    file_upload_image_only=file_upload_image_only,
+                    file_upload_expires_in_seconds=file_upload_expires_in_seconds,
                 )
                 return
 

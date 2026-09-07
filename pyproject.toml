@@ -10,7 +10,7 @@ authors = [
 ]
 dependencies = [
     "pywebview>=5.0",
-    "anthropic>=0.103.0",
+    "anthropic>=1.2.0",
     "openai>=1.0.0",
     "google-genai>=1.0.0",
     "Pillow>=10.0.0",

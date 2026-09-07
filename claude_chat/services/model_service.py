@@ -105,7 +105,7 @@ class ModelService(AppService):
                 result.append(item)
             return result
 
-    def add_custom_provider(self, name, api_url, api_key="", models=None, temperature=0.7, max_tokens=4096, models_api_url=""):
+    def add_custom_provider(self, name, api_url, api_key="", models=None, temperature=0.7, max_tokens=4096, models_api_url="", file_upload_enabled=False, file_upload_purpose="user_data", file_upload_expires_in_seconds=172800):
         """
         新增一个自定义 OpenAI 兼容提供商并持久化保存到服务器配置。
         自动生成唯一 id（基于名称规整 + 短随机后缀以避免冲突）。
@@ -127,7 +127,10 @@ class ModelService(AppService):
                 "models_api_url": models_api_url or "",
                 "models": [m for m in (models or []) if isinstance(m, str) and m.strip()],
                 "temperature": float(temperature),
-                "max_tokens": int(max_tokens)
+                "max_tokens": int(max_tokens),
+                "file_upload_enabled": bool(file_upload_enabled),
+                "file_upload_purpose": str(file_upload_purpose or "user_data").strip() or "user_data",
+                "file_upload_expires_in_seconds": max(3600, min(2592000, int(file_upload_expires_in_seconds))),
             }
             providers.append(provider)
             self._app.config.set("custom_providers", providers)
@@ -136,7 +139,7 @@ class ModelService(AppService):
             logger.info(f"新增自定义提供商: {name} (id={new_id})")
             return self._provider_view(new_id)
 
-    def update_custom_provider(self, provider_id, name=None, api_url=None, api_key=None, models=None, temperature=None, max_tokens=None, models_api_url=None, clear_api_key=False):
+    def update_custom_provider(self, provider_id, name=None, api_url=None, api_key=None, models=None, temperature=None, max_tokens=None, models_api_url=None, clear_api_key=False, file_upload_enabled=None, file_upload_purpose=None, file_upload_expires_in_seconds=None):
         """更新已有自定义提供商的元数据；api_key 仅在非空时覆盖；clear_api_key=True 时清除 Key。models_api_url 传 None 表示不修改，传空串表示清空。"""
         with self._app.lock:
             pid = sanitize_provider_id(provider_id)
@@ -156,6 +159,14 @@ class ModelService(AppService):
                         p["temperature"] = float(temperature)
                     if max_tokens is not None:
                         p["max_tokens"] = int(max_tokens)
+                    if file_upload_enabled is not None:
+                        p["file_upload_enabled"] = bool(file_upload_enabled)
+                    if file_upload_purpose is not None:
+                        p["file_upload_purpose"] = str(file_upload_purpose or "user_data").strip() or "user_data"
+                    if file_upload_expires_in_seconds is not None:
+                        p["file_upload_expires_in_seconds"] = max(
+                            3600, min(2592000, int(file_upload_expires_in_seconds))
+                        )
                     updated = True
                     break
             if not updated:

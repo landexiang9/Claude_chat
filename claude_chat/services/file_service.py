@@ -2,6 +2,8 @@ import logging
 import base64
 import binascii
 import copy
+import io
+from datetime import datetime
 from pathlib import Path
 
 import webview
@@ -105,6 +107,55 @@ class FileService(AppService):
             return text
         except Exception:
             return ""
+
+    def paste_attachments_from_clipboard(self):
+        """Read Windows clipboard files or bitmap data into managed attachment storage."""
+        import sys
+
+        if sys.platform != "win32":
+            return {"attachments": [], "errors": []}
+
+        try:
+            from PIL import Image, ImageGrab
+
+            clipboard_content = ImageGrab.grabclipboard()
+        except Exception as exc:
+            logger.warning("读取剪贴板附件失败: %s", exc)
+            return {"attachments": [], "errors": [f"无法读取剪贴板附件: {exc}"]}
+
+        attachments = []
+        errors = []
+        if isinstance(clipboard_content, list):
+            for raw_path in clipboard_content:
+                try:
+                    source = Path(raw_path)
+                    if not source.is_file():
+                        errors.append(f"{source.name or raw_path}（不是文件）")
+                        continue
+                    if source.stat().st_size > MAX_ATTACHMENT_SIZE:
+                        errors.append(f"{source.name}（超过 20 MB）")
+                        continue
+                    attachments.append(store_attachment_path(source, display_name=source.name))
+                except Exception as exc:
+                    name = Path(str(raw_path)).name or "未命名文件"
+                    errors.append(f"{name}（{exc}）")
+        elif isinstance(clipboard_content, Image.Image):
+            try:
+                output = io.BytesIO()
+                clipboard_content.save(output, format="PNG")
+                name = f"剪贴板图片-{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}.png"
+                attachments.append(store_attachment_bytes(output.getvalue(), name))
+            except Exception as exc:
+                errors.append(f"剪贴板图片（{exc}）")
+            finally:
+                try:
+                    clipboard_content.close()
+                except Exception:
+                    pass
+
+        if errors:
+            logger.warning("部分剪贴板附件无法添加: %s", "、".join(errors))
+        return {"attachments": attachments, "errors": errors}
 
     def select_attachments(self):
         """

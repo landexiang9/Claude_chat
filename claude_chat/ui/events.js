@@ -55,6 +55,83 @@ inputBox.addEventListener("input", () => {
     inputBox.style.height = "auto";
     inputBox.style.height = `${inputBox.scrollHeight}px`;
 });
+
+function clipboardFiles(clipboardData) {
+    if (!clipboardData) return [];
+    const files = Array.from(clipboardData.files || []);
+    if (files.length > 0) return files;
+    return Array.from(clipboardData.items || [])
+        .filter(item => item.kind === "file")
+        .map(item => item.getAsFile())
+        .filter(Boolean);
+}
+
+function pastedFileName(file, index) {
+    if (typeof file.name === "string" && file.name.trim()) return file.name.trim();
+    const extensionByType = {
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/gif": "gif",
+        "image/webp": "webp",
+    };
+    const extension = extensionByType[file.type] || "png";
+    return `粘贴图片-${Date.now()}-${index + 1}.${extension}`;
+}
+
+function insertPastedText(textarea, text) {
+    if (!text) return;
+    const start = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : textarea.value.length;
+    const end = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : start;
+    textarea.value = textarea.value.slice(0, start) + text + textarea.value.slice(end);
+    const nextPosition = start + text.length;
+    textarea.selectionStart = textarea.selectionEnd = nextPosition;
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+async function addNativeClipboardAttachments() {
+    if (!checkIsNative()) return 0;
+    try {
+        const result = await apiBridge.paste_attachments_from_clipboard();
+        const added = Array.isArray(result) ? result : (result?.attachments || []);
+        const errors = Array.isArray(result?.errors) ? result.errors : [];
+        if (added.length > 0) {
+            attachments = [...attachments, ...added];
+            renderAttachments();
+            statusLabel.textContent = `已从剪贴板添加 ${added.length} 个附件`;
+        } else if (errors.length > 0) {
+            statusLabel.textContent = `剪贴板附件添加失败: ${errors.join("；")}`;
+        }
+        if (added.length > 0 && errors.length > 0) {
+            statusLabel.textContent = `已添加 ${added.length} 个附件，部分失败: ${errors.join("；")}`;
+        }
+        return added.length;
+    } catch (error) {
+        console.error("读取原生剪贴板附件失败:", error);
+        statusLabel.textContent = `剪贴板附件添加失败: ${error.message || String(error)}`;
+        return 0;
+    }
+}
+
+// 浏览器能提供 File 时直接上传；pywebview 缺失 File 时改由 Python 读取 Windows 剪贴板。
+inputBox.addEventListener("paste", async event => {
+    const files = clipboardFiles(event.clipboardData);
+    const clipboardText = event.clipboardData?.getData("text/plain") || "";
+    if (files.length > 0) {
+        event.preventDefault();
+        insertPastedText(inputBox, clipboardText);
+        statusLabel.textContent = `正在粘贴 ${files.length} 个附件...`;
+        for (let index = 0; index < files.length; index++) {
+            await handleDroppedFile(files[index], pastedFileName(files[index], index));
+        }
+        inputBox.focus();
+        return;
+    }
+
+    if (!checkIsNative()) return;
+    // 图片/文件剪贴板通常没有文本，立即阻止 WebView2 的空粘贴行为。
+    if (!clipboardText) event.preventDefault();
+    await addNativeClipboardAttachments();
+});
 // 移动端侧边栏切换与遮罩层点击逻辑
 const sidebarToggleBtn = document.getElementById("sidebar-toggle-btn");
 const sidebarOverlay = document.getElementById("sidebar-overlay");
@@ -465,6 +542,9 @@ menuPaste.addEventListener("click", async () => {
     if (!contextMenuTarget) return;
     
     if (contextMenuTarget.tagName === "TEXTAREA" || contextMenuTarget.tagName === "INPUT") {
+        if (contextMenuTarget === inputBox) {
+            await addNativeClipboardAttachments();
+        }
         const clipboardText = await apiBridge.paste_from_clipboard();
         if (clipboardText) {
             try {
@@ -549,32 +629,32 @@ window.addEventListener("drop", async (e) => {
     }
 });
 
-async function handleDroppedFile(file) {
+async function handleDroppedFile(file, displayName = file.name) {
     const maxSize = 20 * 1024 * 1024; // 20MB
     if (file.size > maxSize) {
-        statusLabel.textContent = `文件添加失败: ${file.name} (超过 20MB 限制)`;
+        statusLabel.textContent = `文件添加失败: ${displayName} (超过 20MB 限制)`;
         return;
     }
-    statusLabel.textContent = `正在读取文件: ${file.name}...`;
+    statusLabel.textContent = `正在读取文件: ${displayName}...`;
     
     try {
         const base64Data = await readFileAsBase64(file);
-        const uploaded = await apiBridge.upload_dropped_file(file.name, file.size, base64Data);
+        const uploaded = await apiBridge.upload_dropped_file(displayName, file.size, base64Data);
         if (uploaded && !uploaded.error) {
             attachments.push(uploaded);
             renderAttachments();
             if (config.active_platform === "deepseek") {
-                statusLabel.textContent = `附件已添加: ${file.name} (已开启本地文档解析与图像 OCR 提取)`;
+                statusLabel.textContent = `附件已添加: ${displayName} (已开启本地文档解析与图像 OCR 提取)`;
             } else {
-                statusLabel.textContent = `附件已添加: ${file.name}`;
+                statusLabel.textContent = `附件已添加: ${displayName}`;
             }
             setTimeout(() => { if (statusLabel.textContent.startsWith("附件已添加")) statusLabel.textContent = "就绪"; }, 3000);
         } else {
-            statusLabel.textContent = `文件添加失败: ${file.name}（${uploaded?.error || "上传失败"}）`;
+            statusLabel.textContent = `文件添加失败: ${displayName}（${uploaded?.error || "上传失败"}）`;
         }
     } catch (error) {
         console.error("拖入附件失败:", error);
-        statusLabel.textContent = `文件读取失败: ${file.name}（${error.message || String(error)}）`;
+        statusLabel.textContent = `文件读取失败: ${displayName}（${error.message || String(error)}）`;
     }
 }
 // ==========================================

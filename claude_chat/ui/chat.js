@@ -181,6 +181,7 @@ async function sendMessage() {
     if (isSending) return;
     const text = inputBox.value.trim();
     if (!text && attachments.length === 0) return;
+    const renderMarkdown = markdownToggle ? markdownToggle.checked : true;
     
     let hasKey = false;
     const platform = config.active_platform || "claude";
@@ -210,7 +211,7 @@ async function sendMessage() {
         ? buildPendingAttachmentContent(text, attachments)
         : text;
     const userMsgIndex = currentConv ? currentConv.messages.length : -1;
-    const optimisticUserRow = appendMessage("user", displayContent, "", false, userMsgIndex);
+    const optimisticUserRow = appendMessage("user", displayContent, "", false, userMsgIndex, null, messageList, renderMarkdown);
     scrollChatBottom(true);
 
     // 2. 在聊天面板生成一个空的 Assistant 占位气泡准备流式打字机输入
@@ -244,7 +245,7 @@ async function sendMessage() {
     // 4. 调用 API 发起生成请求
     isSending = true;
     try {
-        await apiBridge.send_message(currentConvId, text, oldAttachments);
+        await apiBridge.send_message(currentConvId, text, oldAttachments, renderMarkdown);
     } catch (e) {
         console.error("send_message 调用失败:", e);
         statusLabel.textContent = "发送失败: " + (e.message || String(e));
@@ -575,6 +576,7 @@ async function editUserMessage(msgIndex) {
     if (!body) return;
     
     const rawContent = currentConv.messages[msgIndex].content;
+    const originalRenderMarkdown = currentConv.messages[msgIndex].render_markdown !== false;
     const editableContent = normalizeMessageDisplayContent(rawContent, { extractAttachments: true });
     const textVal = editableContent.text;
     
@@ -584,7 +586,12 @@ async function editUserMessage(msgIndex) {
     body.innerHTML = `
         <div class="edit-msg-container" style="display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 4px;">
             <textarea class="edit-msg-textarea" style="width: 100%; min-height: 80px; background-color: var(--crust); border: 1px solid var(--surface0); border-radius: 6px; color: var(--text); padding: 8px; font-family: inherit; font-size: 13px; outline: none; resize: vertical;"></textarea>
-            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <div style="display: flex; gap: 8px; align-items: center; justify-content: flex-end;">
+                <label class="markdown-switch" style="margin-right: auto;" title="开启后按 Markdown 显示；原始 HTML 始终按文字显示">
+                    <input type="checkbox" class="edit-markdown-toggle" aria-label="使用 Markdown 格式" ${originalRenderMarkdown ? "checked" : ""}>
+                    <span class="markdown-switch-track" aria-hidden="true"><span></span></span>
+                    <span class="markdown-switch-label">Markdown</span>
+                </label>
                 <button class="btn btn-secondary btn-sm edit-cancel-btn" style="padding: 4px 10px; font-size: 11px;">取消</button>
                 <button class="btn btn-primary btn-sm edit-save-btn" style="padding: 4px 10px; font-size: 11px;">保存并发送</button>
             </div>
@@ -612,6 +619,7 @@ async function editUserMessage(msgIndex) {
     body.querySelector(".edit-save-btn").onclick = async (e) => {
         e.stopPropagation();
         const newText = textarea.value.trim();
+        const editedRenderMarkdown = body.querySelector(".edit-markdown-toggle")?.checked !== false;
         if (!newText && editableContent.attachments.length === 0) return;
         
         // Remove msgRow and all subsequent elements from DOM
@@ -626,7 +634,7 @@ async function editUserMessage(msgIndex) {
         const editedDisplayContent = editableContent.attachments.length > 0
             ? buildPendingAttachmentContent(newText, editableContent.attachments)
             : newText;
-        appendMessage("user", editedDisplayContent, "", false, msgIndex);
+        appendMessage("user", editedDisplayContent, "", false, msgIndex, null, messageList, editedRenderMarkdown);
         scrollChatBottom(true);
         
         appendMessage("assistant", "思考中...", "", true);
@@ -640,7 +648,7 @@ async function editUserMessage(msgIndex) {
         
         isSending = true;
         try {
-            await apiBridge.edit_and_resend(currentConvId, msgIndex, newText);
+            await apiBridge.edit_and_resend(currentConvId, msgIndex, newText, editedRenderMarkdown);
         } catch (e) {
             console.error("edit_and_resend 调用失败:", e);
             statusLabel.textContent = "编辑重发失败: " + (e.message || String(e));

@@ -179,23 +179,23 @@ if (document.readyState === "complete" || document.readyState === "interactive")
 }
 
 // 动态刷新顶部平台选择器，注入自定义提供商选项
-async function refreshPlatformSelect() {
+async function refreshPlatformSelect(providers = null) {
     if (!platformSelect) return;
-    // 保留内置的三个选项，移除已添加的自定义选项
-    const builtinValues = ["claude", "deepseek", "gemini"];
-    Array.from(platformSelect.options).forEach(opt => {
-        if (!builtinValues.includes(opt.value)) {
-            platformSelect.removeChild(opt);
+    if (!Array.isArray(providers)) {
+        try {
+            providers = await apiBridge.list_custom_providers();
+        } catch (e) {
+            console.warn("list_custom_providers failed", e);
+            return;
         }
-    });
-    let providers = [];
-    try {
-        providers = await apiBridge.list_custom_providers();
-    } catch (e) {
-        console.warn("list_custom_providers failed", e);
     }
+
+    // 自定义选项属于 optgroup，不能通过 platformSelect.removeChild(option) 删除；
+    // 每次直接替换整个动态分组，避免刷新时抛出 NotFoundError 或累积空分组。
+    platformSelect.querySelectorAll('optgroup[data-custom-providers="true"]').forEach(group => group.remove());
     if (providers && providers.length > 0) {
         const sep = document.createElement("optgroup");
+        sep.dataset.customProviders = "true";
         sep.label = "── 自定义提供商 ──";
         providers.forEach(p => {
             const opt = document.createElement("option");

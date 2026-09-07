@@ -103,6 +103,8 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
         if active_platform == "claude":
             return stream_claude_response_native(
                 api_key=api_key,
+                request_params=kwargs.get("request_params"),
+                custom_params=kwargs.get("custom_params", {}),
                 proxy_mode=proxy_mode,
                 proxy_url=proxy_url,
                 messages=messages,
@@ -124,7 +126,9 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 web_page_parser=web_page_parser,
                 conv_id=conv_id,
                 conv_manager=conv_manager,
-                depth=depth
+                depth=depth,
+                file_upload_enabled=kwargs.get("file_upload_enabled", True),
+                file_upload_expires_in_seconds=kwargs.get("file_upload_expires_in_seconds", 172800),
             )
         elif active_platform == "deepseek":
             deepseek_api_key = kwargs.get("deepseek_api_key", "")
@@ -132,6 +136,8 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
             return stream_deepseek_response(
                 api_key=deepseek_api_key,
                 api_url=deepseek_api_url,
+                request_params=kwargs.get("request_params"),
+                custom_params=kwargs.get("custom_params", {}),
                 proxy_mode=proxy_mode,
                 proxy_url=proxy_url,
                 messages=messages,
@@ -152,7 +158,11 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 conv_manager=conv_manager,
                 previous_content_blocks=previous_content_blocks,
                 depth=depth,
-                thinking_config=thinking_config
+                thinking_config=thinking_config,
+                file_upload_enabled=kwargs.get("file_upload_enabled", True),
+                file_upload_purpose=kwargs.get("file_upload_purpose", "user_data"),
+                file_upload_image_only=True,
+                file_upload_expires_in_seconds=kwargs.get("file_upload_expires_in_seconds", 172800),
             )
         elif active_platform == "gemini":
             gemini_api_key = kwargs.get("gemini_api_key", "")
@@ -165,6 +175,8 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
             return stream_gemini_response(
                 api_key=gemini_api_key,
                 api_url=gemini_api_url,
+                request_params=kwargs.get("request_params"),
+                custom_params=kwargs.get("custom_params", {}),
                 proxy_mode=proxy_mode,
                 proxy_url=proxy_url,
                 messages=messages,
@@ -183,7 +195,8 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 enable_search=enable_search,
                 conv_id=conv_id,
                 conv_manager=conv_manager,
-                previous_content_blocks=previous_content_blocks
+                previous_content_blocks=previous_content_blocks,
+                file_upload_enabled=kwargs.get("file_upload_enabled", True),
             )
         elif active_platform.startswith("custom:"):
             # 自定义 OpenAI 兼容提供商：复用 DeepSeek (OpenAI SDK) 客户端
@@ -192,6 +205,8 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
             return stream_deepseek_response(
                 api_key=custom_api_key,
                 api_url=custom_api_url,
+                request_params=kwargs.get("request_params"),
+                custom_params=kwargs.get("custom_params", {}),
                 proxy_mode=proxy_mode,
                 proxy_url=proxy_url,
                 messages=messages,
@@ -211,7 +226,11 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 conv_manager=conv_manager,
                 previous_content_blocks=previous_content_blocks,
                 depth=depth,
-                thinking_config=thinking_config
+                thinking_config=thinking_config,
+                file_upload_enabled=kwargs.get("file_upload_enabled", False),
+                file_upload_purpose=kwargs.get("file_upload_purpose", "user_data"),
+                file_upload_image_only=False,
+                file_upload_expires_in_seconds=kwargs.get("file_upload_expires_in_seconds", 172800),
             )
         else:
             raise ValueError(f"Unknown active platform: {active_platform}")

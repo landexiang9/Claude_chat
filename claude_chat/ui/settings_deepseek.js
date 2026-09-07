@@ -17,6 +17,7 @@ PlatformSettings.register("deepseek", {
     },
 
     load(currentConfig) {
+        if (typeof deepseekFileUploadEnabledInput !== "undefined" && deepseekFileUploadEnabledInput) deepseekFileUploadEnabledInput.checked = currentConfig.deepseek_file_upload_enabled !== false;
         if (deepseekApiUrlInput) deepseekApiUrlInput.value = currentConfig.deepseek_api_url || "https://api.deepseek.com";
         if (deepseekEnableSearchInput) {
             deepseekEnableSearchInput.checked = !!currentConfig.deepseek_enable_web_search;
@@ -30,6 +31,7 @@ PlatformSettings.register("deepseek", {
     },
 
     save(currentConfig) {
+        if (typeof deepseekFileUploadEnabledInput !== "undefined" && deepseekFileUploadEnabledInput) currentConfig.deepseek_file_upload_enabled = deepseekFileUploadEnabledInput.checked;
         if (deepseekApiUrlInput) currentConfig.deepseek_api_url = deepseekApiUrlInput.value.trim() || "https://api.deepseek.com";
         if (deepseekEnableSearchInput) currentConfig.deepseek_enable_web_search = deepseekEnableSearchInput.checked;
         if (deepseekSearchEngineSelect) currentConfig.deepseek_web_search_engine = deepseekSearchEngineSelect.value || "google";

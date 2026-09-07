@@ -1,29 +1,21 @@
 import base64
 import json
 import logging
-import re
 from pathlib import Path
-import httpx
 from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestError
+
+from claude_chat.request_params import generation_params, supports_temperature
+from claude_chat.clients.file_uploads import prepare_anthropic_files, upload_cache_namespace
 
 logger = logging.getLogger("claude_chat.clients")
 
-from .base import sanitize_error_message, build_http_client, extract_api_message
+from .base import build_anthropic_http_client, extract_api_message, sanitize_error_message
 
 
-def _supports_temperature(model):
-    """Return False for Claude models whose API only accepts the default temperature."""
-    model_id = (model or "").lower()
-    if model_id.startswith("claude-sonnet-5"):
-        return False
-    match = re.search(r"claude-opus-(\d+)(?:-(\d+))?", model_id)
-    if match:
-        major = int(match.group(1))
-        minor = int(match.group(2) or 0)
-        return (major, minor) < (4, 7)
-    return True
+_supports_temperature = supports_temperature
 
-def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None, enable_search=False, enable_web_fetch=True, web_fetch_limit=15000, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, depth=0, accumulated_input_tokens=0, accumulated_output_tokens=0):
+
+def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None, enable_search=False, enable_web_fetch=True, web_fetch_limit=15000, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, depth=0, accumulated_input_tokens=0, accumulated_output_tokens=0, custom_params=None, request_params=None, file_upload_enabled=True, file_upload_expires_in_seconds=172800):
     """
     启动 Anthropic API 消息流式接收。
     通常运行在后台线程中，实时抓取流中的文本块（text_delta）和思考推理块（thinking_delta），
@@ -35,21 +27,22 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
             logger.warning(f"联网搜索已达最大深度限制 ({depth})，强制关闭此轮搜索。")
             enable_search = False
 
-        http_client = build_http_client(proxy_mode, proxy_url)
+        http_client = build_anthropic_http_client(proxy_mode, proxy_url)
         client = Anthropic(api_key=api_key, http_client=http_client)
+        if file_upload_enabled:
+            messages = prepare_anthropic_files(
+                client,
+                messages,
+                upload_cache_namespace("anthropic", api_key, "https://api.anthropic.com"),
+                file_upload_expires_in_seconds,
+            )
         
         # 组装 API 调用参数
-        kwargs = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "messages": messages,
-        }
-        if temperature is not None and _supports_temperature(model):
-            kwargs["temperature"] = temperature
-        if thinking_config:
-            kwargs["thinking"] = thinking_config
-        if output_config:
-            kwargs["output_config"] = output_config
+        effective = generation_params("claude", model, max_tokens, temperature, thinking_config,
+                                      output_config, custom_params, request_params)
+        kwargs = {"model": model, "messages": messages, "max_tokens": effective.pop("max_tokens")}
+        if effective:
+            kwargs["extra_body"] = effective
         if system and system.strip():
             kwargs["system"] = system.strip()
 
@@ -294,6 +287,8 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
                 # 递归发起下一轮 API 生成
                 stream_claude_response_native(
                     api_key=api_key,
+                    request_params=request_params,
+                    custom_params=custom_params,
                     proxy_mode=proxy_mode,
                     proxy_url=proxy_url,
                     messages=messages,
@@ -319,7 +314,9 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
                     # 导致每次工具回合都失败、tool_use/tool_result 配对孤立。移除之。
                     depth=depth + 1,
                     accumulated_input_tokens=accumulated_input_tokens + current_input_tokens,
-                    accumulated_output_tokens=accumulated_output_tokens + current_output_tokens
+                    accumulated_output_tokens=accumulated_output_tokens + current_output_tokens,
+                    file_upload_enabled=file_upload_enabled,
+                    file_upload_expires_in_seconds=file_upload_expires_in_seconds,
                 )
                 return
 
@@ -354,20 +351,24 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
         if abort_event and abort_event.is_set():
             streaming_queue.put(("aborted", {}))
         else:
+            logger.error("Claude 请求被 API 拒绝: %s", sanitize_error_message(e, max_length=None))
             streaming_queue.put(("error", f"请求错误: {sanitize_error_message(e)}"))
-    except APITimeoutError:
+    except APITimeoutError as e:
         if abort_event and abort_event.is_set():
             streaming_queue.put(("aborted", {}))
         else:
+            logger.error("Claude 请求超时: %s", sanitize_error_message(e, max_length=None))
             streaming_queue.put(("error", "请求超时，请重试"))
     except APIStatusError as e:
         if abort_event and abort_event.is_set():
             streaming_queue.put(("aborted", {}))
         else:
+            logger.error("Claude API 错误 [%s]: %s", e.status_code, sanitize_error_message(e, max_length=None))
             streaming_queue.put(("error", f"API 错误 [{e.status_code}]: {sanitize_error_message(e)}"))
     except Exception as e:
         if abort_event and abort_event.is_set():
             streaming_queue.put(("aborted", {}))
         else:
+            logger.error("Claude 流式请求异常: %s", sanitize_error_message(e, max_length=None))
             streaming_queue.put(("error", f"未知错误: {sanitize_error_message(e)}"))
 

@@ -44,8 +44,8 @@ const context = {
     requestAnimationFrame: callback => callback(),
     isToolResultMsg: () => false,
     extractToolCallsFromMsg: () => [],
-    appendMessage(role, content, thinking, streaming, index, tools, target) {
-        target.appendChild({ role, content, index });
+    appendMessage(role, content, thinking, streaming, index, tools, target, renderMarkdown, isError) {
+        target.appendChild({ role, content, index, renderMarkdown, isError });
     }
 };
 vm.createContext(context);
@@ -62,6 +62,14 @@ renderConversationMessages(messages);
 if (messageList.children.length !== 61) throw new Error("initial render must contain 60 groups and one button");
 loadOlderConversationMessages();
 if (messageList.children.length !== 121) throw new Error("loading older messages must add one 60-group batch");
+const plainMessage = buildConversationMessageGroups([
+    { role: "user", content: "**plain**", render_markdown: false }
+])[0];
+if (plainMessage.renderMarkdown !== false) throw new Error("message markdown choice must survive grouping");
+const errorMessage = buildConversationMessageGroups([
+    { role: "assistant", content: [{ type: "text", text: "failed", _stream_error: true }] }
+])[0];
+if (errorMessage.isError !== true) throw new Error("persisted stream errors must survive grouping");
 `, context);
 
 console.log("long conversation render test passed");

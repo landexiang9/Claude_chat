@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import queue
 import threading
 import uuid
@@ -11,6 +12,7 @@ from typing import Any, Mapping, TypeAlias, TypedDict
 
 
 STREAM_PROTOCOL_VERSION = 1
+STREAM_ERROR_MARKER = "_stream_error"
 
 
 class StreamEventType(str, Enum):
@@ -47,6 +49,36 @@ TERMINAL_EVENT_TYPES = {
 
 StreamPayload: TypeAlias = str | dict[str, Any]
 LegacyStreamEvent: TypeAlias = tuple[str, StreamPayload]
+
+
+def stream_error_text(payload: Any) -> str:
+    """Return a stable, user-facing string for any error event payload."""
+    if isinstance(payload, Mapping):
+        text = payload.get("text")
+        if text is not None:
+            return str(text)
+        return json.dumps(dict(payload), ensure_ascii=False, default=str)
+    return str(payload or "未知错误")
+
+
+def stream_error_content(payload: Any) -> list[dict[str, Any]]:
+    """Build a persisted display-only error block for conversation history."""
+    return [{
+        "type": "text",
+        "text": f"❌ 发生错误: {stream_error_text(payload)}",
+        STREAM_ERROR_MARKER: True,
+    }]
+
+
+def is_stream_error_message(message: Any) -> bool:
+    """Return whether a stored message is a display-only stream failure record."""
+    if not isinstance(message, Mapping):
+        return False
+    content = message.get("content")
+    return isinstance(content, list) and any(
+        isinstance(block, Mapping) and block.get(STREAM_ERROR_MARKER) is True
+        for block in content
+    )
 
 
 class StreamEventWire(TypedDict):

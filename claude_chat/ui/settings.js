@@ -11,6 +11,7 @@ function getModalFocusableElements(modal) {
 function showModal(modal) {
     if (!modal) return;
     modalReturnFocus.set(modal, document.activeElement);
+    window.SelectPicker?.refreshAll();
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
     requestAnimationFrame(() => {
@@ -21,6 +22,7 @@ function showModal(modal) {
 
 function hideModal(modal) {
     if (!modal) return;
+    window.SelectPicker?.closeAll();
     modal.classList.add("hidden");
     modal.setAttribute("aria-hidden", "true");
     const returnTarget = modalReturnFocus.get(modal);
@@ -148,6 +150,7 @@ function updateOcrNotices(platform) {
 }
 
 function showSettings() {
+    window.ModelConfigEditor?.reset();
     // 同时检测真实沙盒后端；失败时保持开关禁用，并显示后端写入日志的同一原因。
     refreshCodeSandboxStatus();
 
@@ -292,6 +295,7 @@ function showSettings() {
 
     renderPresetsList();
     activateSettingsNav(isCustom ? "custom" : "providers", false);
+    window.SelectPicker?.refreshAll();
     showModal(settingsModal);
     requestAnimationFrame(() => {
         if (!settingsContent) return;
@@ -458,6 +462,8 @@ if (updateModelRegistryBtn) {
 // 为此我们需要将 updateModelSettingsUI 挂载到 window
 window.updateModelSettingsUI = function() {
     const selectedModelId = modelSelect ? modelSelect.value : config.model;
+    if (window.ModelConfigEditor?.isEditing(selectedModelId, config.active_platform || "claude")) return;
+    window.CustomParams?.load(config.model_configs?.[selectedModelId]?.custom_params || {}, !!selectedModelId);
     if (!selectedModelId) return;
 
     if (currentModelIndicator) {
@@ -582,6 +588,7 @@ window.updateModelSettingsUI = function() {
             }
         }
     }
+    window.ModelConfigEditor?.load(selectedModelId, config.active_platform || "claude", modelConfigs[selectedModelId] || {});
 };
 
 // Bind Events
@@ -657,6 +664,10 @@ if (toggleTokenVisibility && serverTokenInput) {
 }
 
 saveSettingsBtn.onclick = async () => {
+    const editedModelConfig = window.ModelConfigEditor ? await window.ModelConfigEditor.prepareSave() : null;
+    if (window.ModelConfigEditor && !editedModelConfig) return;
+    const customParams = window.CustomParams?.read() ?? (window.CustomParams ? null : {});
+    if (customParams === null) return;
     // 1. 保存/清除各个 API Key 相关的配置（采用数据驱动的自动化机制）
     for (const [key, item] of Object.entries(keyConfigs)) {
         if (item.getPending()) {
@@ -699,6 +710,7 @@ saveSettingsBtn.onclick = async () => {
         if (!config.model_configs[selectedModelId]) config.model_configs[selectedModelId] = {};
         
         const mConfig = config.model_configs[selectedModelId];
+        mConfig.custom_params = customParams;
         
         if (modelTempSlider) mConfig.temperature = parseFloat(modelTempSlider.value);
         if (modelMaxTokensInput) {
@@ -710,6 +722,8 @@ saveSettingsBtn.onclick = async () => {
         if (thinkingModeRadio) mConfig.thinking_type = thinkingModeRadio.value;
         if (modelThinkingBudgetInput) mConfig.thinking_budget = parseInt(modelThinkingBudgetInput.value) || 1024;
         if (modelThinkingLevelSelect) mConfig.thinking_level = modelThinkingLevelSelect.value || "high";
+
+        if (editedModelConfig) Object.assign(mConfig, editedModelConfig);
 
         // Backward compatibility for root config fallback
         config.temperature = mConfig.temperature;
@@ -794,6 +808,10 @@ const cpDisconnectKeyBtn = document.getElementById("cp-disconnect-key-btn");
 const cpModelsInput = document.getElementById("cp-models-input");
 const cpTempInput = document.getElementById("cp-temperature-input");
 const cpMaxTokensInput = document.getElementById("cp-max-tokens-input");
+const cpFileUploadEnabledInput = document.getElementById("cp-file-upload-enabled-input");
+const cpFileUploadOptions = document.getElementById("cp-file-upload-options");
+const cpFileUploadPurposeInput = document.getElementById("cp-file-upload-purpose-input");
+const cpFileUploadExpiryInput = document.getElementById("cp-file-upload-expiry-input");
 const cpSaveBtn = document.getElementById("cp-save-btn");
 const cpCancelBtn = document.getElementById("cp-cancel-btn");
 const cpEditId = document.getElementById("cp-edit-id");
@@ -811,7 +829,7 @@ async function refreshCustomProvidersUI() {
     cpList.innerHTML = "";
     if (customProvidersCache.length === 0) {
         cpList.innerHTML = '<div style="font-size: 12px; color: var(--subtext0); padding: 8px;">暂无自定义提供商，点击上方"新增提供商"添加。</div>';
-        return;
+        return customProvidersCache;
     }
     customProvidersCache.forEach(p => {
         const row = document.createElement("div");
@@ -822,10 +840,13 @@ async function refreshCustomProvidersUI() {
         const modelsUrlLine = p.models_api_url
             ? ` · 模型地址: ${escapeHtml(p.models_api_url)}`
             : "";
+        const filesBadge = p.file_upload_enabled
+            ? ` · Files API (${escapeHtml(p.file_upload_purpose || "user_data")})`
+            : " · Files API 关闭";
         row.innerHTML = `
             <div style="display: flex; flex-direction: column; gap: 2px;">
                 <span style="font-size: 13px; color: var(--text); font-weight: 500;">${escapeHtml(p.name || p.id)} <span style="color: var(--subtext0); font-size: 11px;">(${escapeHtml(p.platform_id || "")})</span></span>
-                <span style="font-size: 11px; color: var(--subtext0);">${escapeHtml(p.api_url || "")}${modelsUrlLine} · ${keyBadge}</span>
+                <span style="font-size: 11px; color: var(--subtext0);">${escapeHtml(p.api_url || "")}${modelsUrlLine}${filesBadge} · ${keyBadge}</span>
             </div>
             <div style="display: flex; gap: 6px;">
                 <button type="button" class="btn btn-secondary btn-sm cp-edit-btn" data-cp-id="${escapeHtml(p.id)}" style="font-size: 11px; padding: 3px 8px;">编辑</button>
@@ -835,6 +856,7 @@ async function refreshCustomProvidersUI() {
     });
     cpList.querySelectorAll(".cp-edit-btn").forEach(b => b.onclick = () => startEditCustomProvider(b.dataset.cpId));
     cpList.querySelectorAll(".cp-del-btn").forEach(b => b.onclick = () => removeCustomProvider(b.dataset.cpId));
+    return customProvidersCache;
 }
 
 function escapeHtml(s) {
@@ -850,6 +872,10 @@ function resetCustomProviderForm() {
     cpModelsInput.value = "";
     cpTempInput.value = "0.7";
     cpMaxTokensInput.value = "4096";
+    cpFileUploadEnabledInput.checked = false;
+    cpFileUploadPurposeInput.value = "user_data";
+    cpFileUploadExpiryInput.value = "172800";
+    cpFileUploadOptions.classList.add("hidden");
     cpEditId.textContent = "";
     cpClearKeyPending = false;
     // 新增模式：显示输入框，隐藏状态
@@ -868,6 +894,10 @@ function startEditCustomProvider(id) {
     cpModelsInput.value = (p.models || []).join(", ");
     cpTempInput.value = p.temperature != null ? p.temperature : 0.7;
     cpMaxTokensInput.value = p.max_tokens != null ? p.max_tokens : 4096;
+    cpFileUploadEnabledInput.checked = !!p.file_upload_enabled;
+    cpFileUploadPurposeInput.value = p.file_upload_purpose || "user_data";
+    cpFileUploadExpiryInput.value = p.file_upload_expires_in_seconds || 172800;
+    cpFileUploadOptions.classList.toggle("hidden", !cpFileUploadEnabledInput.checked);
     cpEditId.textContent = id;
     cpClearKeyPending = false;
     // 编辑模式：参考内置 apikey 形式，已配置则显示状态+更换/断开，未配置则显示输入框
@@ -883,10 +913,14 @@ function startEditCustomProvider(id) {
 
 async function removeCustomProvider(id) {
     if (!confirm(`确认删除自定义提供商 "${id}"？\n其 API Key 也将被清除。`)) return;
+    const removedActiveProvider = config.active_platform === `custom:${id}`;
     const res = await apiBridge.remove_custom_provider(id);
     if (res && res.error) { alert(res.error); return; }
-    await refreshCustomProvidersUI();
-    refreshPlatformSelect();
+    // 后端删除当前厂商时已经持久化回退到 Claude。
+    if (removedActiveProvider) config.active_platform = "claude";
+    const providers = await refreshCustomProvidersUI();
+    await refreshPlatformSelect(providers);
+    if (removedActiveProvider) await switchActivePlatform("claude");
     statusLabel.textContent = `已删除提供商: ${id}`;
 }
 
@@ -899,6 +933,12 @@ if (addCustomProviderBtn) {
 
 if (cpCancelBtn) {
     cpCancelBtn.onclick = () => { cpForm.classList.add("hidden"); };
+}
+
+if (cpFileUploadEnabledInput) {
+    cpFileUploadEnabledInput.onchange = () => {
+        cpFileUploadOptions.classList.toggle("hidden", !cpFileUploadEnabledInput.checked);
+    };
 }
 
 // 自定义提供商 API Key 状态控制：复刻内置 apikey 的"更换/断开"形式
@@ -928,6 +968,15 @@ if (cpSaveBtn) {
         const models = cpModelsInput.value.split(",").map(s => s.trim()).filter(Boolean);
         const temperature = parseFloat(cpTempInput.value) || 0.7;
         const maxTokens = parseInt(cpMaxTokensInput.value) || 4096;
+        const fileUploadEnabled = typeof cpFileUploadEnabledInput !== "undefined"
+            ? cpFileUploadEnabledInput.checked
+            : false;
+        const fileUploadPurpose = typeof cpFileUploadPurposeInput !== "undefined"
+            ? cpFileUploadPurposeInput.value.trim() || "user_data"
+            : "user_data";
+        const fileUploadExpiry = typeof cpFileUploadExpiryInput !== "undefined"
+            ? Math.max(3600, Math.min(2592000, parseInt(cpFileUploadExpiryInput.value) || 172800))
+            : 172800;
         const apiKey = cpApiKeyInput.value.trim();
         const editId = cpEditId.textContent.trim();
         let res;
@@ -938,7 +987,9 @@ if (cpSaveBtn) {
             // - 都没有 → 不传 api_key，保持原值
             const updateData = {
                 id: editId, name, api_url: apiUrl, models_api_url: modelsApiUrl,
-                models, temperature, max_tokens: maxTokens
+                models, temperature, max_tokens: maxTokens,
+                file_upload_enabled: fileUploadEnabled, file_upload_purpose: fileUploadPurpose,
+                file_upload_expires_in_seconds: fileUploadExpiry
             };
             if (cpClearKeyPending) {
                 updateData.clear_api_key = true;
@@ -949,13 +1000,15 @@ if (cpSaveBtn) {
         } else {
             if (!apiKey) { alert("新增提供商时 API Key 不能为空"); return; }
             res = await apiBridge.add_custom_provider({
-                name, api_url: apiUrl, models_api_url: modelsApiUrl, api_key: apiKey, models, temperature, max_tokens: maxTokens
+                name, api_url: apiUrl, models_api_url: modelsApiUrl, api_key: apiKey, models, temperature, max_tokens: maxTokens,
+                file_upload_enabled: fileUploadEnabled, file_upload_purpose: fileUploadPurpose,
+                file_upload_expires_in_seconds: fileUploadExpiry
             });
         }
         if (res && res.error) { alert(res.error); return; }
         cpForm.classList.add("hidden");
-        await refreshCustomProvidersUI();
-        refreshPlatformSelect();
+        const providers = await refreshCustomProvidersUI();
+        await refreshPlatformSelect(providers);
         statusLabel.textContent = editId ? `已更新提供商: ${name}` : `已新增提供商: ${name}`;
     };
 }

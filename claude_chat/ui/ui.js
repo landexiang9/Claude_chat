@@ -11,7 +11,10 @@ function parseMarkdown(text) {
     // 当 marked 已加载而 DOMPurify 因 CDN 失败/广告拦截缺失时,直接返回 marked.parse 会
     // 把内联原始 HTML 注入 innerHTML 造成 XSS,因此降级走转义路径而非返回原始解析结果。
     if ((typeof marked !== 'undefined') && (typeof DOMPurify !== 'undefined')) {
-        return DOMPurify.sanitize(marked.parse(text));
+        const renderer = new marked.Renderer();
+        // Markdown 语法照常渲染，但消息内嵌的原始 HTML 永远只作为文字展示。
+        renderer.html = token => escapeHtml(typeof token === "string" ? token : (token?.text || ""));
+        return DOMPurify.sanitize(marked.parse(String(text), { renderer }));
     }
     return String(text)
         .replace(/&/g, "&amp;")
@@ -20,6 +23,15 @@ function parseMarkdown(text) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;")
         .replace(/\n/g, "<br>");
+}
+
+function renderMessageBody(body, text, useMarkdown) {
+    if (useMarkdown) {
+        body.innerHTML = parseMarkdown(text);
+        return;
+    }
+    body.classList.add("plain-text");
+    body.textContent = String(text);
 }
 
 function applyFontMode() {
@@ -109,6 +121,7 @@ if (webSearchBtn) {
     };
 }
 function updateLedStatus() {
+    window.SelectPicker?.refreshAll();
     let hasKey = false;
     const platform = config.active_platform || "claude";
     if (platform === "claude") {
@@ -144,6 +157,42 @@ function setSendButtonState(isGenerating) {
     if (icon) icon.textContent = isGenerating ? "■" : "↑";
 }
 
+function createSearchableModelPicker() {
+    const requiredElements = [
+        modelPickerTrigger, modelPickerValue, modelPickerPanel,
+        modelSearchInput, modelPickerResults, modelPickerEmpty
+    ];
+    if (window.ModelPicker && requiredElements.every(Boolean)) {
+        return window.ModelPicker.create({
+            select: modelSelect,
+            trigger: modelPickerTrigger,
+            valueLabel: modelPickerValue,
+            panel: modelPickerPanel,
+            searchInput: modelSearchInput,
+            results: modelPickerResults,
+            emptyState: modelPickerEmpty
+        });
+    }
+    // 渐进增强回退：搜索组件加载失败时仍保留原生模型下拉框。
+    modelSelect.classList.remove("model-select-native");
+    modelSelect.classList.add("select-menu");
+    modelSelect.removeAttribute("tabindex");
+    modelSelect.removeAttribute("aria-hidden");
+    if (modelPickerTrigger) modelPickerTrigger.classList.add("hidden");
+    return { setModels() {}, setSelected() {}, setStatus() {} };
+}
+
+const searchableModelPicker = createSearchableModelPicker();
+
+function setModelListStatus(message) {
+    modelSelect.innerHTML = "";
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = message;
+    modelSelect.appendChild(option);
+    searchableModelPicker.setStatus(message);
+}
+
 // 渲染下拉菜单中的模型选项列表
 function updateModelList(models, selectedModelId = config.model, preserveSelected = false) {
     modelSelect.innerHTML = "";
@@ -153,10 +202,7 @@ function updateModelList(models, selectedModelId = config.model, preserveSelecte
         displayModels.unshift({ id: selectedModelId, display_name: `${selectedModelId}（历史会话）` });
     }
     if (displayModels.length === 0) {
-        const option = document.createElement("option");
-        option.value = "";
-        option.textContent = "模型加载失败或无可用模型，请在设置中检查配置";
-        modelSelect.appendChild(option);
+        setModelListStatus("模型加载失败或无可用模型，请在设置中检查配置");
         return;
     }
     let hasSelected = false;
@@ -188,6 +234,7 @@ function updateModelList(models, selectedModelId = config.model, preserveSelecte
         }
         if (window.updateModelSettingsUI) window.updateModelSettingsUI();
     }
+    searchableModelPicker.setModels(displayModels, modelSelect.value);
 }
 
 // 绑定模型列表更新的全局回调函数
@@ -206,6 +253,7 @@ window.onModelsUpdated = (models, platform = null) => {
 modelSelect.addEventListener("change", async (e) => {
     const previousModel = config.model;
     config.model = e.target.value;
+    searchableModelPicker.setSelected(config.model);
     
     // 安全防护：检测新切换的模型是否支持 Extended Thinking
     const modelObj = availableModels.find(m => (typeof m === 'object' && m.id === config.model));
@@ -232,6 +280,7 @@ modelSelect.addEventListener("change", async (e) => {
         statusLabel.textContent = "模型切换保存失败";
         config.model = previousModel;
         modelSelect.value = previousModel;
+        searchableModelPicker.setSelected(previousModel);
         if (currentConvId) {
             const conv = conversations.find(c => c.id === currentConvId);
             if (conv) conv.model = previousModel;
@@ -243,42 +292,100 @@ modelSelect.addEventListener("change", async (e) => {
     statusLabel.textContent = `模型切换为: ${config.model}`;
 });
 
-if (platformSelect) {
-    platformSelect.addEventListener("change", async (e) => {
-        const previousPlatform = config.active_platform;
-        config.active_platform = e.target.value;
-        modelSelect.innerHTML = '<option value="">正在加载模型...</option>';
-        if (config.active_platform === "deepseek") {
-            statusLabel.textContent = "已切换至 DeepSeek (本地文档解析与 OCR 提取生效)";
-        } else if (config.active_platform.startsWith("custom:")) {
-            const opt = e.target.selectedOptions && e.target.selectedOptions[0];
-            const dispName = opt ? opt.textContent : config.active_platform;
-            statusLabel.textContent = `已切换至自定义提供商: ${dispName}`;
-        } else {
-            statusLabel.textContent = `已切换至平台: ${config.active_platform}`;
+let platformSwitchVersion = 0;
+let platformSaveQueue = Promise.resolve();
+let pendingPlatformSaves = 0;
+let confirmedPlatform = null;
+
+async function switchActivePlatform(nextPlatform) {
+    const switchVersion = ++platformSwitchVersion;
+    const previousPlatform = config.active_platform;
+    if (pendingPlatformSaves === 0) confirmedPlatform = previousPlatform;
+    pendingPlatformSaves += 1;
+    config.active_platform = nextPlatform;
+    if (platformSelect) platformSelect.value = nextPlatform;
+    setModelListStatus("正在加载模型...");
+    if (nextPlatform === "deepseek") {
+        statusLabel.textContent = "已切换至 DeepSeek (本地文档解析与 OCR 提取生效)";
+    } else if (nextPlatform.startsWith("custom:")) {
+        const opt = platformSelect && platformSelect.selectedOptions && platformSelect.selectedOptions[0];
+        const dispName = opt ? opt.textContent : nextPlatform;
+        statusLabel.textContent = `已切换至自定义提供商: ${dispName}`;
+    } else {
+        statusLabel.textContent = `已切换至平台: ${nextPlatform}`;
+    }
+    const saveTask = platformSaveQueue.then(async () => {
+        try {
+            const result = await apiBridge.save_config({ active_platform: nextPlatform });
+            if (result) confirmedPlatform = nextPlatform;
+            return result;
+        } finally {
+            pendingPlatformSaves -= 1;
         }
-        const saved = await apiBridge.save_config({ active_platform: config.active_platform });
-        if (!saved) {
-            statusLabel.textContent = "平台切换保存失败";
-            config.active_platform = previousPlatform;
-            platformSelect.value = previousPlatform;
-            return;
-        }
-        if (currentConv && currentConv.id === currentConvId) {
-            currentConv.platform = config.active_platform;
-        }
-        if (currentConvId) {
-            const conv = conversations.find(c => c.id === currentConvId);
-            if (conv) conv.platform = config.active_platform;
-        }
+    });
+    platformSaveQueue = saveTask.catch(() => false);
+    let saved = false;
+    try {
+        saved = await saveTask;
+    } catch (error) {
+        console.error("Platform switch save failed", error);
+    }
+    if (switchVersion !== platformSwitchVersion || config.active_platform !== nextPlatform) return false;
+    if (!saved) {
+        statusLabel.textContent = "平台切换保存失败";
+        const restoredPlatform = confirmedPlatform || previousPlatform;
+        config.active_platform = restoredPlatform;
+        if (platformSelect) platformSelect.value = restoredPlatform;
+        if (currentConv && currentConv.id === currentConvId) currentConv.platform = restoredPlatform;
+        const summary = conversations.find(c => c.id === currentConvId);
+        if (summary) summary.platform = restoredPlatform;
         updateLedStatus();
         updateSearchBtnUI();
-        const models = await apiBridge.fetch_models(config.active_platform);
-        if (models) {
-            modelCache.set(config.active_platform, models);
-            availableModels = models;
-            updateModelList(models, config.model, false);
+        try {
+            const restoredModels = modelCache.get(restoredPlatform) || await apiBridge.fetch_models(restoredPlatform);
+            if (switchVersion !== platformSwitchVersion || config.active_platform !== restoredPlatform) return false;
+            availableModels = Array.isArray(restoredModels) ? restoredModels : [];
+            modelCache.set(restoredPlatform, availableModels);
+            updateModelList(availableModels, config.model, true);
+        } catch (error) {
+            if (switchVersion === platformSwitchVersion && config.active_platform === restoredPlatform) {
+                setModelListStatus("模型加载失败，请重新选择平台");
+            }
         }
+        return false;
+    }
+    if (currentConv && currentConv.id === currentConvId) {
+        currentConv.platform = nextPlatform;
+    }
+    if (currentConvId) {
+        const conv = conversations.find(c => c.id === currentConvId);
+        if (conv) conv.platform = nextPlatform;
+    }
+    updateLedStatus();
+    updateSearchBtnUI();
+    let models;
+    try {
+        models = await apiBridge.fetch_models(nextPlatform);
+    } catch (error) {
+        if (switchVersion === platformSwitchVersion && config.active_platform === nextPlatform) {
+            setModelListStatus("模型加载失败，请重新选择平台");
+        }
+        return false;
+    }
+    if (switchVersion !== platformSwitchVersion || config.active_platform !== nextPlatform) return false;
+    if (Array.isArray(models)) {
+        modelCache.set(nextPlatform, models);
+        availableModels = models;
+        updateModelList(models, config.model, false);
+    } else {
+        setModelListStatus("模型加载失败，请重新选择平台");
+    }
+    return true;
+}
+
+if (platformSelect) {
+    platformSelect.addEventListener("change", async (e) => {
+        await switchActivePlatform(e.target.value);
     });
 }
 // 加载历史会话列表数据
@@ -385,7 +492,9 @@ function appendMessage(
     isStreamingPlaceholder = false,
     msgIndex = -1,
     toolCalls = null,
-    targetContainer = messageList
+    targetContainer = messageList,
+    renderMarkdown = true,
+    isError = false
 ) {
     const displayContent = normalizeMessageDisplayContent(content, {
         extractAttachments: role === "user"
@@ -506,13 +615,16 @@ function appendMessage(
         card.appendChild(thinkContainer);
     }
 
-    // 渲染消息正文（Markdown 解析）
+    // 用户可逐条选择 Markdown 或纯文本；两种模式都不会执行原始 HTML。
     const body = document.createElement("div");
     body.className = "message-body";
     body.id = isStreamingPlaceholder ? "streaming-message-body" : "";
     
-    if (displayContent.text) {
-        body.innerHTML = parseMarkdown(displayContent.text);
+    if (isError) {
+        body.classList.add("message-error", "plain-text");
+        body.textContent = displayContent.text;
+    } else if (displayContent.text) {
+        renderMessageBody(body, displayContent.text, role !== "user" || renderMarkdown);
     } else {
         body.classList.add("hidden");
     }

@@ -132,6 +132,9 @@ class HttpApiRouter:
             success = self.server.api.save_config(body)
             self.send_json_response({"success": success})
 
+        elif path == "/api/preview_model_request":
+            self.send_json_response(self.server.api.preview_model_request(body))
+
         # POST /api/update_model_registry -> 手动刷新模型能力注册表
         elif path == "/api/update_model_registry":
             self.send_json_response(self.server.api.update_model_registry())
@@ -149,7 +152,10 @@ class HttpApiRouter:
                 models=body.get("models", []),
                 temperature=body.get("temperature", 0.7),
                 max_tokens=body.get("max_tokens", 4096),
-                models_api_url=body.get("models_api_url", "")
+                models_api_url=body.get("models_api_url", ""),
+                file_upload_enabled=body.get("file_upload_enabled", False),
+                file_upload_purpose=body.get("file_upload_purpose", "user_data"),
+                file_upload_expires_in_seconds=body.get("file_upload_expires_in_seconds", 172800),
             )
             self.send_json_response(result)
 
@@ -164,7 +170,10 @@ class HttpApiRouter:
                 temperature=body.get("temperature"),
                 max_tokens=body.get("max_tokens"),
                 models_api_url=body.get("models_api_url"),
-                clear_api_key=body.get("clear_api_key", False)
+                clear_api_key=body.get("clear_api_key", False),
+                file_upload_enabled=body.get("file_upload_enabled"),
+                file_upload_purpose=body.get("file_upload_purpose"),
+                file_upload_expires_in_seconds=body.get("file_upload_expires_in_seconds"),
             )
             self.send_json_response(result)
 
@@ -230,16 +239,18 @@ class HttpApiRouter:
             conv_id = body.get("conv_id")
             text = body.get("text")
             attachments = body.get("attachments", [])
+            render_markdown = body.get("render_markdown", True)
             # 安全边界:HTTP 模式只接受服务签发的随机受管附件 ID。
             validate_http_attachment_paths(attachments)
-            self.handle_streaming_generation("send_message", conv_id, text, attachments)
+            self.handle_streaming_generation("send_message", conv_id, text, attachments, render_markdown)
 
         # POST /api/edit_and_resend -> 用户修改历史消息并重新发送生成，走流式响应接口
         elif path == "/api/edit_and_resend":
             conv_id = body.get("conv_id")
             msg_index = body.get("msg_index")
             new_content = body.get("new_content")
-            self.handle_streaming_generation("edit_and_resend", conv_id, new_content, msg_index)
+            render_markdown = body.get("render_markdown", True)
+            self.handle_streaming_generation("edit_and_resend", conv_id, new_content, msg_index, render_markdown)
 
         # POST /api/retry_message -> 重新生成某条 Assistant 消息，走流式响应接口
         elif path == "/api/retry_message":

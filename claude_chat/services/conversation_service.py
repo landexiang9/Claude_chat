@@ -14,12 +14,13 @@ from claude_chat.config import (
     OFFICE_EXTENSIONS,
     PDF_EXTENSIONS,
     SUPPORTED_ATTACHMENT_EXTENSIONS,
+    find_custom_provider,
 )
 from claude_chat.db import deserialize_content
 from claude_chat.platform_params import PlatformParamMapper
 from claude_chat.services.base import AppService
 from claude_chat.services.attachment_store import migrate_legacy_conversation_attachments
-from claude_chat.stream_protocol import StreamTaskState
+from claude_chat.stream_protocol import StreamTaskState, is_stream_error_message
 
 logger = logging.getLogger("claude_chat")
 
@@ -97,9 +98,28 @@ def prepare_attachment_content(att, platform, config):
         "media_type": mime,
         "kind": attachment_kind,
     }
-    openai_compatible = platform == "deepseek" or str(platform).startswith("custom:")
+    custom_provider = None
+    if str(platform).startswith("custom:"):
+        config_data = getattr(config, "data", None)
+        if not isinstance(config_data, dict):
+            config_data = getattr(config, "values", {})
+        custom_provider = find_custom_provider(config_data, platform) or {}
+    custom_file_upload = bool(custom_provider and custom_provider.get("file_upload_enabled", False))
+    builtin_upload_enabled = {
+        "claude": bool(config.get("claude_file_upload_enabled", True)),
+        "deepseek": bool(config.get("deepseek_file_upload_enabled", True)),
+        "gemini": bool(config.get("gemini_file_upload_enabled", True)),
+    }.get(platform, False)
+    # Office formats are not accepted as native message documents by the three
+    # providers. DeepSeek's Files API currently accepts images only. Custom
+    # OpenAI-compatible providers retain the previous parser fallback unless the
+    # user explicitly enables their Files API setting.
     needs_text_extraction = ext in OFFICE_EXTENSIONS or (
-        openai_compatible and (ext in IMAGE_EXTENSIONS or ext in PDF_EXTENSIONS)
+        platform == "deepseek" and ext in PDF_EXTENSIONS
+    ) or (
+        str(platform).startswith("custom:") and not custom_file_upload and ext in IMAGE_EXTENSIONS | PDF_EXTENSIONS
+    ) or (
+        platform in {"claude", "gemini"} and not builtin_upload_enabled and ext in IMAGE_EXTENSIONS | PDF_EXTENSIONS
     )
 
     if needs_text_extraction:
@@ -149,6 +169,15 @@ def is_attachment_content_block(block):
     if block.get("type") in {"image", "document", "file", "audio", "video"}:
         return True
     return block.get("type") == "text" and bool(LEGACY_ATTACHMENT_TEXT_RE.fullmatch(str(block.get("text", ""))))
+
+
+def messages_for_api(messages):
+    """Convert stored history while excluding local-only stream error records."""
+    return [
+        extract_api_message(message, preserve_file_paths=True)
+        for message in messages
+        if not is_stream_error_message(message)
+    ]
 
 
 def conversation_for_frontend(conversation):
@@ -406,7 +435,9 @@ class ConversationService(AppService):
                 self._app.set_streaming_done(StreamTaskState.FAILED, task)
                 return False
 
-            api_messages = [extract_api_message(msg) for msg in self._app.current_conv["messages"]]
+            # Stream failures are kept in local history for diagnosis, but they are
+            # UI records rather than model responses and must not enter API context.
+            api_messages = messages_for_api(self._app.current_conv["messages"])
 
             # 获取活跃平台与投影映射后的扁平配置
             active_platform = self._app.current_conv.get("platform") or self._app.config.get("active_platform", "claude")
@@ -461,6 +492,8 @@ class ConversationService(AppService):
                     on_stream_created
                 ),
                 kwargs={
+                    "request_params": mapped.get("request_params"),
+                    "custom_params": mapped["custom_params"],
                     "system": system_prompt_val,
                     "output_config": mapped["output_config"] if active_platform == "claude" else None,
                     "enable_search": mapped["enable_search"],
@@ -484,6 +517,9 @@ class ConversationService(AppService):
                     "thinking_enabled": thinking_enabled,
                     "thinking_budget": thinking_budget,
                     "thinking_level": thinking_level,
+                    "file_upload_enabled": mapped["file_upload_enabled"],
+                    "file_upload_expires_in_seconds": mapped["file_upload_expires_in_seconds"],
+                    "file_upload_purpose": mapped["file_upload_purpose"],
                     "depth": 0
                 },
                 daemon=True
@@ -505,13 +541,18 @@ class ConversationService(AppService):
                 self._app.set_streaming_done(StreamTaskState.FAILED, task)
             return False
 
-    def send_message(self, conv_id, text, attachments, custom_queue=None):
+    def send_message(self, conv_id, text, attachments, render_markdown=True, custom_queue=None):
         """
         发送用户消息。如果是大文本附件会自动拼装文本隔离区域随 Prompt 一同发送，
-        图片或 PDF 则被转换为符合接口的多媒体结构在后台线程以二进制块编码为 Base64 发送。
+        图片或 PDF 会转换为多媒体结构，并由供应商客户端通过官方 Files API 上传后发送。
         """
         text = text if isinstance(text, str) else ""
         attachments = attachments if isinstance(attachments, list) else []
+        if not isinstance(render_markdown, bool):
+            # 兼容旧的第四个位置参数 custom_queue。
+            if custom_queue is None:
+                custom_queue = render_markdown
+            render_markdown = True
         with self._app.lock:
             logger.info(f"正在发送消息，会话 ID: {conv_id}，文本大小: {len(text)}")
             if self._app.is_streaming:
@@ -527,7 +568,7 @@ class ConversationService(AppService):
             if not conv.get("model"):
                 conv["model"] = self._app.config.get("model")
 
-            user_msg_display = {"role": "user", "content": text}
+            user_msg_display = {"role": "user", "content": text, "render_markdown": render_markdown}
             if attachments:
                 user_msg_display["content"] = [{"type": "text", "text": text}]
                 conv_platform = conv.get("platform") or self._app.config.get("active_platform", "claude")
@@ -545,10 +586,14 @@ class ConversationService(AppService):
                 return False
             return True
 
-    def edit_and_resend(self, conv_id, msg_index, new_content, custom_queue=None):
+    def edit_and_resend(self, conv_id, msg_index, new_content, render_markdown=True, custom_queue=None):
         """
         用户修改并重新发送历史已发送消息：删除目标索引后的所有历史消息，重新发起生成请求。
         """
+        if not isinstance(render_markdown, bool):
+            if custom_queue is None:
+                custom_queue = render_markdown
+            render_markdown = True
         with self._app.lock:
             logger.info(f"编辑并重新发送消息，会话 ID: {conv_id}，消息索引: {msg_index}")
             if self._app.is_streaming:
@@ -581,7 +626,8 @@ class ConversationService(AppService):
                     persisted_content = [{"type": "text", "text": new_content}, *retained_attachments]
                 user_msg_display = {
                     "role": "user",
-                    "content": persisted_content
+                    "content": persisted_content,
+                    "render_markdown": render_markdown,
                 }
                 conv["messages"].append(user_msg_display)
                 self._app.conv_manager.save_conversation(conv)

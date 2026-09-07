@@ -379,11 +379,17 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         conv_id = None
         try:
             if action == "send_message":
-                conv_id, text, attachments = args
-                success = self.server.api.send_message(conv_id, text, attachments, custom_queue=q)
+                conv_id, text, attachments, *options = args
+                render_markdown = options[0] if options else True
+                success = self.server.api.send_message(
+                    conv_id, text, attachments, render_markdown, custom_queue=q
+                )
             elif action == "edit_and_resend":
-                conv_id, new_content, msg_index = args
-                success = self.server.api.edit_and_resend(conv_id, msg_index, new_content, custom_queue=q)
+                conv_id, new_content, msg_index, *options = args
+                render_markdown = options[0] if options else True
+                success = self.server.api.edit_and_resend(
+                    conv_id, msg_index, new_content, render_markdown, custom_queue=q
+                )
             elif action == "retry_message":
                 conv_id, msg_index = args
                 success = self.server.api.retry_message(conv_id, msg_index, custom_queue=q)
@@ -469,18 +475,14 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                     self._write_stream_line(event)
                     break
                 elif msg_type == "error":
-                    # 发生错误，将当前已生成文本增量妥善存档
-                    if streaming_text:
-                        thinking = streaming_thinking_text if streaming_thinking_text else None
-                        self.server.api._app.conv_manager.add_assistant_message_and_update_tokens(
-                            conv_id,
-                            streaming_text,
-                            thinking
-                        )
-                        with self.server.api._app.lock:
-                            curr = self.server.api._app.current_conv
-                            if curr and curr.get("id") == conv_id:
-                                self.server.api._app.current_conv = self.server.api._app.conv_manager.load_conversation(conv_id)
+                    # Archive the terminal error before the browser receives it and
+                    # reloads history; otherwise the temporary red bubble disappears.
+                    self.server.api._app._persist_stream_failure(
+                        conv_id,
+                        msg_data,
+                        streaming_text,
+                        streaming_thinking_text,
+                    )
 
                     self.server.api._app.set_streaming_done(StreamTaskState.FAILED, task)
                     self._write_stream_line(event)
@@ -491,14 +493,10 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
             except queue.Empty:
                 logger.warning("模型流输出队列超时。")
                 # M-fix#19: 超时不能直接丢已累积的流式文本;按 error 模式增量存档并停止后端生成线程
-                if streaming_text:
-                    try:
-                        thinking = streaming_thinking_text if streaming_thinking_text else None
-                        self.server.api._app.conv_manager.add_assistant_message_and_update_tokens(
-                            conv_id, streaming_text, thinking
-                        )
-                    except Exception as save_err:
-                        logger.error(f"超时时存档部分响应失败: {save_err}")
+                timeout_error = "生成流超时，已中止并保存部分内容。"
+                self.server.api._app._persist_stream_failure(
+                    conv_id, timeout_error, streaming_text, streaming_thinking_text
+                )
                 try:
                     self.server.api._app.abort_generation()
                 except Exception:
@@ -506,25 +504,21 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                 self.server.api._app.set_streaming_done(StreamTaskState.FAILED, task)
                 # 超时/异常路径必须向客户端写一个终止事件,否则前端 isStreaming
                 # 永远不复位,UI 锁死在"思考中..."(客户端仅在收到终止事件后复位状态)。
-                self._emit_stream_error(q, "生成流超时，已中止并保存部分内容。")
+                self._emit_stream_error(q, timeout_error)
                 break
             except Exception as e:
                 logger.error(f"推送流事件数据时出错: {e}")
                 # M-fix#19: 同上,异常/客户端断开时也存档已生成文本并停止后台线程
-                if streaming_text:
-                    try:
-                        thinking = streaming_thinking_text if streaming_thinking_text else None
-                        self.server.api._app.conv_manager.add_assistant_message_and_update_tokens(
-                            conv_id, streaming_text, thinking
-                        )
-                    except Exception as save_err:
-                        logger.error(f"异常时存档部分响应失败: {save_err}")
+                stream_error = f"生成流异常终止: {sanitize_error_message(e)}"
+                self.server.api._app._persist_stream_failure(
+                    conv_id, stream_error, streaming_text, streaming_thinking_text
+                )
                 try:
                     self.server.api._app.abort_generation()
                 except Exception:
                     pass
                 self.server.api._app.set_streaming_done(StreamTaskState.FAILED, task)
-                self._emit_stream_error(q, f"生成流异常终止: {sanitize_error_message(e)}")
+                self._emit_stream_error(q, stream_error)
                 break
 
     def _emit_stream_error(self, q, message):

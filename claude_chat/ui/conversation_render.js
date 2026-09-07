@@ -10,6 +10,9 @@ function buildConversationMessageGroups(messages) {
         let toolCalls = extractToolCallsFromMsg(msg, i + 1 < messages.length ? messages[i + 1] : null);
         let mergedThinking = msg.thinking || "";
         let mergedContent = Array.isArray(msg.content) ? [...msg.content] : msg.content;
+        let isError = Array.isArray(msg.content) && msg.content.some(
+            block => block && block._stream_error === true
+        );
         const messageIndex = i;
 
         if (msg.role === "assistant") {
@@ -19,6 +22,11 @@ function buildConversationMessageGroups(messages) {
                 const nextAssistant = messages[i + 2];
                 if (nextAssistant.thinking) {
                     mergedThinking += `${mergedThinking ? "\n\n" : ""}${nextAssistant.thinking}`;
+                }
+                if (Array.isArray(nextAssistant.content) && nextAssistant.content.some(
+                    block => block && block._stream_error === true
+                )) {
+                    isError = true;
                 }
                 const extraText = typeof nextAssistant.content === "string"
                     ? nextAssistant.content
@@ -47,7 +55,9 @@ function buildConversationMessageGroups(messages) {
             content: mergedContent,
             thinking: mergedThinking,
             messageIndex,
-            toolCalls
+            toolCalls,
+            renderMarkdown: msg.render_markdown !== false,
+            isError
         });
     }
     return groups;
@@ -63,7 +73,9 @@ function renderConversationGroupRange(groups, start, end) {
             false,
             group.messageIndex,
             group.toolCalls,
-            fragment
+            fragment,
+            group.renderMarkdown,
+            group.isError
         );
     }
     return fragment;

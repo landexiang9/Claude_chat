@@ -29,6 +29,8 @@ test/*
 !test/test_attachment_preview.py
 !test/test_settings_components.js
 !test/test_stream_protocol_ui.js
+!test/test_model_picker.js
+!test/test_platform_select.js
 scratch/
 test.db
 debug.txt
@@ -54,3 +56,12 @@ inspect_output.txt
 options.txt
 test.pptx
 .antigravitycli/
+
+!test/test_custom_params.py
+!test/test_custom_params.js
+
+!test/test_request_params.py
+!test/test_official_file_upload.py
+!test/test_model_config_editor_browser.js
+!test/test_message_formatting.py
+!test/test_message_formatting.js

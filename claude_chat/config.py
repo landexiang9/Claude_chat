@@ -256,6 +256,12 @@ class ConfigManager:
             "gemini_api_key": "",
             "deepseek_api_url": "https://api.deepseek.com",
             "gemini_api_url": "",
+            # Provider-native Files APIs are the default attachment transport.
+            "claude_file_upload_enabled": True,
+            "claude_file_upload_expires_in_seconds": 172800,
+            "deepseek_file_upload_enabled": True,
+            "deepseek_file_upload_expires_in_seconds": 172800,
+            "gemini_file_upload_enabled": True,
             "ocr_mode": "auto",
             "ocr_cloud_model": "gemini",
             "model": "claude-sonnet-4-6",
@@ -336,6 +342,8 @@ class ConfigManager:
         "gemini_temperature": float,
         "gemini_max_tokens": int,
         "gemini_thinking_budget": int,
+        "claude_file_upload_expires_in_seconds": int,
+        "deepseek_file_upload_expires_in_seconds": int,
         "server_port": int,
         "web_fetch_limit": int,
         "deepseek_web_fetch_limit": int,
@@ -346,6 +354,7 @@ class ConfigManager:
         "auto_run_code", "deepseek_enable_web_search", "deepseek_enable_web_fetch",
         "gemini_thinking_enabled", "gemini_enable_web_search",
         "gemini_enable_code_sandbox", "enable_server", "enable_ssl",
+        "claude_file_upload_enabled", "deepseek_file_upload_enabled", "gemini_file_upload_enabled",
         "sync_config_to_web", "only_server", "use_cdn_assets",
     }
 

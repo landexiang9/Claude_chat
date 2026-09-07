@@ -25,6 +25,7 @@ PlatformSettings.register("claude", {
     },
 
     load(currentConfig) {
+        if (typeof claudeFileUploadEnabledInput !== "undefined" && claudeFileUploadEnabledInput) claudeFileUploadEnabledInput.checked = currentConfig.claude_file_upload_enabled !== false;
         if (claudeEnableSearchInput) {
             claudeEnableSearchInput.checked = !!currentConfig.enable_web_search;
             if (claudeSearchGroup) claudeSearchGroup.classList.toggle("hidden", !claudeEnableSearchInput.checked);
@@ -37,6 +38,7 @@ PlatformSettings.register("claude", {
     },
 
     save(currentConfig) {
+        if (typeof claudeFileUploadEnabledInput !== "undefined" && claudeFileUploadEnabledInput) currentConfig.claude_file_upload_enabled = claudeFileUploadEnabledInput.checked;
         if (claudeEnableSearchInput) currentConfig.enable_web_search = claudeEnableSearchInput.checked;
         if (claudeSearchEngineSelect) currentConfig.web_search_engine = claudeSearchEngineSelect.value || "google";
         if (claudeEnableFetchInput) currentConfig.enable_web_fetch = claudeEnableFetchInput.checked;

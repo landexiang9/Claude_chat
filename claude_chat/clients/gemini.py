@@ -1,6 +1,8 @@
 import base64
 import json
 import logging
+from claude_chat.request_params import generation_params
+from claude_chat.clients.file_uploads import prepare_gemini_files, upload_cache_namespace
 from pathlib import Path
 import httpx
 from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestError
@@ -50,6 +52,14 @@ def convert_messages_to_gemini(messages):
                             mime_type = "application/pdf" if btype == "document" else "image/png"
                         
                         raw_bytes = None
+                        if source.get("file_uri"):
+                            parts.append({
+                                "file_data": {
+                                    "file_uri": source["file_uri"],
+                                    "mime_type": mime_type,
+                                }
+                            })
+                            continue
                         if "file_path" in source:
                             try:
                                 with open(source["file_path"], "rb") as f:
@@ -168,6 +178,10 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
                 "max_output_tokens": max_tokens,
             }
             
+            generation_config = generation_params(
+                "gemini", model, max_tokens, temperature,
+                custom=kwargs.get("custom_params"), override=kwargs.get("request_params"))
+
             tools = None
             if enable_search:
                 tools = ["google_search_retrieval"]
@@ -243,13 +257,19 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
                 client_kwargs["http_options"] = types.HttpOptions(**http_options_kwargs)
                 
             client = genai.Client(**client_kwargs)
-            
+
+            if kwargs.get("file_upload_enabled", True):
+                messages = prepare_gemini_files(
+                    client,
+                    messages,
+                    upload_cache_namespace("gemini", api_key, api_url),
+                )
             gemini_msgs = convert_messages_to_gemini(messages)
             
-            config_args = {
-                "max_output_tokens": max_tokens,
-                "temperature": temperature,
-            }
+            config_args = generation_params(
+                "gemini", model, max_tokens, temperature,
+                {"enabled": thinking_enabled, "budget_tokens": thinking_budget, "effort": thinking_level},
+                custom=kwargs.get("custom_params"), override=kwargs.get("request_params"))
             if system and system.strip():
                 config_args["system_instruction"] = system.strip()
             
@@ -263,17 +283,6 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
             if tools:
                 config_args["tools"] = tools
                 
-            if thinking_enabled:
-                budget_val = thinking_budget if thinking_budget else 1024
-                if "gemini-3" in model.lower() or "thinking" in model.lower() or "level" in model.lower():
-                    config_args["thinking_config"] = types.ThinkingConfig(thinking_level=thinking_level)
-                else:
-                    config_args["thinking_config"] = types.ThinkingConfig(thinking_budget=budget_val)
-                    
-            if "image" in model.lower():
-                config_args["response_modalities"] = ["IMAGE", "TEXT"]
-                config_args["image_config"] = types.ImageConfig(image_size="2K")
-                    
             gen_config = types.GenerateContentConfig(**config_args)
             
             response_stream = client.models.generate_content_stream(

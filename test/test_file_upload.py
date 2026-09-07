@@ -94,6 +94,29 @@ def main():
             oversized = service.upload_dropped_file("large.txt", MAX_ATTACHMENT_SIZE + 1, "AA==")
             assert "20 MB" in oversized["error"]
 
+            clipboard_file = Path(temp_dir) / "clipboard.txt"
+            clipboard_file.write_text("clipboard file", encoding="utf-8")
+            with (
+                patch("sys.platform", "win32"),
+                patch("PIL.ImageGrab.grabclipboard", return_value=[str(clipboard_file)]),
+            ):
+                clipboard_files = service.paste_attachments_from_clipboard()
+            assert clipboard_files["errors"] == []
+            assert clipboard_files["attachments"][0]["name"] == "clipboard.txt"
+
+            from PIL import Image
+
+            clipboard_image = Image.new("RGB", (2, 2), color="red")
+            with (
+                patch("sys.platform", "win32"),
+                patch("PIL.ImageGrab.grabclipboard", return_value=clipboard_image),
+            ):
+                clipboard_images = service.paste_attachments_from_clipboard()
+            assert clipboard_images["errors"] == []
+            assert clipboard_images["attachments"][0]["name"].endswith(".png")
+            image_path, _ = load_managed_attachment(clipboard_images["attachments"][0]["preview_id"])
+            assert image_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
         finally:
             store_patch.stop()
 
@@ -198,9 +221,11 @@ def main():
         assert image_block["_attachment"]["name"] == "pixel.png"
         assert image_block["_attachment"]["kind"] == "image"
         assert image_block["_attachment"]["preview_id"] == image_attachment["preview_id"]
-        api_message = extract_api_message({"role": "user", "content": [image_block]})
-        assert api_message["content"][0]["source"]["type"] == "base64"
-        assert base64.b64decode(api_message["content"][0]["source"]["data"]) == image_path.read_bytes()
+        api_message = extract_api_message(
+            {"role": "user", "content": [image_block]},
+            preserve_file_paths=True,
+        )
+        assert api_message["content"][0]["source"]["file_path"] == str(image_path)
         assert "_attachment" not in api_message["content"][0]
 
         with patch(

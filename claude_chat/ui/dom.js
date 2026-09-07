@@ -4,6 +4,12 @@ const newChatBtn = document.getElementById("new-chat-btn");
 const conversationSearchInput = document.getElementById("conversation-search-input");
 const currentConversationTitle = document.getElementById("current-conversation-title");
 const modelSelect = document.getElementById("model-select");
+const modelPickerTrigger = document.getElementById("model-picker-trigger");
+const modelPickerValue = document.getElementById("model-picker-value");
+const modelPickerPanel = document.getElementById("model-picker-panel");
+const modelSearchInput = document.getElementById("model-search-input");
+const modelPickerResults = document.getElementById("model-picker-results");
+const modelPickerEmpty = document.getElementById("model-picker-empty");
 const apiStatusLed = document.getElementById("api-status-led");
 const tokenLabel = document.getElementById("token-label");
 const statusLabel = document.getElementById("status-label");
@@ -16,6 +22,7 @@ const scrollToBottomBtn = document.getElementById("scroll-to-bottom-btn");
 const attachBtn = document.getElementById("attach-btn");
 const attachmentsArea = document.getElementById("attachments-area");
 const inputBox = document.getElementById("input-box");
+const markdownToggle = document.getElementById("markdown-toggle");
 const sendBtn = document.getElementById("send-btn");
 
 const settingsBtn = document.getElementById("settings-btn");
@@ -60,6 +67,7 @@ const toggleTokenVisibility = document.getElementById("toggle-token-visibility")
 
 // Claude specific parameters
 const claudeEnableSearchInput = document.getElementById("claude-enable-search-input");
+const claudeFileUploadEnabledInput = document.getElementById("claude-file-upload-enabled-input");
 const claudeSearchGroup = document.getElementById("claude-search-group");
 const claudeEnableFetchInput = document.getElementById("claude-enable-fetch-input");
 const claudeSearchEngineSelect = document.getElementById("claude-search-engine-select");
@@ -82,6 +90,7 @@ const claudeWebFetchLimitInput = document.getElementById("claude-web-fetch-limit
 
 // DeepSeek specific parameters
 const deepseekEnableSearchInput = document.getElementById("deepseek-enable-search-input");
+const deepseekFileUploadEnabledInput = document.getElementById("deepseek-file-upload-enabled-input");
 const deepseekSearchGroup = document.getElementById("deepseek-search-group");
 const deepseekEnableFetchInput = document.getElementById("deepseek-enable-fetch-input");
 const deepseekSearchEngineSelect = document.getElementById("deepseek-search-engine-select");
@@ -104,6 +113,7 @@ const deepseekWebFetchLimitInput = document.getElementById("deepseek-web-fetch-l
 
 // Gemini specific parameters
 const geminiEnableSearchInput = document.getElementById("gemini-enable-search-input");
+const geminiFileUploadEnabledInput = document.getElementById("gemini-file-upload-enabled-input");
 const geminiEnableCodeSandboxInput = document.getElementById("gemini-enable-code-sandbox-input");
 const geminiCodeSandboxTypeSelect = document.getElementById("gemini-code-sandbox-type-select");
 

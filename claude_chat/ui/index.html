@@ -74,27 +74,30 @@
                 </div>
 
                 <div class="top-bar-center" aria-label="模型与提示词选择">
-                    <label class="toolbar-field platform-select-wrapper">
+                    <div class="toolbar-field platform-select-wrapper">
                         <span class="toolbar-field-label">平台</span>
-                        <select id="platform-select" class="select-menu">
+                        <select id="platform-select" class="select-menu" aria-label="平台">
                             <option value="claude">Anthropic Claude</option>
                             <option value="deepseek">DeepSeek AI</option>
                             <option value="gemini">Google Gemini</option>
                         </select>
-                    </label>
-                    <label class="toolbar-field model-select-wrapper">
+                    </div>
+                    <div class="toolbar-field model-select-wrapper">
                         <span class="toolbar-field-label">模型</span>
-                        <select id="model-select" class="select-menu">
+                        <button type="button" id="model-picker-trigger" class="model-picker-trigger" role="combobox" aria-label="模型：正在加载模型" aria-haspopup="listbox" aria-expanded="false" aria-controls="model-picker-results">
+                            <span id="model-picker-value">正在加载模型...</span>
+                        </button>
+                        <select id="model-select" class="model-select-native" aria-label="模型" tabindex="-1" aria-hidden="true">
                             <option value="">正在加载模型...</option>
                         </select>
                         <span id="api-status-led" class="status-led" title="API 连接状态"></span>
-                    </label>
-                    <label class="toolbar-field system-prompt-wrapper">
+                    </div>
+                    <div class="toolbar-field system-prompt-wrapper">
                         <span class="toolbar-field-label">提示词</span>
-                        <select id="system-prompt-select" class="select-menu" title="预设系统提示词">
+                        <select id="system-prompt-select" aria-label="提示词" class="select-menu" title="预设系统提示词">
                             <option value="">无系统提示词 (默认)</option>
                         </select>
-                    </label>
+                    </div>
                 </div>
                 
                 <div class="top-bar-right">
@@ -146,7 +149,12 @@
 
                 <div class="input-capsule">
                     <button type="button" id="attach-btn" class="input-action-btn" title="添加附件 (支持文本/图片/PDF)" aria-label="添加附件">＋</button>
-                    <textarea id="input-box" class="input-box" placeholder="输入消息，支持 Markdown…" rows="1" aria-label="消息内容"></textarea>
+                    <textarea id="input-box" class="input-box" placeholder="输入消息，可粘贴图片或文件…" rows="1" aria-label="消息内容"></textarea>
+                    <label class="markdown-switch" title="开启后按 Markdown 显示这条消息；原始 HTML 始终按文字显示">
+                        <input type="checkbox" id="markdown-toggle" aria-label="使用 Markdown 格式" checked>
+                        <span class="markdown-switch-track" aria-hidden="true"><span></span></span>
+                        <span class="markdown-switch-label">Markdown</span>
+                    </label>
                     <button type="button" id="send-btn" class="send-btn" title="发送 (Ctrl+Enter)" aria-label="发送消息">
                         <span class="send-icon">↑</span>
                     </button>
@@ -263,6 +271,11 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="form-group" style="margin-top: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                                <input type="checkbox" id="claude-file-upload-enabled-input" checked> 使用 Anthropic 官方 Files API 上传图片和 PDF（默认开启，文件 48 小时后过期）
+                            </label>
+                        </div>
                         <!-- Claude Web Search -->
                         <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px;">
                             <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
@@ -356,6 +369,11 @@
                             <label for="deepseek-api-url-input">DeepSeek API URL (可选自定义代理):</label>
                             <input type="text" id="deepseek-api-url-input" placeholder="https://api.deepseek.com" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text);">
                         </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                                <input type="checkbox" id="deepseek-file-upload-enabled-input" checked> 使用 DeepSeek 官方 Files API 上传图片（默认开启；PDF/Office 仍本地解析）
+                            </label>
+                        </div>
                         <!-- DeepSeek Web Search -->
                         <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px;">
                             <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
@@ -448,6 +466,11 @@
                             <label for="gemini-api-url-input">Gemini API URL (可选自定义代理):</label>
                             <input type="text" id="gemini-api-url-input" placeholder="留空为默认" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--surface0); background-color: var(--crust); color: var(--text);">
                         </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                                <input type="checkbox" id="gemini-file-upload-enabled-input" checked> 使用 Gemini 官方 Files API 上传图片和 PDF（默认开启，文件由 Gemini 保存 48 小时）
+                            </label>
+                        </div>
                         <!-- Gemini Web Search Grounding -->
                         <div class="form-group" style="margin-top: 12px; border-top: 1px dashed var(--surface0); padding-top: 8px; display: flex; align-items: center; gap: 8px;">
                             <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
@@ -492,11 +515,14 @@
 
                     <div class="form-group" style="margin-top: 15px;">
                         <label for="model-temp-slider" id="model-temp-label-title">Temperature: 0.70</label>
+                        <label class="model-param-enabled"><input type="checkbox" id="model-temp-enabled" checked> 发送 temperature 参数</label>
+                        <input type="number" id="model-temp-input" min="0" max="2" step="any" aria-label="Temperature 精确值">
                         <input type="range" id="model-temp-slider" min="0.0" max="2.0" step="0.05" value="0.7">
                     </div>
                     
                     <div class="form-group">
-                        <label for="model-max-tokens-input">Max Tokens:</label>
+                        <label for="model-max-tokens-input" id="model-max-tokens-label">Max Tokens:</label>
+                        <label class="model-param-enabled"><input type="checkbox" id="model-max-tokens-enabled" checked> 发送输出长度参数</label>
                         <input type="number" id="model-max-tokens-input" value="16384">
                     </div>
 
@@ -504,7 +530,7 @@
                     <div class="form-group" style="margin-top: 15px; border-top: 1px dashed var(--surface0); padding-top: 10px;" id="model-thinking-container">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
                             <input type="checkbox" id="model-thinking-enabled-input" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--blue);"> 
-                            <span style="font-weight: 500;">启用思维模式 (Thinking Mode)</span>
+                            <span style="font-weight: 500;">发送思考配置 (Thinking)</span>
                         </label>
                         
                         <div id="model-thinking-options" class="hidden" style="margin-top: 10px; padding-left: 22px;">
@@ -537,6 +563,24 @@
                             </div>
                         </div>
                     </div>
+                    <div class="custom-params-heading">
+                        <strong>自定义参数</strong>
+                        <button type="button" id="add-custom-param-btn" class="btn btn-secondary btn-sm">＋ 添加自定义参数</button>
+                    </div>
+                    <p class="custom-params-help">可以修改或删除已有参数，也可以添加新字段。JSON 中的温度、输出长度与思考配置会自动对应到上方控件，其余字段在这里显示。</p>
+                    <div id="custom-params-list"></div>
+                    <div id="custom-params-error" class="custom-params-error" role="alert"></div>
+                    <details class="model-request-editor" open>
+                        <summary>查看 / 编辑最终参数 JSON</summary>
+                        <p class="custom-params-help">这是实际请求使用的模型参数，已合并默认值与自定义内容。可直接编辑，有效内容会自动同步到界面；保存设置后用于后续请求。聊天消息、系统提示词和工具由各自设置组装。Gemini 使用生成配置字段名。</p>
+                        <div class="model-json-toolbar">
+                            <button type="button" id="format-model-json-btn" class="btn btn-secondary btn-sm">格式化 JSON</button>
+                            <button type="button" id="restore-model-json-btn" class="btn btn-secondary btn-sm">恢复有效 JSON</button>
+                        </div>
+                        <textarea id="model-request-json" rows="14" spellcheck="false" aria-label="最终模型参数 JSON" aria-describedby="model-request-json-status model-request-json-error"></textarea>
+                        <div id="model-request-json-status" class="custom-params-help" role="status"></div>
+                        <div id="model-request-json-error" class="custom-params-error" role="alert"></div>
+                    </details>
                 </div>
 
                 <!-- Custom Provider Management -->
@@ -564,6 +608,18 @@
                         <div class="form-group">
                             <label for="cp-models-api-url-input">模型列表获取地址 (Models API URL，可选):</label>
                             <input type="text" id="cp-models-api-url-input" placeholder="留空则使用上面的 API Base URL；可填独立的 /models 端点 (同样不要包含 /chat/completions)" style="width: 100%;">
+                        </div>
+                        <div class="form-group" style="padding: 9px 10px; border: 1px solid var(--surface0); border-radius: 7px;">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
+                                <input type="checkbox" id="cp-file-upload-enabled-input"> 使用 OpenAI 兼容的 Files API（默认关闭）
+                            </label>
+                            <div id="cp-file-upload-options" class="hidden" style="margin-top: 8px;">
+                                <label for="cp-file-upload-purpose-input">上传 purpose（默认 user_data）:</label>
+                                <input type="text" id="cp-file-upload-purpose-input" value="user_data" placeholder="user_data" style="width: 100%;">
+                                <label for="cp-file-upload-expiry-input" style="margin-top: 7px;">文件有效期（秒，默认 172800 / 48 小时）:</label>
+                                <input type="number" id="cp-file-upload-expiry-input" min="3600" max="2592000" step="3600" value="172800" style="width: 100%;">
+                                <p style="font-size: 10.5px; color: var(--subtext0); margin: 5px 0 0;">启用后调用该 Base URL 下的 /files，并在聊天内容中发送 file_id。仅适用于实现这一兼容协议的供应商。</p>
+                            </div>
                         </div>
                         <div class="form-group" id="cp-api-key-input-container">
                             <label for="cp-api-key-input">API Key:</label>
@@ -901,10 +957,21 @@
         </div>
     </div>
 
+    <div id="model-picker-panel" class="model-picker-panel hidden" aria-label="选择模型">
+        <div class="model-picker-search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+            <input type="search" id="model-search-input" placeholder="搜索模型名称或 ID" aria-label="搜索模型" autocomplete="off" spellcheck="false">
+        </div>
+        <div id="model-picker-results" class="model-picker-results" role="listbox" aria-label="模型列表"></div>
+        <div id="model-picker-empty" class="model-picker-empty hidden" role="status">没有匹配的模型</div>
+    </div>
+
     <script src="state.js"></script>
     <script src="stream_protocol.js"></script>
     <script src="dom.js"></script>
     <script src="utils.js"></script>
+    <script src="model_picker.js"></script>
+    <script src="select_picker.js"></script>
     <script src="attachment_display.js"></script>
     <script src="api.js"></script>
     <script src="attachment_preview.js"></script>
@@ -916,6 +983,8 @@
     <script src="settings_claude.js"></script>
     <script src="settings_deepseek.js"></script>
     <script src="settings_gemini.js"></script>
+    <script src="custom_params.js"></script>
+    <script src="model_config_editor.js"></script>
     <script src="settings.js"></script>
     <script src="events.js"></script>
     <script src="main.js"></script>

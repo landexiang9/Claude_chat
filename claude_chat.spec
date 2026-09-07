@@ -19,6 +19,7 @@ a = Analysis(
         'google.generativeai',
         'httpx',
         'PIL',
+        'PIL.ImageGrab',
         'cryptography',
         'docx',
         'openpyxl',

@@ -10,6 +10,7 @@ PlatformSettings.register("gemini", {
     },
 
     load(currentConfig) {
+        if (typeof geminiFileUploadEnabledInput !== "undefined" && geminiFileUploadEnabledInput) geminiFileUploadEnabledInput.checked = currentConfig.gemini_file_upload_enabled !== false;
         if (geminiApiUrlInput) geminiApiUrlInput.value = currentConfig.gemini_api_url || "";
         if (geminiEnableSearchInput) geminiEnableSearchInput.checked = !!currentConfig.gemini_enable_web_search;
         if (geminiEnableCodeSandboxInput) geminiEnableCodeSandboxInput.checked = !!currentConfig.gemini_enable_code_sandbox;
@@ -17,6 +18,7 @@ PlatformSettings.register("gemini", {
     },
 
     save(currentConfig) {
+        if (typeof geminiFileUploadEnabledInput !== "undefined" && geminiFileUploadEnabledInput) currentConfig.gemini_file_upload_enabled = geminiFileUploadEnabledInput.checked;
         if (geminiApiUrlInput) currentConfig.gemini_api_url = geminiApiUrlInput.value.trim() || "";
         if (geminiEnableSearchInput) currentConfig.gemini_enable_web_search = geminiEnableSearchInput.checked;
         if (geminiEnableCodeSandboxInput) currentConfig.gemini_enable_code_sandbox = geminiEnableCodeSandboxInput.checked;

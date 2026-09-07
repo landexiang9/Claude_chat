@@ -39,7 +39,8 @@ class ServiceArchitectureTests(unittest.TestCase):
                 "branch_conversation", "abort_generation", "_start_stream_generation",
             },
             "FileService": {
-                "paste_from_clipboard", "select_attachments", "save_code_block", "save_image",
+                "paste_from_clipboard", "paste_attachments_from_clipboard",
+                "select_attachments", "save_code_block", "save_image",
                 "upload_dropped_file", "get_attachment_preview",
             },
             "ExecutionService": {

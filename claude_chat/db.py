@@ -6,6 +6,7 @@ from pathlib import Path
 import logging
 
 from claude_chat.config import DEFAULT_MAX_TOKENS
+from claude_chat.stream_protocol import stream_error_content
 
 logger = logging.getLogger("claude_chat")
 
@@ -119,10 +120,16 @@ class DatabaseManager:
                     content TEXT,
                     thinking TEXT,
                     aborted INTEGER DEFAULT 0,
+                    render_markdown INTEGER DEFAULT 1,
                     created_at TEXT,
                     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
                 )
             """)
+            # 每条用户消息可独立选择 Markdown 或纯文本；旧记录保持原来的 Markdown 行为。
+            try:
+                conn.execute("ALTER TABLE messages ADD COLUMN render_markdown INTEGER DEFAULT 1")
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
 
     def migrate_json_files(self):
@@ -174,12 +181,18 @@ class DatabaseManager:
                         m_content = serialize_content(msg.get("content", ""))
                         m_thinking = msg.get("thinking", None)
                         m_aborted = 1 if msg.get("aborted", False) else 0
+                        m_render_markdown = 1 if msg.get("render_markdown", True) else 0
                         m_created = updated_at # 默认采用对话更新时间排序
                         
                         conn.execute("""
-                            INSERT INTO messages (conversation_id, role, content, thinking, aborted, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        """, (conv_id, m_role, m_content, m_thinking, m_aborted, m_created))
+                            INSERT INTO messages (
+                                conversation_id, role, content, thinking, aborted, render_markdown, created_at
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            conv_id, m_role, m_content, m_thinking,
+                            m_aborted, m_render_markdown, m_created,
+                        ))
                     conn.commit()
                 
                 # 迁移完毕后，将原文件重命名移入备份归档文件夹，避免文件名冲突
@@ -246,7 +259,8 @@ class DatabaseManager:
                     "role": m_row["role"],
                     "content": deserialize_content(m_row["content"]),
                     "thinking": m_row["thinking"],
-                    "aborted": bool(m_row["aborted"])
+                    "aborted": bool(m_row["aborted"]),
+                    "render_markdown": bool(m_row["render_markdown"]),
                 })
             
             return conv_data
@@ -286,12 +300,18 @@ class DatabaseManager:
                 m_content = serialize_content(msg.get("content", ""))
                 m_thinking = msg.get("thinking", None)
                 m_aborted = 1 if msg.get("aborted", False) else 0
+                m_render_markdown = 1 if msg.get("render_markdown", True) else 0
                 m_created = updated_at
                 
                 conn.execute("""
-                    INSERT INTO messages (conversation_id, role, content, thinking, aborted, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (conv_id, m_role, m_content, m_thinking, m_aborted, m_created))
+                    INSERT INTO messages (
+                        conversation_id, role, content, thinking, aborted, render_markdown, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    conv_id, m_role, m_content, m_thinking,
+                    m_aborted, m_render_markdown, m_created,
+                ))
             
             conn.commit()
 
@@ -358,7 +378,7 @@ class DatabaseManager:
             conn.commit()
 
 
-    def add_message(self, conv_id, role, content, thinking=None, aborted=False):
+    def add_message(self, conv_id, role, content, thinking=None, aborted=False, render_markdown=True):
         """
         [增量更新] 向指定对话中追加一条新消息，并更新对话的更新时间，
         彻底规避多线程并发加载-修改-保存造成的“旧快照覆盖抹除新数据”的竞争风险。
@@ -367,6 +387,7 @@ class DatabaseManager:
         import time
         now = datetime.now().isoformat()
         aborted_val = 1 if aborted else 0
+        render_markdown_val = 1 if render_markdown else 0
         serialized_content = serialize_content(content)
         
         for attempt in range(3):
@@ -375,9 +396,14 @@ class DatabaseManager:
                     conn.execute("BEGIN EXCLUSIVE")
                     try:
                         conn.execute("""
-                            INSERT INTO messages (conversation_id, role, content, thinking, aborted, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        """, (conv_id, role, serialized_content, thinking, aborted_val, now))
+                            INSERT INTO messages (
+                                conversation_id, role, content, thinking, aborted, render_markdown, created_at
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            conv_id, role, serialized_content, thinking,
+                            aborted_val, render_markdown_val, now,
+                        ))
                         
                         conn.execute("""
                             UPDATE conversations 
@@ -395,6 +421,16 @@ class DatabaseManager:
                     time.sleep(0.5)
                     continue
                 raise
+
+    def add_stream_error_message(self, conv_id, error, thinking=None):
+        """Persist a display-only model failure without counting it as an API response."""
+        self.add_message(
+            conv_id,
+            "assistant",
+            stream_error_content(error),
+            thinking=thinking,
+            render_markdown=False,
+        )
 
     def add_assistant_message_and_update_tokens(self, conv_id, content, thinking=None, input_tokens=0, output_tokens=0, aborted=False):
         """

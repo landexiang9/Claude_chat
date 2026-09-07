@@ -12,6 +12,8 @@ from claude_chat.stream_protocol import (
     StreamEventType,
     StreamTask,
     StreamTaskState,
+    is_stream_error_message,
+    stream_error_content,
 )
 
 
@@ -91,6 +93,13 @@ class StreamProtocolTests(unittest.TestCase):
         task = StreamTask("conv-1", StreamEventQueue(conversation_id="conv-1"))
         with self.assertRaises(RuntimeError):
             task.transition(StreamTaskState.COMPLETED)
+
+    def test_persisted_error_blocks_are_identifiable_and_keep_details(self):
+        content = stream_error_content({"text": "temperature must be 1"})
+        message = {"role": "assistant", "content": content}
+        self.assertTrue(is_stream_error_message(message))
+        self.assertIn("temperature must be 1", content[0]["text"])
+        self.assertFalse(is_stream_error_message({"role": "assistant", "content": "normal"}))
 
 
 if __name__ == "__main__":

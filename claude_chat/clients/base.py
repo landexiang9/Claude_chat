@@ -1,9 +1,6 @@
-import base64
-import json
 import logging
-from pathlib import Path
+
 import httpx
-from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestError
 
 logger = logging.getLogger("claude_chat.clients")
 
@@ -21,7 +18,7 @@ def extract_final_response_text(done_data, fallback=""):
             text_parts.append(str(block.get("text", "")))
     return "".join(text_parts) if found_text_block else fallback
 
-def sanitize_error_message(err):
+def sanitize_error_message(err, max_length=300):
     """
     过滤错误消息中的敏感信息，例如 API Keys (如 sk-... 等高危敏感字符)。
     """
@@ -34,8 +31,8 @@ def sanitize_error_message(err):
     # Mask Gemini key pattern
     msg = re.sub(r'AIzaSy[a-zA-Z0-9_-]{33}', 'AIzaSy***', msg)
     # Mask any other potential long hex tokens or keys
-    if len(msg) > 300:
-        msg = msg[:300] + "... (详细错误已写入本地日志)"
+    if max_length is not None and len(msg) > max_length:
+        msg = msg[:max_length] + "... (详细错误已写入本地日志)"
     return msg
 
 def build_http_client(proxy_mode="system", proxy_url=""):
@@ -54,10 +51,25 @@ def build_http_client(proxy_mode="system", proxy_url=""):
     else:
         return httpx.Client(timeout=timeout)
 
-def extract_api_message(msg):
+
+def build_anthropic_http_client(proxy_mode="system", proxy_url=""):
+    """Build the ``httpx2`` client required by recent Anthropic SDK releases."""
+    import httpx2
+
+    timeout = httpx2.Timeout(30.0, connect=10.0)
+    if proxy_mode == "none":
+        return httpx2.Client(trust_env=False, timeout=timeout)
+    if proxy_mode == "custom" and isinstance(proxy_url, str) and proxy_url.strip():
+        return httpx2.Client(proxy=proxy_url.strip(), trust_env=False, timeout=timeout)
+    return httpx2.Client(timeout=timeout)
+
+def extract_api_message(msg, preserve_file_paths=False):
     """
-    将本地保存的消息记录转换为符合 Anthropic 官方 API 规范的请求消息结构。
-    对携带的本地附件（图片、PDF 文档）进行异步路径读取，并将其编码转换为 Base64 格式的数据块传递给 API。
+    将本地保存的消息记录转换为供应商客户端可处理的内部消息结构。
+
+    正式发送链路暂时保留受管文件路径，随后由各供应商客户端通过官方
+    Files API 上传并替换为远端 ID/URI。调试预览默认只显示占位 ID，避免
+    暴露服务器路径。
     """
     role = msg.get("role")
     content = msg.get("content")
@@ -68,43 +80,17 @@ def extract_api_message(msg):
     api_content_list = []
     
     for item in items_source:
-        if isinstance(item, dict) and "_attachment" in item:
+        if isinstance(item, dict):
             item = {key: value for key, value in item.items() if key != "_attachment"}
-        if isinstance(item, dict) and item.get("type") == "image":
-            # 处理图片附件并编码为 Base64
-            source = item.get("source", {})
-            if "file_path" in source:
-                try:
-                    with open(source["file_path"], "rb") as f:
-                        b64_data = base64.b64encode(f.read()).decode("utf-8")
-                    api_content_list.append({
-                        "type": "image",
-                        "source": {"type": "base64", "media_type": source.get("media_type", "image/png"), "data": b64_data}
-                    })
-                except Exception:
-                    fname = Path(source.get("file_path", "")).name
-                    api_content_list.append({"type": "text", "text": f"[图片不可用: {fname}]"})
-            elif "data" in source:
-                api_content_list.append(item)
-                
-        elif isinstance(item, dict) and item.get("type") == "document":
-            # 处理 PDF 文档附件并编码为 Base64
-            source = item.get("source", {})
-            if "file_path" in source:
-                try:
-                    with open(source["file_path"], "rb") as f:
-                        b64_data = base64.b64encode(f.read()).decode("utf-8")
-                    api_content_list.append({
-                        "type": "document",
-                        "source": {"type": "base64", "media_type": "application/pdf", "data": b64_data}
-                    })
-                except Exception:
-                    fname = Path(source.get("file_path", "")).name
-                    api_content_list.append({"type": "text", "text": f"[文档不可用: {fname}]"})
-            elif "data" in source:
-                api_content_list.append(item)
-                
-        elif isinstance(item, str):
+            source = item.get("source")
+            if isinstance(source, dict) and source.get("file_path") and not preserve_file_paths:
+                item["source"] = {
+                    "type": "file",
+                    "file_id": "[发送时由官方 Files API 返回]",
+                    "media_type": source.get("media_type", "application/octet-stream"),
+                }
+
+        if isinstance(item, str):
             api_content_list.append({"type": "text", "text": item})
         elif isinstance(item, dict):
             api_content_list.append(item)

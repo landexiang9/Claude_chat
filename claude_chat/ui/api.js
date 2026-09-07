@@ -167,6 +167,7 @@ function serializeSaveConfig(cfg) {
 const apiBridge = {
     get_config: () => checkIsNative() ? window.pywebview.api.get_config() : fetchJson('/api/config'),
     save_config: (cfg) => serializeSaveConfig(cfg),
+    preview_model_request: (data) => checkIsNative() ? window.pywebview.api.preview_model_request(data) : fetchJson("/api/preview_model_request", "POST", data),
     fetch_models: (platform = null) => {
         if (checkIsNative()) return window.pywebview.api.fetch_models(platform);
         const query = platform ? `?platform=${encodeURIComponent(platform)}` : '';
@@ -200,6 +201,9 @@ const apiBridge = {
     delete_conversation: (id) => checkIsNative() ? window.pywebview.api.delete_conversation(id) : fetchJson(`/api/conversation/${id}`, 'DELETE'),
     get_message_packet: (id, idx) => checkIsNative() ? window.pywebview.api.get_message_packet(id, idx) : fetchJson(`/api/message_packet/${id}/${idx}`),
     paste_from_clipboard: () => checkIsNative() ? window.pywebview.api.paste_from_clipboard() : fetchJson('/api/paste_from_clipboard', 'POST'),
+    paste_attachments_from_clipboard: () => checkIsNative()
+        ? window.pywebview.api.paste_attachments_from_clipboard()
+        : Promise.resolve({ attachments: [], errors: [] }),
     upload_dropped_file: (name, size, data) => checkIsNative() ? window.pywebview.api.upload_dropped_file(name, size, data) : fetchJson('/api/upload_dropped_file', 'POST', { name, size, base64_data: data }),
     get_attachment_preview: async (request, options = {}) => {
         if (checkIsNative()) {
@@ -232,8 +236,8 @@ const apiBridge = {
 
     // 自定义模型提供商管理 (保存到服务器 config.json)
     list_custom_providers: () => checkIsNative() ? window.pywebview.api.list_custom_providers() : fetchJson('/api/custom_providers'),
-    add_custom_provider: (data) => checkIsNative() ? window.pywebview.api.add_custom_provider(data.name, data.api_url, data.api_key, data.models, data.temperature, data.max_tokens, data.models_api_url) : fetchJson('/api/add_custom_provider', 'POST', data),
-    update_custom_provider: (data) => checkIsNative() ? window.pywebview.api.update_custom_provider(data.id, data.name, data.api_url, data.api_key, data.models, data.temperature, data.max_tokens, data.models_api_url, data.clear_api_key) : fetchJson('/api/update_custom_provider', 'POST', data),
+    add_custom_provider: (data) => checkIsNative() ? window.pywebview.api.add_custom_provider(data.name, data.api_url, data.api_key, data.models, data.temperature, data.max_tokens, data.models_api_url, data.file_upload_enabled, data.file_upload_purpose, data.file_upload_expires_in_seconds) : fetchJson('/api/add_custom_provider', 'POST', data),
+    update_custom_provider: (data) => checkIsNative() ? window.pywebview.api.update_custom_provider(data.id, data.name, data.api_url, data.api_key, data.models, data.temperature, data.max_tokens, data.models_api_url, data.clear_api_key, data.file_upload_enabled, data.file_upload_purpose, data.file_upload_expires_in_seconds) : fetchJson('/api/update_custom_provider', 'POST', data),
     remove_custom_provider: (id) => checkIsNative() ? window.pywebview.api.remove_custom_provider(id) : fetchJson('/api/remove_custom_provider', 'POST', { id }),
 
     save_code_block: (content, suggest_name) => {
@@ -326,9 +330,9 @@ const apiBridge = {
             });
         }
     },
-    send_message: async (convId, text, attachments) => {
+    send_message: async (convId, text, attachments, renderMarkdown = true) => {
         if (checkIsNative()) {
-            const started = await window.pywebview.api.send_message(convId, text, attachments);
+            const started = await window.pywebview.api.send_message(convId, text, attachments, renderMarkdown);
             if (!started) throw new Error("后端未能启动消息生成");
             return true;
         } else {
@@ -336,7 +340,7 @@ const apiBridge = {
                 const response = await fetch('/api/send_message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ conv_id: convId, text, attachments })
+                    body: JSON.stringify({ conv_id: convId, text, attachments, render_markdown: renderMarkdown })
                 });
                 if (!response.ok) {
                     let detail = "";
@@ -357,15 +361,15 @@ const apiBridge = {
             }
         }
     },
-    edit_and_resend: async (convId, msgIdx, newContent) => {
+    edit_and_resend: async (convId, msgIdx, newContent, renderMarkdown = true) => {
         if (checkIsNative()) {
-            return window.pywebview.api.edit_and_resend(convId, msgIdx, newContent);
+            return window.pywebview.api.edit_and_resend(convId, msgIdx, newContent, renderMarkdown);
         } else {
             try {
                 const response = await fetch('/api/edit_and_resend', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ conv_id: convId, msg_index: msgIdx, new_content: newContent })
+                    body: JSON.stringify({ conv_id: convId, msg_index: msgIdx, new_content: newContent, render_markdown: renderMarkdown })
                 });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 await readHttpStream(response, window.onStreamMessage);

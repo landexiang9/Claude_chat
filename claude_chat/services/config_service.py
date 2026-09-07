@@ -1,7 +1,10 @@
 import logging
 from datetime import datetime
+from copy import deepcopy
+from claude_chat.request_params import preview_generation_params, validate_request_params
 
 from claude_chat.config import DEFAULT_MAX_TOKENS, get_sensitive_api_keys
+from claude_chat.custom_params import validate_custom_params
 from claude_chat.platform_params import PlatformParamMapper
 from claude_chat.sandbox import normalize_execution_timeout
 from claude_chat.services.base import AppService
@@ -45,6 +48,29 @@ class ConfigService(AppService):
         except ImportError: pass
         return status
 
+    def preview_model_request(self, data):
+        """Build a draft without saving settings, opening clients or making requests."""
+        try:
+            if not isinstance(data, dict):
+                raise ValueError("参数预览请求必须是对象")
+            model = data.get("model")
+            platform = data.get("platform", "claude")
+            if not isinstance(model, str) or not model:
+                raise ValueError("请先选择模型")
+            if not isinstance(platform, str) or not (platform in ("claude", "deepseek", "gemini") or platform.startswith("custom:")):
+                raise ValueError("平台无效")
+            with self._app.lock:
+                draft = deepcopy(self._app.config.data)
+            if "model_config" in data:
+                if not isinstance(data["model_config"], dict):
+                    raise ValueError("模型配置必须是对象")
+                draft.setdefault("model_configs", {})[model] = deepcopy(data["model_config"])
+            params = preview_generation_params(platform, model, draft)
+            params = validate_request_params(params, platform)
+            return {"params": params, "platform": platform, "model": model}
+        except (ValueError, TypeError, AttributeError) as exc:
+            return {"error": str(exc)}
+
     def get_config(self):
         """
         获取当前系统的全部配置字典数据，将敏感密钥替换为 has_xxx 标志返回给前端，保护密钥安全。
@@ -65,6 +91,15 @@ class ConfigService(AppService):
         """
         with self._app.lock:
             logger.info(f"保存系统配置，键名列表: {list(new_config.keys())}")
+
+            try:
+                for model_config in new_config.get("model_configs", {}).values():
+                    validate_custom_params(model_config.get("custom_params", {}))
+                    if "request_params" in model_config:
+                        validate_request_params(model_config["request_params"], model_config.get("request_platform", "generic"))
+            except (ValueError, TypeError, AttributeError):
+                logger.warning("拒绝保存无效的模型自定义参数")
+                return False
 
             sensitive_keys = get_sensitive_api_keys(self._app.config.data)
 

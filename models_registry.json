@@ -1,1113 +1,13 @@
 {
-  "zhipuai/glm-4.6v": {
-    "max_context": 128000,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "glm-4.6v": {
-    "max_context": 128000,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-5": {
-    "max_context": 204800,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "glm-5": {
-    "max_context": 204800,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-4.5-air": {
-    "max_context": 131072,
-    "max_output": 98304,
-    "thinking_supported": true
-  },
-  "glm-4.5-air": {
-    "max_context": 131072,
-    "max_output": 98304,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-5.1": {
-    "max_context": 200000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "glm-5.1": {
-    "max_context": 200000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-4.7-flash": {
-    "max_context": 200000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "glm-4.7-flash": {
-    "max_context": 200000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-5.2": {
-    "max_context": 1000000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "glm-5.2": {
-    "max_context": 1000000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-4.7-flashx": {
-    "max_context": 200000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "glm-4.7-flashx": {
-    "max_context": 200000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-4.6": {
-    "max_context": 204800,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "glm-4.6": {
-    "max_context": 204800,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-4.5": {
-    "max_context": 131072,
-    "max_output": 98304,
-    "thinking_supported": true
-  },
-  "glm-4.5": {
-    "max_context": 131072,
-    "max_output": 98304,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-4.5v": {
-    "max_context": 64000,
-    "max_output": 16384,
-    "thinking_supported": true
-  },
-  "glm-4.5v": {
-    "max_context": 64000,
-    "max_output": 16384,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-4.7": {
-    "max_context": 204800,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "glm-4.7": {
-    "max_context": 204800,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-5-turbo": {
-    "max_context": 200000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "glm-5-turbo": {
-    "max_context": 200000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-5v-turbo": {
-    "max_context": 200000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "glm-5v-turbo": {
-    "max_context": 200000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "zhipuai/glm-4.5-flash": {
-    "max_context": 131072,
-    "max_output": 98304,
-    "thinking_supported": true
-  },
-  "glm-4.5-flash": {
-    "max_context": 131072,
-    "max_output": 98304,
-    "thinking_supported": true
-  },
-  "microsoft/mai-code-1-flash": {
-    "max_context": 256000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "mai-code-1-flash": {
-    "max_context": 256000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "microsoft/mai-code-1.1-flash": {
-    "max_context": 256000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "mai-code-1.1-flash": {
-    "max_context": 256000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "microsoft/phi-4-mini": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "phi-4-mini": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "cohere/command-r7b-arabic-02-2025": {
-    "max_context": 128000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "command-r7b-arabic-02-2025": {
-    "max_context": 128000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "cohere/command-r-08-2024": {
-    "max_context": 128000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "command-r-08-2024": {
-    "max_context": 128000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "cohere/command-a-plus-05-2026": {
-    "max_context": 128000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "command-a-plus-05-2026": {
-    "max_context": 128000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "cohere/command-a-translate-08-2025": {
-    "max_context": 8000,
-    "max_output": 8000,
-    "thinking_supported": false
-  },
-  "command-a-translate-08-2025": {
-    "max_context": 8000,
-    "max_output": 8000,
-    "thinking_supported": false
-  },
-  "cohere/c4ai-aya-expanse-8b": {
-    "max_context": 8000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "c4ai-aya-expanse-8b": {
-    "max_context": 8000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "cohere/c4ai-aya-vision-32b": {
-    "max_context": 16000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "c4ai-aya-vision-32b": {
-    "max_context": 16000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "cohere/command-a-03-2025": {
-    "max_context": 256000,
-    "max_output": 8000,
-    "thinking_supported": false
-  },
-  "command-a-03-2025": {
-    "max_context": 256000,
-    "max_output": 8000,
-    "thinking_supported": false
-  },
-  "cohere/command-r-plus-08-2024": {
-    "max_context": 128000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "command-r-plus-08-2024": {
-    "max_context": 128000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "cohere/command-a-reasoning-08-2025": {
-    "max_context": 256000,
-    "max_output": 32000,
-    "thinking_supported": true
-  },
-  "command-a-reasoning-08-2025": {
-    "max_context": 256000,
-    "max_output": 32000,
-    "thinking_supported": true
-  },
-  "cohere/command-a-vision-07-2025": {
-    "max_context": 128000,
-    "max_output": 8000,
-    "thinking_supported": false
-  },
-  "command-a-vision-07-2025": {
-    "max_context": 128000,
-    "max_output": 8000,
-    "thinking_supported": false
-  },
-  "cohere/command-r7b-12-2024": {
-    "max_context": 128000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "command-r7b-12-2024": {
-    "max_context": 128000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "cohere/c4ai-aya-vision-8b": {
-    "max_context": 16000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "c4ai-aya-vision-8b": {
-    "max_context": 16000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "cohere/north-mini-code-1-0": {
-    "max_context": 256000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "north-mini-code-1-0": {
-    "max_context": 256000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "cohere/c4ai-aya-expanse-32b": {
-    "max_context": 128000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "c4ai-aya-expanse-32b": {
-    "max_context": 128000,
-    "max_output": 4000,
-    "thinking_supported": false
-  },
-  "nvidia/mistral-nemotron": {
-    "max_context": 128000,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "mistral-nemotron": {
-    "max_context": 128000,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "nvidia/nemotron-nano-12b-v2-vl": {
-    "max_context": 128000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "nemotron-nano-12b-v2-vl": {
-    "max_context": 128000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "nvidia/nemotron-3-nano-30b-a3b": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": true
-  },
-  "nemotron-3-nano-30b-a3b": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": true
-  },
-  "nvidia/llama-3.3-nemotron-super-49b-v1.5": {
-    "max_context": 131072,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "llama-3.3-nemotron-super-49b-v1.5": {
-    "max_context": 131072,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "nvidia/llama-3.1-nemotron-safety-guard-8b-v3": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "llama-3.1-nemotron-safety-guard-8b-v3": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "nvidia/llama-3.3-nemotron-super-49b-v1": {
-    "max_context": 131072,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "llama-3.3-nemotron-super-49b-v1": {
-    "max_context": 131072,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "nvidia/llama-3.1-nemotron-70b-instruct": {
-    "max_context": 128000,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "llama-3.1-nemotron-70b-instruct": {
-    "max_context": 128000,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "nvidia/nemotron-3-super-120b-a12b": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": true
-  },
-  "nemotron-3-super-120b-a12b": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": true
-  },
-  "nvidia/nemotron-3-content-safety": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "nemotron-3-content-safety": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": {
-    "max_context": 256000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "nemotron-3-nano-omni-30b-a3b-reasoning": {
-    "max_context": 256000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "nvidia/llama-3.1-nemotron-ultra-253b": {
-    "max_context": 128000,
-    "max_output": 8192,
-    "thinking_supported": true
-  },
-  "llama-3.1-nemotron-ultra-253b": {
-    "max_context": 128000,
-    "max_output": 8192,
-    "thinking_supported": true
-  },
-  "nvidia/nemotron-voicechat": {
-    "max_context": 128000,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "nemotron-voicechat": {
-    "max_context": 128000,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "nvidia/llama-nemotron-embed-vl-1b-v2": {
-    "max_context": 32768,
-    "max_output": 2048,
-    "thinking_supported": false
-  },
-  "llama-nemotron-embed-vl-1b-v2": {
-    "max_context": 32768,
-    "max_output": 2048,
-    "thinking_supported": false
-  },
-  "nvidia/nemotron-3.5-lightning": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": true
-  },
-  "nemotron-3.5-lightning": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": true
-  },
-  "nvidia/nemotron-content-safety-reasoning-4b": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": true
-  },
-  "nemotron-content-safety-reasoning-4b": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": true
-  },
-  "nvidia/nemotron-3-ultra-550b-a55b": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "nemotron-3-ultra-550b-a55b": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "nvidia/llama-nemotron-rerank-vl-1b-v2": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "llama-nemotron-rerank-vl-1b-v2": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "nvidia/nemotron-mini-4b-instruct": {
-    "max_context": 128000,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "nemotron-mini-4b-instruct": {
-    "max_context": 128000,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "nvidia/nemotron-nano-9b-v2": {
-    "max_context": 131072,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "nemotron-nano-9b-v2": {
-    "max_context": 131072,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "nvidia/nemotron-cascade-2-30b-a3b": {
-    "max_context": 256000,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "nemotron-cascade-2-30b-a3b": {
-    "max_context": 256000,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "nvidia/nemotron-3.5-content-safety": {
-    "max_context": 128000,
-    "max_output": 8192,
-    "thinking_supported": true
-  },
-  "nemotron-3.5-content-safety": {
-    "max_context": 128000,
-    "max_output": 8192,
-    "thinking_supported": true
-  },
-  "google/gemini-2.5-computer-use-preview-10-2025": {
-    "max_context": 128000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "gemini-2.5-computer-use-preview-10-2025": {
-    "max_context": 128000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "google/deep-research-preview-04-2026": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "deep-research-preview-04-2026": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-3.1-flash-tts-preview": {
-    "max_context": 8192,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "gemini-3.1-flash-tts-preview": {
-    "max_context": 8192,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "google/gemini-flash-latest": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-flash-latest": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-embedding-2": {
-    "max_context": 8192,
-    "max_output": 3072,
-    "thinking_supported": false
-  },
-  "gemini-embedding-2": {
-    "max_context": 8192,
-    "max_output": 3072,
-    "thinking_supported": false
-  },
-  "google/lyria-3-pro-preview": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "lyria-3-pro-preview": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "google/gemini-3.5-flash": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-3.5-flash": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-2.5-flash": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-2.5-flash": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-3.5-flash-lite": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-3.5-flash-lite": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/lyria-3-clip-preview": {
-    "max_context": 131072,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "lyria-3-clip-preview": {
-    "max_context": 131072,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "google/gemini-omni-flash-preview": {
-    "max_context": 1048576,
-    "max_output": 57920,
-    "thinking_supported": true
-  },
-  "gemini-omni-flash-preview": {
-    "max_context": 1048576,
-    "max_output": 57920,
-    "thinking_supported": true
-  },
-  "google/veo-3.1-generate-preview": {
-    "max_context": 1024,
-    "max_output": 1,
-    "thinking_supported": false
-  },
-  "veo-3.1-generate-preview": {
-    "max_context": 1024,
-    "max_output": 1,
-    "thinking_supported": false
-  },
-  "google/gemini-2.5-pro-tts": {
-    "max_context": 32768,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "gemini-2.5-pro-tts": {
-    "max_context": 32768,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "google/deep-research-max-preview-04-2026": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "deep-research-max-preview-04-2026": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-3-pro-image-preview": {
+  "swiss-ai/apertus-8b": {
     "max_context": 65536,
-    "max_output": 32768,
-    "thinking_supported": true
+    "max_output": 8192,
+    "thinking_supported": false
   },
-  "gemini-3-pro-image-preview": {
+  "apertus-8b": {
     "max_context": 65536,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "google/gemini-3.1-flash-lite-preview": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-3.1-flash-lite-preview": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-2.5-flash-tts": {
-    "max_context": 32768,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "gemini-2.5-flash-tts": {
-    "max_context": 32768,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "google/gemini-3.5-live-translate-preview": {
-    "max_context": 131072,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "gemini-3.5-live-translate-preview": {
-    "max_context": 131072,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "google/gemini-3-flash-preview": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-3-flash-preview": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-3.1-pro-preview-customtools": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-3.1-pro-preview-customtools": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-3.1-flash-lite-image": {
-    "max_context": 65536,
-    "max_output": 4096,
-    "thinking_supported": true
-  },
-  "gemini-3.1-flash-lite-image": {
-    "max_context": 65536,
-    "max_output": 4096,
-    "thinking_supported": true
-  },
-  "google/gemini-3.1-flash-image-preview": {
-    "max_context": 65536,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-3.1-flash-image-preview": {
-    "max_context": 65536,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-robotics-er-1.6-preview": {
-    "max_context": 131072,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-robotics-er-1.6-preview": {
-    "max_context": 131072,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemma-4-26b-a4b-it": {
-    "max_context": 262144,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "gemma-4-26b-a4b-it": {
-    "max_context": 262144,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "google/gemini-embedding-001": {
-    "max_context": 2048,
-    "max_output": 1,
-    "thinking_supported": false
-  },
-  "gemini-embedding-001": {
-    "max_context": 2048,
-    "max_output": 1,
-    "thinking_supported": false
-  },
-  "google/veo-3.1-lite-generate-preview": {
-    "max_context": 1024,
-    "max_output": 0,
-    "thinking_supported": false
-  },
-  "veo-3.1-lite-generate-preview": {
-    "max_context": 1024,
-    "max_output": 0,
-    "thinking_supported": false
-  },
-  "google/gemini-2.0-flash": {
-    "max_context": 1048576,
     "max_output": 8192,
     "thinking_supported": false
-  },
-  "gemini-2.0-flash": {
-    "max_context": 1048576,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "google/gemini-3.6-flash": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-3.6-flash": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/veo-3.1-fast-generate-preview": {
-    "max_context": 1024,
-    "max_output": 0,
-    "thinking_supported": false
-  },
-  "veo-3.1-fast-generate-preview": {
-    "max_context": 1024,
-    "max_output": 0,
-    "thinking_supported": false
-  },
-  "google/gemini-3.1-flash-lite": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-3.1-flash-lite": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemma-4-E2B-it": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": true
-  },
-  "gemma-4-E2B-it": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": true
-  },
-  "google/gemma-4-31b-it": {
-    "max_context": 262144,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "gemma-4-31b-it": {
-    "max_context": 262144,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "google/gemini-3.1-flash-image": {
-    "max_context": 131072,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "gemini-3.1-flash-image": {
-    "max_context": 131072,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "google/gemini-2.5-flash-image": {
-    "max_context": 32768,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "gemini-2.5-flash-image": {
-    "max_context": 32768,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "google/gemini-3-pro-image": {
-    "max_context": 65536,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "gemini-3-pro-image": {
-    "max_context": 65536,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "google/gemini-3.1-pro-preview": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-3.1-pro-preview": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-flash-lite-latest": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-flash-lite-latest": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-2.5-pro": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-2.5-pro": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemma-4-E4B-it": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": true
-  },
-  "gemma-4-E4B-it": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": true
-  },
-  "google/gemini-3-pro-preview": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-3-pro-preview": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-2.5-flash-lite": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-2.5-flash-lite": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "google/gemini-2.0-flash-lite": {
-    "max_context": 1048576,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "gemini-2.0-flash-lite": {
-    "max_context": 1048576,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "google/gemini-3.1-flash-live-preview": {
-    "max_context": 131072,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "gemini-3.1-flash-live-preview": {
-    "max_context": 131072,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "thinkingmachines/inkling-small": {
-    "max_context": 1048576,
-    "max_output": 1048576,
-    "thinking_supported": true
-  },
-  "inkling-small": {
-    "max_context": 1048576,
-    "max_output": 1048576,
-    "thinking_supported": true
-  },
-  "thinkingmachines/inkling": {
-    "max_context": 1048576,
-    "max_output": 1048576,
-    "thinking_supported": true
-  },
-  "inkling": {
-    "max_context": 1048576,
-    "max_output": 1048576,
-    "thinking_supported": true
-  },
-  "sakana/fugu-ultra": {
-    "max_context": 1000000,
-    "max_output": 0,
-    "thinking_supported": true
-  },
-  "fugu-ultra": {
-    "max_context": 1000000,
-    "max_output": 0,
-    "thinking_supported": true
-  },
-  "sakana/fugu": {
-    "max_context": 1000000,
-    "max_output": 0,
-    "thinking_supported": true
-  },
-  "fugu": {
-    "max_context": 1000000,
-    "max_output": 0,
-    "thinking_supported": true
-  },
-  "tencent/hy3": {
-    "max_context": 256000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "hy3": {
-    "max_context": 256000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "tencent/hy3-preview": {
-    "max_context": 256000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "hy3-preview": {
-    "max_context": 256000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "sdaia/allam-2-7b": {
-    "max_context": 4096,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "allam-2-7b": {
-    "max_context": 4096,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "ibm/granite-4-h-small": {
-    "max_context": 131072,
-    "max_output": 131072,
-    "thinking_supported": false
-  },
-  "granite-4-h-small": {
-    "max_context": 131072,
-    "max_output": 131072,
-    "thinking_supported": false
-  },
-  "meta/muse-glimmer-30b": {
-    "max_context": 131072,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "muse-glimmer-30b": {
-    "max_context": 131072,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "meta/muse-spark-1.1": {
-    "max_context": 1000000,
-    "max_output": 32000,
-    "thinking_supported": true
-  },
-  "muse-spark-1.1": {
-    "max_context": 1000000,
-    "max_output": 32000,
-    "thinking_supported": true
-  },
-  "meta/llama-4-scout-17b-instruct": {
-    "max_context": 3500000,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "llama-4-scout-17b-instruct": {
-    "max_context": 3500000,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "meta/llama-3.2-1b": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "llama-3.2-1b": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "meta/llama-3.3-70b-instruct": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "llama-3.3-70b-instruct": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "meta/llama-4-maverick-17b-instruct": {
-    "max_context": 1000000,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "llama-4-maverick-17b-instruct": {
-    "max_context": 1000000,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "meta/llama-3.2-3b": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "llama-3.2-3b": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "meta/muse-spark-1.2": {
-    "max_context": 1048576,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "muse-spark-1.2": {
-    "max_context": 1048576,
-    "max_output": 131072,
-    "thinking_supported": true
   },
   "swiss-ai/apertus-70b": {
     "max_context": 65536,
@@ -1129,305 +29,25 @@
     "max_output": 131072,
     "thinking_supported": true
   },
-  "xai/grok-4.1-fast": {
-    "max_context": 2000000,
-    "max_output": 30000,
-    "thinking_supported": false
-  },
-  "grok-4.1-fast": {
-    "max_context": 2000000,
-    "max_output": 30000,
-    "thinking_supported": false
-  },
-  "xai/grok-4.3": {
-    "max_context": 1000000,
-    "max_output": 30000,
-    "thinking_supported": true
-  },
-  "grok-4.3": {
-    "max_context": 1000000,
-    "max_output": 30000,
-    "thinking_supported": true
-  },
-  "xai/grok-4.20-0309-non-reasoning": {
-    "max_context": 1000000,
-    "max_output": 30000,
-    "thinking_supported": false
-  },
-  "grok-4.20-0309-non-reasoning": {
-    "max_context": 1000000,
-    "max_output": 30000,
-    "thinking_supported": false
-  },
-  "xai/grok-imagine-video-1.5": {
-    "max_context": 1024,
-    "max_output": 0,
-    "thinking_supported": false
-  },
-  "grok-imagine-video-1.5": {
-    "max_context": 1024,
-    "max_output": 0,
-    "thinking_supported": false
-  },
-  "xai/grok-4.5": {
-    "max_context": 500000,
-    "max_output": 500000,
-    "thinking_supported": true
-  },
-  "grok-4.5": {
-    "max_context": 500000,
-    "max_output": 500000,
-    "thinking_supported": true
-  },
-  "xai/grok-4.6": {
-    "max_context": 500000,
-    "max_output": 500000,
-    "thinking_supported": true
-  },
-  "grok-4.6": {
-    "max_context": 500000,
-    "max_output": 500000,
-    "thinking_supported": true
-  },
-  "xai/grok-build-0.1": {
-    "max_context": 256000,
-    "max_output": 256000,
-    "thinking_supported": true
-  },
-  "grok-build-0.1": {
-    "max_context": 256000,
-    "max_output": 256000,
-    "thinking_supported": true
-  },
-  "xai/grok-4.20-0309-reasoning": {
-    "max_context": 1000000,
-    "max_output": 30000,
-    "thinking_supported": true
-  },
-  "grok-4.20-0309-reasoning": {
-    "max_context": 1000000,
-    "max_output": 30000,
-    "thinking_supported": true
-  },
-  "mistral/mistral-small-2506": {
-    "max_context": 128000,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "mistral-small-2506": {
-    "max_context": 128000,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "mistral/pixtral-large-latest": {
-    "max_context": 128000,
-    "max_output": 128000,
-    "thinking_supported": false
-  },
-  "pixtral-large-latest": {
-    "max_context": 128000,
-    "max_output": 128000,
-    "thinking_supported": false
-  },
-  "mistral/pixtral-12b": {
-    "max_context": 128000,
-    "max_output": 128000,
-    "thinking_supported": false
-  },
-  "pixtral-12b": {
-    "max_context": 128000,
-    "max_output": 128000,
-    "thinking_supported": false
-  },
-  "mistral/magistral-medium-latest": {
-    "max_context": 128000,
-    "max_output": 16384,
-    "thinking_supported": true
-  },
-  "magistral-medium-latest": {
-    "max_context": 128000,
-    "max_output": 16384,
-    "thinking_supported": true
-  },
-  "mistral/ministral-8b-instruct-2410": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "ministral-8b-instruct-2410": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "mistral/mistral-large-2411": {
-    "max_context": 131072,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "mistral-large-2411": {
-    "max_context": 131072,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "mistral/mistral-medium-latest": {
+  "poolside/laguna-xs-2.1": {
     "max_context": 262144,
-    "max_output": 262144,
+    "max_output": 32768,
     "thinking_supported": true
   },
-  "mistral-medium-latest": {
+  "laguna-xs-2.1": {
     "max_context": 262144,
-    "max_output": 262144,
+    "max_output": 32768,
     "thinking_supported": true
   },
-  "mistral/devstral-small-2507": {
-    "max_context": 128000,
-    "max_output": 128000,
-    "thinking_supported": false
-  },
-  "devstral-small-2507": {
-    "max_context": 128000,
-    "max_output": 128000,
-    "thinking_supported": false
-  },
-  "mistral/mistral-medium-2505": {
-    "max_context": 131072,
-    "max_output": 131072,
-    "thinking_supported": false
-  },
-  "mistral-medium-2505": {
-    "max_context": 131072,
-    "max_output": 131072,
-    "thinking_supported": false
-  },
-  "mistral/mistral-small-latest": {
-    "max_context": 256000,
-    "max_output": 256000,
+  "poolside/laguna-m.1": {
+    "max_context": 262144,
+    "max_output": 32768,
     "thinking_supported": true
   },
-  "mistral-small-latest": {
-    "max_context": 256000,
-    "max_output": 256000,
+  "laguna-m.1": {
+    "max_context": 262144,
+    "max_output": 32768,
     "thinking_supported": true
-  },
-  "mistral/mistral-small-3-1-24b-instruct-2503": {
-    "max_context": 128000,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "mistral-small-3-1-24b-instruct-2503": {
-    "max_context": 128000,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "mistral/mistral-nemo": {
-    "max_context": 128000,
-    "max_output": 128000,
-    "thinking_supported": false
-  },
-  "mistral-nemo": {
-    "max_context": 128000,
-    "max_output": 128000,
-    "thinking_supported": false
-  },
-  "mistral/mistral-small-2603": {
-    "max_context": 256000,
-    "max_output": 256000,
-    "thinking_supported": true
-  },
-  "mistral-small-2603": {
-    "max_context": 256000,
-    "max_output": 256000,
-    "thinking_supported": true
-  },
-  "mistral/mistral-medium-2604": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": true
-  },
-  "mistral-medium-2604": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": true
-  },
-  "mistral/codestral-22b-v0.1": {
-    "max_context": 32768,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "codestral-22b-v0.1": {
-    "max_context": 32768,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "mistral/codestral-latest": {
-    "max_context": 256000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "codestral-latest": {
-    "max_context": 256000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "mistral/devstral-medium-latest": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": false
-  },
-  "devstral-medium-latest": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": false
-  },
-  "mistral/devstral-2512": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": false
-  },
-  "devstral-2512": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": false
-  },
-  "mistral/magistral-small-2506": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": true
-  },
-  "magistral-small-2506": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": true
-  },
-  "mistral/mistral-large-latest": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": false
-  },
-  "mistral-large-latest": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": false
-  },
-  "mistral/devstral-medium-2507": {
-    "max_context": 128000,
-    "max_output": 128000,
-    "thinking_supported": false
-  },
-  "devstral-medium-2507": {
-    "max_context": 128000,
-    "max_output": 128000,
-    "thinking_supported": false
-  },
-  "mistral/mistral-large-2512": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": false
-  },
-  "mistral-large-2512": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": false
   },
   "poolside/laguna-xs.2": {
     "max_context": 262144,
@@ -1435,16 +55,6 @@
     "thinking_supported": true
   },
   "laguna-xs.2": {
-    "max_context": 262144,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "poolside/laguna-xs-2.1": {
-    "max_context": 262144,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "laguna-xs-2.1": {
     "max_context": 262144,
     "max_output": 32768,
     "thinking_supported": true
@@ -1459,34 +69,184 @@
     "max_output": 32768,
     "thinking_supported": true
   },
-  "poolside/laguna-m.1": {
+  "deepreinforce/ornith-1.0-397b": {
     "max_context": 262144,
-    "max_output": 32768,
+    "max_output": 0,
     "thinking_supported": true
   },
-  "laguna-m.1": {
+  "ornith-1.0-397b": {
     "max_context": 262144,
-    "max_output": 32768,
+    "max_output": 0,
     "thinking_supported": true
+  },
+  "deepreinforce/ornith-1.0-35b": {
+    "max_context": 262144,
+    "max_output": 0,
+    "thinking_supported": true
+  },
+  "ornith-1.0-35b": {
+    "max_context": 262144,
+    "max_output": 0,
+    "thinking_supported": true
+  },
+  "deepreinforce/ornith-1.0-9b": {
+    "max_context": 262144,
+    "max_output": 0,
+    "thinking_supported": true
+  },
+  "ornith-1.0-9b": {
+    "max_context": 262144,
+    "max_output": 0,
+    "thinking_supported": true
+  },
+  "deepreinforce/ornith-1.5-35b-a3b": {
+    "max_context": 262144,
+    "max_output": 0,
+    "thinking_supported": true
+  },
+  "ornith-1.5-35b-a3b": {
+    "max_context": 262144,
+    "max_output": 0,
+    "thinking_supported": true
+  },
+  "deepreinforce/ornith-1.0-31b": {
+    "max_context": 262144,
+    "max_output": 0,
+    "thinking_supported": true
+  },
+  "ornith-1.0-31b": {
+    "max_context": 262144,
+    "max_output": 0,
+    "thinking_supported": true
+  },
+  "stepfun/step-3.7-flash": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "step-3.7-flash": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "stepfun/step-3.5-flash": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "step-3.5-flash": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "stepfun/step-3.5-flash-2603": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "step-3.5-flash-2603": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "xiaomi/mimo-v2.5-pro-ultraspeed": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "mimo-v2.5-pro-ultraspeed": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "xiaomi/mimo-v2-flash": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "mimo-v2-flash": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "xiaomi/mimo-v2-pro": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "mimo-v2-pro": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "xiaomi/mimo-v2-omni": {
+    "max_context": 262144,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "mimo-v2-omni": {
+    "max_context": 262144,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "xiaomi/mimo-v2.5": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "mimo-v2.5": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "xiaomi/mimo-v2.5-pro": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "mimo-v2.5-pro": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "ibm/granite-4-h-micro": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": false
+  },
+  "granite-4-h-micro": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": false
+  },
+  "ibm/granite-4-h-small": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": false
+  },
+  "granite-4-h-small": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": false
   },
   "minimax/MiniMax-M2": {
-    "max_context": 196608,
-    "max_output": 128000,
+    "max_context": 204800,
+    "max_output": 131072,
     "thinking_supported": true
   },
   "MiniMax-M2": {
-    "max_context": 196608,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "minimax/MiniMax-M2.7": {
     "max_context": 204800,
     "max_output": 131072,
     "thinking_supported": true
   },
-  "MiniMax-M2.7": {
-    "max_context": 204800,
-    "max_output": 131072,
+  "minimax/MiniMax-M2-Her": {
+    "max_context": 65536,
+    "max_output": 2048,
+    "thinking_supported": true
+  },
+  "MiniMax-M2-Her": {
+    "max_context": 65536,
+    "max_output": 2048,
     "thinking_supported": true
   },
   "minimax/MiniMax-M2.1": {
@@ -1519,6 +279,26 @@
     "max_output": 131072,
     "thinking_supported": true
   },
+  "minimax/image-01": {
+    "max_context": 0,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "image-01": {
+    "max_context": 0,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "minimax/MiniMax-M3": {
+    "max_context": 1048576,
+    "max_output": 512000,
+    "thinking_supported": true
+  },
+  "MiniMax-M3": {
+    "max_context": 1048576,
+    "max_output": 512000,
+    "thinking_supported": true
+  },
   "minimax/MiniMax-M2.7-highspeed": {
     "max_context": 204800,
     "max_output": 131072,
@@ -1529,42 +309,1952 @@
     "max_output": 131072,
     "thinking_supported": true
   },
-  "minimax/MiniMax-M3": {
-    "max_context": 512000,
-    "max_output": 128000,
+  "minimax/MiniMax-M2.7": {
+    "max_context": 204800,
+    "max_output": 131072,
     "thinking_supported": true
   },
-  "MiniMax-M3": {
-    "max_context": 512000,
-    "max_output": 128000,
+  "MiniMax-M2.7": {
+    "max_context": 204800,
+    "max_output": 131072,
     "thinking_supported": true
   },
-  "deepseek/deepseek-v3.1": {
+  "alibaba/qwen3.7-max": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.7-max": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3-coder-plus": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "qwen3-coder-plus": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3-next-80b-a3b-thinking": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "qwen3-next-80b-a3b-thinking": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3.8-flash-next": {
+    "max_context": 262144,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "qwen3.8-flash-next": {
+    "max_context": 262144,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3.5-9b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.5-9b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwen-vl-max": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "qwen-vl-max": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3-next-80b-a3b-instruct": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": false
+  },
+  "qwen3-next-80b-a3b-instruct": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3-coder-flash": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "qwen3-coder-flash": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3.8-max-preview": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "qwen3.8-max-preview": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "alibaba/qwen-max": {
+    "max_context": 32768,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "qwen-max": {
+    "max_context": 32768,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3.6-plus": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.6-plus": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwen2.5-coder-0.5b": {
+    "max_context": 32768,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "qwen2.5-coder-0.5b": {
+    "max_context": 32768,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "alibaba/qwen-vl-plus": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "qwen-vl-plus": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3.5-27b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.5-27b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3.8-27b": {
+    "max_context": 262144,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "qwen3.8-27b": {
+    "max_context": 262144,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3.5-35b-a3b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.5-35b-a3b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwen-flash": {
+    "max_context": 1000000,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "qwen-flash": {
+    "max_context": 1000000,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "alibaba/qwen-turbo": {
+    "max_context": 1000000,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "qwen-turbo": {
+    "max_context": 1000000,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3-32b": {
+    "max_context": 131072,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "qwen3-32b": {
+    "max_context": 131072,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "alibaba/qwq-plus": {
     "max_context": 131072,
     "max_output": 8192,
     "thinking_supported": true
   },
-  "deepseek-v3.1": {
+  "qwq-plus": {
     "max_context": 131072,
     "max_output": 8192,
     "thinking_supported": true
   },
-  "deepseek/deepseek-v4-flash": {
+  "alibaba/qwen3.5-flash": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.5-flash": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3-vl-plus": {
+    "max_context": 262144,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "qwen3-vl-plus": {
+    "max_context": 262144,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3-coder-next": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "qwen3-coder-next": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3-coder-30b-a3b-instruct": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "qwen3-coder-30b-a3b-instruct": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3.5-397b-a17b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.5-397b-a17b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwq-32b": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "qwq-32b": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3.6-27b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.6-27b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3.7-flash": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.7-flash": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwen2-5-vl-72b-instruct": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "qwen2-5-vl-72b-instruct": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3.6-35b-a3b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.6-35b-a3b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3.8-max-0902": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "qwen3.8-max-0902": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3-max": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "qwen3-max": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3.8-2.4t-a95b": {
+    "max_context": 262144,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "qwen3.8-2.4t-a95b": {
+    "max_context": 262144,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "alibaba/qwen-plus": {
+    "max_context": 1000000,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "qwen-plus": {
+    "max_context": 1000000,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3.5-122b-a10b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.5-122b-a10b": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3.6-flash": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.6-flash": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3-30b-a3b": {
+    "max_context": 131072,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "qwen3-30b-a3b": {
+    "max_context": 131072,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3.8-flash": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "qwen3.8-flash": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3.6-max-preview": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.6-max-preview": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3.8-max": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "qwen3.8-max": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3-235b-a22b": {
+    "max_context": 131072,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "qwen3-235b-a22b": {
+    "max_context": 131072,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3-vl-235b-a22b-thinking": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "qwen3-vl-235b-a22b-thinking": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3-vl-235b-a22b-instruct": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": false
+  },
+  "qwen3-vl-235b-a22b-instruct": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3.7-plus": {
+    "max_context": 1000000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "qwen3.7-plus": {
+    "max_context": 1000000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "alibaba/qwen3-235b-a22b-instruct-2507": {
+    "max_context": 262144,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "qwen3-235b-a22b-instruct-2507": {
+    "max_context": 262144,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "alibaba/qwen-omni-turbo": {
+    "max_context": 32768,
+    "max_output": 2048,
+    "thinking_supported": false
+  },
+  "qwen-omni-turbo": {
+    "max_context": 32768,
+    "max_output": 2048,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3-coder-480b-a35b-instruct": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "qwen3-coder-480b-a35b-instruct": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "alibaba/qwen2.5-coder-32b-instruct": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "qwen2.5-coder-32b-instruct": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "alibaba/qwen3.5-plus": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "qwen3.5-plus": {
+    "max_context": 1000000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "nvidia/nemotron-3.5-content-safety": {
+    "max_context": 128000,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "nemotron-3.5-content-safety": {
+    "max_context": 128000,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "nvidia/mistral-nemotron": {
+    "max_context": 128000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "mistral-nemotron": {
+    "max_context": 128000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "nvidia/llama-3.1-nemotron-ultra-253b": {
+    "max_context": 128000,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "llama-3.1-nemotron-ultra-253b": {
+    "max_context": 128000,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "nvidia/nemotron-3.5-lightning": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "nemotron-3.5-lightning": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "nvidia/llama-3.3-nemotron-super-49b-v1.5": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "llama-3.3-nemotron-super-49b-v1.5": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": {
+    "max_context": 256000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "nemotron-3-nano-omni-30b-a3b-reasoning": {
+    "max_context": 256000,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "nvidia/nemotron-voicechat": {
+    "max_context": 128000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "nemotron-voicechat": {
+    "max_context": 128000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "nvidia/nemotron-nano-9b-v2": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "nemotron-nano-9b-v2": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "nvidia/nemotron-3-content-safety": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "nemotron-3-content-safety": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "nvidia/nemotron-nano-12b-v2-vl": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "nemotron-nano-12b-v2-vl": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "nvidia/llama-nemotron-embed-vl-1b-v2": {
+    "max_context": 32768,
+    "max_output": 2048,
+    "thinking_supported": false
+  },
+  "llama-nemotron-embed-vl-1b-v2": {
+    "max_context": 32768,
+    "max_output": 2048,
+    "thinking_supported": false
+  },
+  "nvidia/nemotron-3-super-120b-a12b": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "nemotron-3-super-120b-a12b": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "nvidia/llama-nemotron-rerank-vl-1b-v2": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "llama-nemotron-rerank-vl-1b-v2": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "nvidia/llama-3.1-nemotron-safety-guard-8b-v3": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "llama-3.1-nemotron-safety-guard-8b-v3": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "nvidia/nemotron-mini-4b-instruct": {
+    "max_context": 128000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "nemotron-mini-4b-instruct": {
+    "max_context": 128000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "nvidia/nemotron-content-safety-reasoning-4b": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": true
+  },
+  "nemotron-content-safety-reasoning-4b": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": true
+  },
+  "nvidia/nemotron-cascade-2-30b-a3b": {
+    "max_context": 256000,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "nemotron-cascade-2-30b-a3b": {
+    "max_context": 256000,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "nvidia/nemotron-3-ultra-550b-a55b": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "nemotron-3-ultra-550b-a55b": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "nvidia/llama-3.3-nemotron-super-49b-v1": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "llama-3.3-nemotron-super-49b-v1": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "nvidia/nemotron-3-nano-30b-a3b": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "nemotron-3-nano-30b-a3b": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "nvidia/llama-3.1-nemotron-70b-instruct": {
+    "max_context": 128000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "llama-3.1-nemotron-70b-instruct": {
+    "max_context": 128000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "anthropic/claude-sonnet-4-6": {
+    "max_context": 1000000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "claude-sonnet-4-6": {
+    "max_context": 1000000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-3-haiku-20240307": {
+    "max_context": 200000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "claude-3-haiku-20240307": {
+    "max_context": 200000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "anthropic/claude-opus-5": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "claude-opus-5": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-3-7-sonnet-20250219": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "claude-3-7-sonnet-20250219": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-opus-4-5": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "claude-opus-4-5": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-sonnet-4-0": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "claude-sonnet-4-0": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-opus-4-1-20250805": {
+    "max_context": 200000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "claude-opus-4-1-20250805": {
+    "max_context": 200000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-3-5-haiku-20241022": {
+    "max_context": 200000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "claude-3-5-haiku-20241022": {
+    "max_context": 200000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "anthropic/claude-fable-5-1": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "claude-fable-5-1": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-opus-4-20250514": {
+    "max_context": 200000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "claude-opus-4-20250514": {
+    "max_context": 200000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-opus-4-0": {
+    "max_context": 200000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "claude-opus-4-0": {
+    "max_context": 200000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-opus-4-6": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "claude-opus-4-6": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-sonnet-4-5-20250929": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "claude-sonnet-4-5-20250929": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-opus-4-7": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "claude-opus-4-7": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-haiku-4-5-20251001": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "claude-haiku-4-5-20251001": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-fable-5": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "claude-fable-5": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-haiku-4-5": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "claude-haiku-4-5": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-sonnet-4-5": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "claude-sonnet-4-5": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-opus-4-1": {
+    "max_context": 200000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "claude-opus-4-1": {
+    "max_context": 200000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-opus-4-8": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "claude-opus-4-8": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-sonnet-4-20250514": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "claude-sonnet-4-20250514": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-3-5-sonnet-20241022": {
+    "max_context": 200000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "claude-3-5-sonnet-20241022": {
+    "max_context": 200000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "anthropic/claude-sonnet-5": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "claude-sonnet-5": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-mythos-5": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "claude-mythos-5": {
+    "max_context": 1000000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "anthropic/claude-opus-4-5-20251101": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "claude-opus-4-5-20251101": {
+    "max_context": 200000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "google/gemma-4-26b-a4b-it": {
+    "max_context": 262144,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "gemma-4-26b-a4b-it": {
+    "max_context": 262144,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "google/gemini-2.5-flash-tts": {
+    "max_context": 32768,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "gemini-2.5-flash-tts": {
+    "max_context": 32768,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "google/gemini-3.1-pro-preview-customtools": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3.1-pro-preview-customtools": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-2.5-pro-tts": {
+    "max_context": 32768,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "gemini-2.5-pro-tts": {
+    "max_context": 32768,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "google/gemini-3.1-flash-lite-image": {
+    "max_context": 65536,
+    "max_output": 4096,
+    "thinking_supported": true
+  },
+  "gemini-3.1-flash-lite-image": {
+    "max_context": 65536,
+    "max_output": 4096,
+    "thinking_supported": true
+  },
+  "google/gemma-4-E2B-it": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "gemma-4-E2B-it": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "google/gemini-3.5-transcribe-live": {
+    "max_context": 0,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "gemini-3.5-transcribe-live": {
+    "max_context": 0,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "google/lyria-3-clip-preview": {
+    "max_context": 131072,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "lyria-3-clip-preview": {
+    "max_context": 131072,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "google/gemini-2.5-flash-image": {
+    "max_context": 32768,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "gemini-2.5-flash-image": {
+    "max_context": 32768,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "google/deep-research-max-preview-04-2026": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "deep-research-max-preview-04-2026": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-2.0-flash": {
+    "max_context": 1048576,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "gemini-2.0-flash": {
+    "max_context": 1048576,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "google/gemini-3-pro-image": {
+    "max_context": 65536,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "gemini-3-pro-image": {
+    "max_context": 65536,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "google/gemma-4-E4B-it": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "gemma-4-E4B-it": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "google/gemini-3.1-pro-preview": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3.1-pro-preview": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/deep-research-preview-04-2026": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "deep-research-preview-04-2026": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-2.5-flash-lite": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-2.5-flash-lite": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-2.5-computer-use-preview-10-2025": {
+    "max_context": 128000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "gemini-2.5-computer-use-preview-10-2025": {
+    "max_context": 128000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "google/gemini-3-pro-preview": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3-pro-preview": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-2.0-flash-lite": {
+    "max_context": 1048576,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "gemini-2.0-flash-lite": {
+    "max_context": 1048576,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "google/gemini-3.6-flash": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3.6-flash": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-3.1-flash-lite": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3.1-flash-lite": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-3.1-flash-live-preview": {
+    "max_context": 131072,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3.1-flash-live-preview": {
+    "max_context": 131072,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-3.5-flash": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3.5-flash": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/veo-3.1-generate-preview": {
+    "max_context": 1024,
+    "max_output": 1,
+    "thinking_supported": false
+  },
+  "veo-3.1-generate-preview": {
+    "max_context": 1024,
+    "max_output": 1,
+    "thinking_supported": false
+  },
+  "google/gemini-3.1-flash-lite-preview": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3.1-flash-lite-preview": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/veo-3.1-fast-generate-preview": {
+    "max_context": 1024,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "veo-3.1-fast-generate-preview": {
+    "max_context": 1024,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "google/gemini-embedding-001": {
+    "max_context": 2048,
+    "max_output": 1,
+    "thinking_supported": false
+  },
+  "gemini-embedding-001": {
+    "max_context": 2048,
+    "max_output": 1,
+    "thinking_supported": false
+  },
+  "google/gemini-3.1-flash-image": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "gemini-3.1-flash-image": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "google/gemini-3.5-flash-lite": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3.5-flash-lite": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-3-pro-image-preview": {
+    "max_context": 65536,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "gemini-3-pro-image-preview": {
+    "max_context": 65536,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "google/gemini-3.1-flash-tts-preview": {
+    "max_context": 8192,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "gemini-3.1-flash-tts-preview": {
+    "max_context": 8192,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "google/gemini-robotics-er-1.6-preview": {
+    "max_context": 131072,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-robotics-er-1.6-preview": {
+    "max_context": 131072,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/veo-3.1-lite-generate-preview": {
+    "max_context": 1024,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "veo-3.1-lite-generate-preview": {
+    "max_context": 1024,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "google/gemini-flash-lite-latest": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-flash-lite-latest": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemma-4-31b-it": {
+    "max_context": 262144,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "gemma-4-31b-it": {
+    "max_context": 262144,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "google/gemini-embedding-2": {
+    "max_context": 8192,
+    "max_output": 3072,
+    "thinking_supported": false
+  },
+  "gemini-embedding-2": {
+    "max_context": 8192,
+    "max_output": 3072,
+    "thinking_supported": false
+  },
+  "google/gemini-3-flash-preview": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3-flash-preview": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-3.8-flash": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3.8-flash": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-3.5-live-translate-preview": {
+    "max_context": 131072,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "gemini-3.5-live-translate-preview": {
+    "max_context": 131072,
+    "max_output": 65536,
+    "thinking_supported": false
+  },
+  "google/lyria-3-pro-preview": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "lyria-3-pro-preview": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "google/gemini-3.7-flash": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3.7-flash": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-2.5-pro": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-2.5-pro": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-flash-latest": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-flash-latest": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-3.1-flash-image-preview": {
+    "max_context": 65536,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-3.1-flash-image-preview": {
+    "max_context": 65536,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "google/gemini-omni-flash-preview": {
+    "max_context": 1048576,
+    "max_output": 57920,
+    "thinking_supported": true
+  },
+  "gemini-omni-flash-preview": {
+    "max_context": 1048576,
+    "max_output": 57920,
+    "thinking_supported": true
+  },
+  "google/gemini-2.5-flash": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "gemini-2.5-flash": {
+    "max_context": 1048576,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "thinkingmachines/inkling-small": {
+    "max_context": 1048576,
+    "max_output": 1048576,
+    "thinking_supported": true
+  },
+  "inkling-small": {
+    "max_context": 1048576,
+    "max_output": 1048576,
+    "thinking_supported": true
+  },
+  "thinkingmachines/inkling": {
+    "max_context": 1048576,
+    "max_output": 1048576,
+    "thinking_supported": true
+  },
+  "inkling": {
+    "max_context": 1048576,
+    "max_output": 1048576,
+    "thinking_supported": true
+  },
+  "aisingapore/gemma-sea-lion-v4-27b-it": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": false
+  },
+  "gemma-sea-lion-v4-27b-it": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": false
+  },
+  "meta/llama-3.1-8b-instruct": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "llama-3.1-8b-instruct": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "meta/llama-guard-3-8b": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "llama-guard-3-8b": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "meta/muse-spark-1.3": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "muse-spark-1.3": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "meta/llama-4-scout-17b-instruct": {
+    "max_context": 3500000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "llama-4-scout-17b-instruct": {
+    "max_context": 3500000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "meta/muse-spark-1.2": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "muse-spark-1.2": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "meta/llama-3.2-3b": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "llama-3.2-3b": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "meta/llama-4-maverick-17b-instruct": {
+    "max_context": 1000000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "llama-4-maverick-17b-instruct": {
+    "max_context": 1000000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "meta/muse-spark-1.1": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "muse-spark-1.1": {
+    "max_context": 1048576,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "meta/muse-glimmer-30b": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "muse-glimmer-30b": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "meta/llama-3.2-1b": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "llama-3.2-1b": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "meta/llama-3.2-11b-vision-instruct": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "llama-3.2-11b-vision-instruct": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "meta/llama-3.3-70b-instruct": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "llama-3.3-70b-instruct": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "bytedance-seed/seed-2.1-pro": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "seed-2.1-pro": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "bytedance-seed/seed-1-8": {
+    "max_context": 256000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "seed-1-8": {
+    "max_context": 256000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "bytedance-seed/seed-2.0-pro": {
+    "max_context": 256000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "seed-2.0-pro": {
+    "max_context": 256000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "bytedance-seed/seed-2.0-code": {
+    "max_context": 262144,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "seed-2.0-code": {
+    "max_context": 262144,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "bytedance-seed/seed-2.1-turbo": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "seed-2.1-turbo": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "bytedance-seed/seed-2.0-mini": {
+    "max_context": 256000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "seed-2.0-mini": {
+    "max_context": 256000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "bytedance-seed/seed-1-6-vision": {
+    "max_context": 256000,
+    "max_output": 32000,
+    "thinking_supported": false
+  },
+  "seed-1-6-vision": {
+    "max_context": 256000,
+    "max_output": 32000,
+    "thinking_supported": false
+  },
+  "bytedance-seed/seed-1-6-flash": {
+    "max_context": 256000,
+    "max_output": 32000,
+    "thinking_supported": false
+  },
+  "seed-1-6-flash": {
+    "max_context": 256000,
+    "max_output": 32000,
+    "thinking_supported": false
+  },
+  "bytedance-seed/seed-evolving": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "seed-evolving": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "bytedance-seed/seed-1-6": {
+    "max_context": 256000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "seed-1-6": {
+    "max_context": 256000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "bytedance-seed/seed-2.0-lite": {
+    "max_context": 256000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "seed-2.0-lite": {
+    "max_context": 256000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "bytedance-seed/seed-character": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "seed-character": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-4.7": {
+    "max_context": 204800,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "glm-4.7": {
+    "max_context": 204800,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-4.5-air": {
+    "max_context": 131072,
+    "max_output": 98304,
+    "thinking_supported": true
+  },
+  "glm-4.5-air": {
+    "max_context": 131072,
+    "max_output": 98304,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-4.6": {
+    "max_context": 204800,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "glm-4.6": {
+    "max_context": 204800,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-4.6v": {
+    "max_context": 128000,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "glm-4.6v": {
+    "max_context": 128000,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-5.2": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "glm-5.2": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-4.5-flash": {
+    "max_context": 131072,
+    "max_output": 98304,
+    "thinking_supported": true
+  },
+  "glm-4.5-flash": {
+    "max_context": 131072,
+    "max_output": 98304,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-5.3-flash": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "glm-5.3-flash": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-4.5": {
+    "max_context": 131072,
+    "max_output": 98304,
+    "thinking_supported": true
+  },
+  "glm-4.5": {
+    "max_context": 131072,
+    "max_output": 98304,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-4.5v": {
+    "max_context": 64000,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "glm-4.5v": {
+    "max_context": 64000,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-4.7-flashx": {
+    "max_context": 200000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "glm-4.7-flashx": {
+    "max_context": 200000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-5": {
+    "max_context": 204800,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "glm-5": {
+    "max_context": 204800,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-5.1": {
+    "max_context": 200000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "glm-5.1": {
+    "max_context": 200000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-5-turbo": {
+    "max_context": 200000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "glm-5-turbo": {
+    "max_context": 200000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-5.3": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "glm-5.3": {
+    "max_context": 1000000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-5v-turbo": {
+    "max_context": 200000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "glm-5v-turbo": {
+    "max_context": 200000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-4.6v-flash": {
+    "max_context": 128000,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "glm-4.6v-flash": {
+    "max_context": 128000,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "zhipuai/glm-4.7-flash": {
+    "max_context": 200000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "glm-4.7-flash": {
+    "max_context": 200000,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "microsoft/mai-code-1-flash": {
+    "max_context": 256000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "mai-code-1-flash": {
+    "max_context": 256000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "microsoft/phi-4-mini": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "phi-4-mini": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "microsoft/mai-code-1.1-flash": {
+    "max_context": 256000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "mai-code-1.1-flash": {
+    "max_context": 256000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "sakana/fugu": {
+    "max_context": 1000000,
+    "max_output": 0,
+    "thinking_supported": true
+  },
+  "fugu": {
+    "max_context": 1000000,
+    "max_output": 0,
+    "thinking_supported": true
+  },
+  "sakana/fugu-ultra": {
+    "max_context": 1000000,
+    "max_output": 0,
+    "thinking_supported": true
+  },
+  "fugu-ultra": {
+    "max_context": 1000000,
+    "max_output": 0,
+    "thinking_supported": true
+  },
+  "sakana/sakana-namazu": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "sakana-namazu": {
+    "max_context": 262144,
+    "max_output": 65536,
+    "thinking_supported": true
+  },
+  "openbmb/minicpm5-1b": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "minicpm5-1b": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "deepseek/deepseek-v4-flash-vision-exp": {
     "max_context": 1000000,
     "max_output": 384000,
     "thinking_supported": true
   },
-  "deepseek-v4-flash": {
+  "deepseek-v4-flash-vision-exp": {
     "max_context": 1000000,
     "max_output": 384000,
     "thinking_supported": true
   },
-  "deepseek/deepseek-v4-pro": {
+  "deepseek/deepseek-v4-pro-0813": {
     "max_context": 1000000,
     "max_output": 384000,
     "thinking_supported": true
   },
-  "deepseek-v4-pro": {
+  "deepseek-v4-pro-0813": {
     "max_context": 1000000,
     "max_output": 384000,
     "thinking_supported": true
@@ -1589,25 +2279,25 @@
     "max_output": 8192,
     "thinking_supported": false
   },
-  "deepseek/deepseek-v3.2": {
-    "max_context": 128000,
-    "max_output": 64000,
+  "deepseek/deepseek-v4-flash": {
+    "max_context": 1000000,
+    "max_output": 384000,
     "thinking_supported": true
   },
-  "deepseek-v3.2": {
-    "max_context": 128000,
-    "max_output": 64000,
+  "deepseek-v4-flash": {
+    "max_context": 1000000,
+    "max_output": 384000,
     "thinking_supported": true
   },
-  "deepseek/deepseek-ocr-2": {
-    "max_context": 8192,
-    "max_output": 8192,
-    "thinking_supported": false
+  "deepseek/deepseek-reasoner": {
+    "max_context": 1000000,
+    "max_output": 384000,
+    "thinking_supported": true
   },
-  "deepseek-ocr-2": {
-    "max_context": 8192,
-    "max_output": 8192,
-    "thinking_supported": false
+  "deepseek-reasoner": {
+    "max_context": 1000000,
+    "max_output": 384000,
+    "thinking_supported": true
   },
   "deepseek/deepseek-r1": {
     "max_context": 128000,
@@ -1629,805 +2319,695 @@
     "max_output": 384000,
     "thinking_supported": false
   },
-  "deepseek/deepseek-v4-pro-0813": {
+  "deepseek/deepseek-v3.2": {
+    "max_context": 128000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "deepseek-v3.2": {
+    "max_context": 128000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "deepseek/deepseek-r1-distill-qwen-32b": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "deepseek-r1-distill-qwen-32b": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "deepseek/deepseek-v4-pro-0423": {
     "max_context": 1000000,
     "max_output": 384000,
     "thinking_supported": true
   },
-  "deepseek-v4-pro-0813": {
+  "deepseek-v4-pro-0423": {
     "max_context": 1000000,
     "max_output": 384000,
     "thinking_supported": true
   },
-  "deepseek/deepseek-reasoner": {
+  "deepseek/deepseek-v3-0324": {
+    "max_context": 163840,
+    "max_output": 163840,
+    "thinking_supported": false
+  },
+  "deepseek-v3-0324": {
+    "max_context": 163840,
+    "max_output": 163840,
+    "thinking_supported": false
+  },
+  "deepseek/deepseek-v4-pro": {
     "max_context": 1000000,
     "max_output": 384000,
     "thinking_supported": true
   },
-  "deepseek-reasoner": {
+  "deepseek-v4-pro": {
     "max_context": 1000000,
     "max_output": 384000,
     "thinking_supported": true
   },
-  "deepreinforce/ornith-1.0-9b": {
-    "max_context": 262144,
+  "deepseek/deepseek-ocr-2": {
+    "max_context": 8192,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "deepseek-ocr-2": {
+    "max_context": 8192,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "deepseek/deepseek-v3.1": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "deepseek-v3.1": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "trendyol/asure-12b": {
+    "max_context": 131072,
     "max_output": 0,
-    "thinking_supported": true
+    "thinking_supported": false
   },
-  "ornith-1.0-9b": {
-    "max_context": 262144,
+  "asure-12b": {
+    "max_context": 131072,
     "max_output": 0,
-    "thinking_supported": true
-  },
-  "deepreinforce/ornith-1.0-397b": {
-    "max_context": 262144,
-    "max_output": 0,
-    "thinking_supported": true
-  },
-  "ornith-1.0-397b": {
-    "max_context": 262144,
-    "max_output": 0,
-    "thinking_supported": true
-  },
-  "deepreinforce/ornith-1.0-31b": {
-    "max_context": 262144,
-    "max_output": 0,
-    "thinking_supported": true
-  },
-  "ornith-1.0-31b": {
-    "max_context": 262144,
-    "max_output": 0,
-    "thinking_supported": true
-  },
-  "deepreinforce/ornith-1.0-35b": {
-    "max_context": 262144,
-    "max_output": 0,
-    "thinking_supported": true
-  },
-  "ornith-1.0-35b": {
-    "max_context": 262144,
-    "max_output": 0,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3-coder-480b-a35b-instruct": {
-    "max_context": 262144,
-    "max_output": 65536,
     "thinking_supported": false
   },
-  "qwen3-coder-480b-a35b-instruct": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "alibaba/qwen3.7-flash": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.7-flash": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3.7-plus": {
-    "max_context": 1000000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "qwen3.7-plus": {
-    "max_context": 1000000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3-vl-plus": {
+  "inclusionai/ling-3.0-flash-fin": {
     "max_context": 262144,
     "max_output": 32768,
     "thinking_supported": true
   },
-  "qwen3-vl-plus": {
+  "ling-3.0-flash-fin": {
     "max_context": 262144,
     "max_output": 32768,
     "thinking_supported": true
   },
-  "alibaba/qwen3-32b": {
-    "max_context": 131072,
-    "max_output": 16384,
+  "openai/gpt-5-nano": {
+    "max_context": 400000,
+    "max_output": 128000,
     "thinking_supported": true
   },
-  "qwen3-32b": {
-    "max_context": 131072,
-    "max_output": 16384,
+  "gpt-5-nano": {
+    "max_context": 400000,
+    "max_output": 128000,
     "thinking_supported": true
   },
-  "alibaba/qwen3.8-max-preview": {
-    "max_context": 1000000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "qwen3.8-max-preview": {
-    "max_context": 1000000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3.6-35b-a3b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.6-35b-a3b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen2-5-vl-72b-instruct": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "qwen2-5-vl-72b-instruct": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "alibaba/qwen-max": {
-    "max_context": 32768,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "qwen-max": {
-    "max_context": 32768,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "alibaba/qwen3.5-plus": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.5-plus": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen-omni-turbo": {
-    "max_context": 32768,
-    "max_output": 2048,
-    "thinking_supported": false
-  },
-  "qwen-omni-turbo": {
-    "max_context": 32768,
-    "max_output": 2048,
-    "thinking_supported": false
-  },
-  "alibaba/qwen-vl-max": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "qwen-vl-max": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "alibaba/qwen3-coder-30b-a3b-instruct": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "qwen3-coder-30b-a3b-instruct": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "alibaba/qwen3.5-27b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.5-27b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3.7-max": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.7-max": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3-next-80b-a3b-thinking": {
-    "max_context": 131072,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "qwen3-next-80b-a3b-thinking": {
-    "max_context": 131072,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3.5-9b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.5-9b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3.6-27b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.6-27b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3.5-35b-a3b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.5-35b-a3b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3-235b-a22b": {
-    "max_context": 131072,
-    "max_output": 16384,
-    "thinking_supported": true
-  },
-  "qwen3-235b-a22b": {
-    "max_context": 131072,
-    "max_output": 16384,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3.5-flash": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.5-flash": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3-max": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "qwen3-max": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "alibaba/qwen3-coder-plus": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "qwen3-coder-plus": {
-    "max_context": 1048576,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "alibaba/qwen3.8-max": {
-    "max_context": 1000000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "qwen3.8-max": {
-    "max_context": 1000000,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3-coder-flash": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "qwen3-coder-flash": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "alibaba/qwen3-235b-a22b-instruct-2507": {
-    "max_context": 262144,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "qwen3-235b-a22b-instruct-2507": {
-    "max_context": 262144,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "alibaba/qwen-flash": {
-    "max_context": 1000000,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "qwen-flash": {
-    "max_context": 1000000,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "alibaba/qwen-plus": {
-    "max_context": 1000000,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "qwen-plus": {
-    "max_context": 1000000,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "alibaba/qwen-turbo": {
-    "max_context": 1000000,
-    "max_output": 16384,
-    "thinking_supported": true
-  },
-  "qwen-turbo": {
-    "max_context": 1000000,
-    "max_output": 16384,
-    "thinking_supported": true
-  },
-  "alibaba/qwq-plus": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": true
-  },
-  "qwq-plus": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3.6-flash": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.6-flash": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3.5-397b-a17b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.5-397b-a17b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen2.5-coder-0.5b": {
-    "max_context": 32768,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "qwen2.5-coder-0.5b": {
-    "max_context": 32768,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "alibaba/qwen3.6-max-preview": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.6-max-preview": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3-coder-next": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "qwen3-coder-next": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": false
-  },
-  "alibaba/qwen3.6-plus": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.6-plus": {
-    "max_context": 1000000,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3.5-122b-a10b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "qwen3.5-122b-a10b": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "alibaba/qwen3-next-80b-a3b-instruct": {
-    "max_context": 131072,
+  "openai/gpt-4.1-nano": {
+    "max_context": 1047576,
     "max_output": 32768,
     "thinking_supported": false
   },
-  "qwen3-next-80b-a3b-instruct": {
-    "max_context": 131072,
+  "gpt-4.1-nano": {
+    "max_context": 1047576,
     "max_output": 32768,
     "thinking_supported": false
   },
-  "alibaba/qwen-vl-plus": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "qwen-vl-plus": {
-    "max_context": 131072,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "xiaomi/mimo-v2-omni": {
-    "max_context": 262144,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "mimo-v2-omni": {
-    "max_context": 262144,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "xiaomi/mimo-v2-flash": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "mimo-v2-flash": {
-    "max_context": 262144,
-    "max_output": 65536,
-    "thinking_supported": true
-  },
-  "xiaomi/mimo-v2.5-pro-ultraspeed": {
-    "max_context": 1048576,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "mimo-v2.5-pro-ultraspeed": {
-    "max_context": 1048576,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "xiaomi/mimo-v2-pro": {
-    "max_context": 1048576,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "mimo-v2-pro": {
-    "max_context": 1048576,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "xiaomi/mimo-v2.5": {
-    "max_context": 1048576,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "mimo-v2.5": {
-    "max_context": 1048576,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "xiaomi/mimo-v2.5-pro": {
-    "max_context": 1048576,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "mimo-v2.5-pro": {
-    "max_context": 1048576,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "anthropic/claude-sonnet-4-6": {
-    "max_context": 1000000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "claude-sonnet-4-6": {
-    "max_context": 1000000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-opus-4-0": {
-    "max_context": 200000,
-    "max_output": 32000,
-    "thinking_supported": true
-  },
-  "claude-opus-4-0": {
-    "max_context": 200000,
-    "max_output": 32000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-haiku-4-5": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "claude-haiku-4-5": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-mythos-5": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "claude-mythos-5": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-3-7-sonnet-20250219": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "claude-3-7-sonnet-20250219": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-opus-4-6": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "claude-opus-4-6": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-3-5-sonnet-20241022": {
-    "max_context": 200000,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "claude-3-5-sonnet-20241022": {
-    "max_context": 200000,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "anthropic/claude-fable-5": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "claude-fable-5": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-opus-4-8": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "claude-opus-4-8": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-sonnet-4-0": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "claude-sonnet-4-0": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-opus-4-1": {
-    "max_context": 200000,
-    "max_output": 32000,
-    "thinking_supported": true
-  },
-  "claude-opus-4-1": {
-    "max_context": 200000,
-    "max_output": 32000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-sonnet-4-5": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "claude-sonnet-4-5": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-sonnet-4-5-20250929": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "claude-sonnet-4-5-20250929": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-opus-4-5-20251101": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "claude-opus-4-5-20251101": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-3-5-haiku-20241022": {
-    "max_context": 200000,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "claude-3-5-haiku-20241022": {
-    "max_context": 200000,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "anthropic/claude-haiku-4-5-20251001": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "claude-haiku-4-5-20251001": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-opus-4-7": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "claude-opus-4-7": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-sonnet-4-20250514": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "claude-sonnet-4-20250514": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-opus-4-5": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "claude-opus-4-5": {
-    "max_context": 200000,
-    "max_output": 64000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-sonnet-5": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "claude-sonnet-5": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-3-haiku-20240307": {
-    "max_context": 200000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "claude-3-haiku-20240307": {
-    "max_context": 200000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "anthropic/claude-opus-4-20250514": {
-    "max_context": 200000,
-    "max_output": 32000,
-    "thinking_supported": true
-  },
-  "claude-opus-4-20250514": {
-    "max_context": 200000,
-    "max_output": 32000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-opus-5": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "claude-opus-5": {
-    "max_context": 1000000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "anthropic/claude-opus-4-1-20250805": {
-    "max_context": 200000,
-    "max_output": 32000,
-    "thinking_supported": true
-  },
-  "claude-opus-4-1-20250805": {
-    "max_context": 200000,
-    "max_output": 32000,
-    "thinking_supported": true
-  },
-  "perplexity/sonar": {
+  "openai/gpt-4o-2024-05-13": {
     "max_context": 128000,
     "max_output": 4096,
     "thinking_supported": false
   },
-  "sonar": {
+  "gpt-4o-2024-05-13": {
     "max_context": 128000,
     "max_output": 4096,
     "thinking_supported": false
   },
-  "perplexity/sonar-pro": {
+  "openai/gpt-5-codex": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5-codex": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5-pro": {
+    "max_context": 400000,
+    "max_output": 272000,
+    "thinking_supported": true
+  },
+  "gpt-5-pro": {
+    "max_context": 400000,
+    "max_output": 272000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.1-codex-mini": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.1-codex-mini": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.1-codex": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.1-codex": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.6-sol": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.6-sol": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-4o-2024-08-06": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "gpt-4o-2024-08-06": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "openai/gpt-5.2-codex": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.2-codex": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-6-astra": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-6-astra": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/o3-deep-research": {
     "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "o3-deep-research": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "openai/gpt-6-astra-fast": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-6-astra-fast": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.2-pro": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.2-pro": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.3-codex-spark": {
+    "max_context": 128000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "gpt-5.3-codex-spark": {
+    "max_context": 128000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "openai/gpt-4.1-mini": {
+    "max_context": 1047576,
+    "max_output": 32768,
+    "thinking_supported": false
+  },
+  "gpt-4.1-mini": {
+    "max_context": 1047576,
+    "max_output": 32768,
+    "thinking_supported": false
+  },
+  "openai/gpt-5-chat-latest": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5-chat-latest": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.4": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.4": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-oss-20b": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "gpt-oss-20b": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "openai/gpt-4-turbo": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "gpt-4-turbo": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "openai/gpt-5.1": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.1": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.1-codex-max": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.1-codex-max": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/o4-mini-deep-research": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "o4-mini-deep-research": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.1-chat-latest": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "gpt-5.1-chat-latest": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "openai/gpt-oss-safeguard-120b": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "gpt-oss-safeguard-120b": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "openai/o1": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "o1": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "openai/gpt-4o": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "gpt-4o": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "openai/gpt-5.6-luna": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.6-luna": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/whisper-large-v3": {
+    "max_context": 448,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "whisper-large-v3": {
+    "max_context": 448,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "openai/gpt-5.3-codex": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.3-codex": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-4o-mini": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "gpt-4o-mini": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "openai/gpt-image-1.5": {
+    "max_context": 0,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "gpt-image-1.5": {
+    "max_context": 0,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "openai/o1-pro": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "o1-pro": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "openai/gpt-4.1": {
+    "max_context": 1047576,
+    "max_output": 32768,
+    "thinking_supported": false
+  },
+  "gpt-4.1": {
+    "max_context": 1047576,
+    "max_output": 32768,
+    "thinking_supported": false
+  },
+  "openai/gpt-image-1": {
+    "max_context": 0,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "gpt-image-1": {
+    "max_context": 0,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "openai/gpt-5.4-nano": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.4-nano": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.5-pro": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.5-pro": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/whisper-large-v3-turbo": {
+    "max_context": 448,
+    "max_output": 448,
+    "thinking_supported": false
+  },
+  "whisper-large-v3-turbo": {
+    "max_context": 448,
+    "max_output": 448,
+    "thinking_supported": false
+  },
+  "openai/gpt-5.4-mini": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.4-mini": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-image-2": {
+    "max_context": 0,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "gpt-image-2": {
+    "max_context": 0,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "openai/gpt-realtime-whisper": {
+    "max_context": 0,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "gpt-realtime-whisper": {
+    "max_context": 0,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "openai/gpt-3.5-turbo": {
+    "max_context": 16385,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "gpt-3.5-turbo": {
+    "max_context": 16385,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "openai/gpt-5-mini": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5-mini": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-oss-120b": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "gpt-oss-120b": {
+    "max_context": 131072,
+    "max_output": 32768,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.4-pro": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.4-pro": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.5-instant": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.5-instant": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.6-terra": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.6-terra": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-4": {
+    "max_context": 8192,
     "max_output": 8192,
     "thinking_supported": false
   },
-  "sonar-pro": {
-    "max_context": 200000,
+  "gpt-4": {
+    "max_context": 8192,
     "max_output": 8192,
     "thinking_supported": false
   },
-  "perplexity/sonar-reasoning-pro": {
+  "openai/gpt-5.2": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.2": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5": {
+    "max_context": 400000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.2-chat-latest": {
     "max_context": 128000,
-    "max_output": 4096,
+    "max_output": 16384,
     "thinking_supported": true
   },
-  "sonar-reasoning-pro": {
+  "gpt-5.2-chat-latest": {
     "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "openai/o4-mini": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "o4-mini": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "openai/gpt-realtime-2.1": {
+    "max_context": 128000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "gpt-realtime-2.1": {
+    "max_context": 128000,
+    "max_output": 32000,
+    "thinking_supported": true
+  },
+  "openai/o3-mini": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "o3-mini": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "openai/o3": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "o3": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "openai/o3-pro": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "o3-pro": {
+    "max_context": 200000,
+    "max_output": 100000,
+    "thinking_supported": true
+  },
+  "openai/gpt-5.3-chat-latest": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "gpt-5.3-chat-latest": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "openai/gpt-5.5": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "gpt-5.5": {
+    "max_context": 1050000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "openai/gpt-4o-2024-11-20": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "gpt-4o-2024-11-20": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "sdaia/allam-2-7b": {
+    "max_context": 4096,
     "max_output": 4096,
-    "thinking_supported": true
+    "thinking_supported": false
   },
-  "moonshotai/kimi-k2.5": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": true
-  },
-  "kimi-k2.5": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": true
-  },
-  "moonshotai/kimi-k2-thinking-turbo": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": true
-  },
-  "kimi-k2-thinking-turbo": {
-    "max_context": 262144,
-    "max_output": 262144,
-    "thinking_supported": true
+  "allam-2-7b": {
+    "max_context": 4096,
+    "max_output": 4096,
+    "thinking_supported": false
   },
   "moonshotai/kimi-k2.7-code-highspeed": {
     "max_context": 262144,
@@ -2479,564 +3059,244 @@
     "max_output": 131072,
     "thinking_supported": true
   },
-  "openai/gpt-5.1-codex-mini": {
-    "max_context": 400000,
-    "max_output": 128000,
+  "moonshotai/kimi-k2.5": {
+    "max_context": 262144,
+    "max_output": 262144,
     "thinking_supported": true
   },
-  "gpt-5.1-codex-mini": {
-    "max_context": 400000,
-    "max_output": 128000,
+  "kimi-k2.5": {
+    "max_context": 262144,
+    "max_output": 262144,
     "thinking_supported": true
   },
-  "openai/gpt-image-2": {
-    "max_context": 0,
-    "max_output": 0,
-    "thinking_supported": false
-  },
-  "gpt-image-2": {
-    "max_context": 0,
-    "max_output": 0,
-    "thinking_supported": false
-  },
-  "openai/gpt-5.2-pro": {
-    "max_context": 400000,
-    "max_output": 128000,
+  "moonshotai/kimi-k2-thinking-turbo": {
+    "max_context": 262144,
+    "max_output": 262144,
     "thinking_supported": true
   },
-  "gpt-5.2-pro": {
-    "max_context": 400000,
-    "max_output": 128000,
+  "kimi-k2-thinking-turbo": {
+    "max_context": 262144,
+    "max_output": 262144,
     "thinking_supported": true
   },
-  "openai/gpt-5.5-pro": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.5-pro": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-4.1-mini": {
-    "max_context": 1047576,
-    "max_output": 32768,
-    "thinking_supported": false
-  },
-  "gpt-4.1-mini": {
-    "max_context": 1047576,
-    "max_output": 32768,
-    "thinking_supported": false
-  },
-  "openai/gpt-4o": {
+  "cohere/command-r7b-arabic-02-2025": {
     "max_context": 128000,
-    "max_output": 16384,
+    "max_output": 4000,
     "thinking_supported": false
   },
-  "gpt-4o": {
+  "command-r7b-arabic-02-2025": {
     "max_context": 128000,
-    "max_output": 16384,
+    "max_output": 4000,
     "thinking_supported": false
   },
-  "openai/gpt-5.4-pro": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.4-pro": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5.6-sol": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.6-sol": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-oss-safeguard-120b": {
-    "max_context": 131072,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "gpt-oss-safeguard-120b": {
-    "max_context": 131072,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "openai/gpt-4.1-nano": {
-    "max_context": 1047576,
-    "max_output": 32768,
-    "thinking_supported": false
-  },
-  "gpt-4.1-nano": {
-    "max_context": 1047576,
-    "max_output": 32768,
-    "thinking_supported": false
-  },
-  "openai/gpt-oss-20b": {
-    "max_context": 131072,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "gpt-oss-20b": {
-    "max_context": 131072,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "openai/gpt-5.5-instant": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.5-instant": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5.2-chat-latest": {
+  "cohere/command-a-plus-05-2026": {
     "max_context": 128000,
-    "max_output": 16384,
+    "max_output": 64000,
     "thinking_supported": true
   },
-  "gpt-5.2-chat-latest": {
+  "command-a-plus-05-2026": {
     "max_context": 128000,
-    "max_output": 16384,
+    "max_output": 64000,
     "thinking_supported": true
   },
-  "openai/o3-mini": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "o3-mini": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5.5": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.5": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/o3-pro": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "o3-pro": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "openai/gpt-4o-mini": {
-    "max_context": 128000,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "gpt-4o-mini": {
-    "max_context": 128000,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "openai/gpt-5": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/o4-mini-deep-research": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "o4-mini-deep-research": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "openai/gpt-realtime-2.1": {
-    "max_context": 128000,
+  "cohere/command-a-reasoning-08-2025": {
+    "max_context": 256000,
     "max_output": 32000,
     "thinking_supported": true
   },
-  "gpt-realtime-2.1": {
-    "max_context": 128000,
+  "command-a-reasoning-08-2025": {
+    "max_context": 256000,
     "max_output": 32000,
     "thinking_supported": true
   },
-  "openai/o3-deep-research": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "o3-deep-research": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5-codex": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5-codex": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-3.5-turbo": {
-    "max_context": 16385,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "gpt-3.5-turbo": {
-    "max_context": 16385,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "openai/whisper-large-v3": {
-    "max_context": 448,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "whisper-large-v3": {
-    "max_context": 448,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "openai/gpt-4o-2024-05-13": {
+  "cohere/command-a-vision-07-2025": {
     "max_context": 128000,
-    "max_output": 4096,
+    "max_output": 8000,
     "thinking_supported": false
   },
-  "gpt-4o-2024-05-13": {
+  "command-a-vision-07-2025": {
     "max_context": 128000,
-    "max_output": 4096,
+    "max_output": 8000,
     "thinking_supported": false
   },
-  "openai/gpt-5-chat-latest": {
-    "max_context": 400000,
-    "max_output": 128000,
+  "cohere/north-mini-code-1-0": {
+    "max_context": 256000,
+    "max_output": 64000,
     "thinking_supported": true
   },
-  "gpt-5-chat-latest": {
-    "max_context": 400000,
-    "max_output": 128000,
+  "north-mini-code-1-0": {
+    "max_context": 256000,
+    "max_output": 64000,
     "thinking_supported": true
   },
-  "openai/gpt-4o-2024-11-20": {
+  "cohere/command-r-plus-08-2024": {
     "max_context": 128000,
-    "max_output": 16384,
+    "max_output": 4000,
     "thinking_supported": false
   },
-  "gpt-4o-2024-11-20": {
+  "command-r-plus-08-2024": {
     "max_context": 128000,
-    "max_output": 16384,
+    "max_output": 4000,
     "thinking_supported": false
   },
-  "openai/gpt-5.4": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
+  "cohere/command-a-translate-08-2025": {
+    "max_context": 8000,
+    "max_output": 8000,
+    "thinking_supported": false
   },
-  "gpt-5.4": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
+  "command-a-translate-08-2025": {
+    "max_context": 8000,
+    "max_output": 8000,
+    "thinking_supported": false
   },
-  "openai/gpt-5.3-chat-latest": {
+  "cohere/command-a-03-2025": {
+    "max_context": 256000,
+    "max_output": 8000,
+    "thinking_supported": false
+  },
+  "command-a-03-2025": {
+    "max_context": 256000,
+    "max_output": 8000,
+    "thinking_supported": false
+  },
+  "cohere/c4ai-aya-expanse-32b": {
     "max_context": 128000,
-    "max_output": 16384,
+    "max_output": 4000,
     "thinking_supported": false
   },
-  "gpt-5.3-chat-latest": {
+  "c4ai-aya-expanse-32b": {
     "max_context": 128000,
-    "max_output": 16384,
+    "max_output": 4000,
     "thinking_supported": false
   },
-  "openai/gpt-realtime-whisper": {
-    "max_context": 0,
-    "max_output": 0,
+  "cohere/c4ai-aya-expanse-8b": {
+    "max_context": 8000,
+    "max_output": 4000,
     "thinking_supported": false
   },
-  "gpt-realtime-whisper": {
-    "max_context": 0,
-    "max_output": 0,
+  "c4ai-aya-expanse-8b": {
+    "max_context": 8000,
+    "max_output": 4000,
     "thinking_supported": false
   },
-  "openai/gpt-image-1.5": {
-    "max_context": 0,
-    "max_output": 0,
+  "cohere/c4ai-aya-vision-8b": {
+    "max_context": 16000,
+    "max_output": 4000,
     "thinking_supported": false
   },
-  "gpt-image-1.5": {
-    "max_context": 0,
-    "max_output": 0,
+  "c4ai-aya-vision-8b": {
+    "max_context": 16000,
+    "max_output": 4000,
     "thinking_supported": false
   },
-  "openai/gpt-5.2-codex": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.2-codex": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5.4-nano": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.4-nano": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5-pro": {
-    "max_context": 400000,
-    "max_output": 272000,
-    "thinking_supported": true
-  },
-  "gpt-5-pro": {
-    "max_context": 400000,
-    "max_output": 272000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5.4-mini": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.4-mini": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/whisper-large-v3-turbo": {
-    "max_context": 448,
-    "max_output": 448,
+  "cohere/command-r7b-12-2024": {
+    "max_context": 128000,
+    "max_output": 4000,
     "thinking_supported": false
   },
-  "whisper-large-v3-turbo": {
-    "max_context": 448,
-    "max_output": 448,
+  "command-r7b-12-2024": {
+    "max_context": 128000,
+    "max_output": 4000,
     "thinking_supported": false
   },
-  "openai/gpt-oss-120b": {
+  "cohere/c4ai-aya-vision-32b": {
+    "max_context": 16000,
+    "max_output": 4000,
+    "thinking_supported": false
+  },
+  "c4ai-aya-vision-32b": {
+    "max_context": 16000,
+    "max_output": 4000,
+    "thinking_supported": false
+  },
+  "cohere/command-r-08-2024": {
+    "max_context": 128000,
+    "max_output": 4000,
+    "thinking_supported": false
+  },
+  "command-r-08-2024": {
+    "max_context": 128000,
+    "max_output": 4000,
+    "thinking_supported": false
+  },
+  "upstage/solar-pro4": {
+    "max_context": 524288,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "solar-pro4": {
+    "max_context": 524288,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "upstage/solar-pro3": {
     "max_context": 131072,
-    "max_output": 32768,
+    "max_output": 8192,
     "thinking_supported": true
   },
-  "gpt-oss-120b": {
+  "solar-pro3": {
     "max_context": 131072,
-    "max_output": 32768,
-    "thinking_supported": true
-  },
-  "openai/o1": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "o1": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5.6-luna": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.6-luna": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5.2": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.2": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5.3-codex": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.3-codex": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5-mini": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5-mini": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/o1-pro": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "o1-pro": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5.1": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.1": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-4-turbo": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "gpt-4-turbo": {
-    "max_context": 128000,
-    "max_output": 4096,
-    "thinking_supported": false
-  },
-  "openai/gpt-4o-2024-08-06": {
-    "max_context": 128000,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "gpt-4o-2024-08-06": {
-    "max_context": 128000,
-    "max_output": 16384,
-    "thinking_supported": false
-  },
-  "openai/gpt-5.1-codex": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.1-codex": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5-nano": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5-nano": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/o3": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "o3": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5.6-terra": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.6-terra": {
-    "max_context": 1050000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-image-1": {
-    "max_context": 0,
-    "max_output": 0,
-    "thinking_supported": false
-  },
-  "gpt-image-1": {
-    "max_context": 0,
-    "max_output": 0,
-    "thinking_supported": false
-  },
-  "openai/gpt-4.1": {
-    "max_context": 1047576,
-    "max_output": 32768,
-    "thinking_supported": false
-  },
-  "gpt-4.1": {
-    "max_context": 1047576,
-    "max_output": 32768,
-    "thinking_supported": false
-  },
-  "openai/o4-mini": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "o4-mini": {
-    "max_context": 200000,
-    "max_output": 100000,
-    "thinking_supported": true
-  },
-  "openai/gpt-5.1-codex-max": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "gpt-5.1-codex-max": {
-    "max_context": 400000,
-    "max_output": 128000,
-    "thinking_supported": true
-  },
-  "openai/gpt-4": {
-    "max_context": 8192,
     "max_output": 8192,
-    "thinking_supported": false
-  },
-  "gpt-4": {
-    "max_context": 8192,
-    "max_output": 8192,
-    "thinking_supported": false
-  },
-  "openai/gpt-5.1-chat-latest": {
-    "max_context": 128000,
-    "max_output": 16384,
     "thinking_supported": true
   },
-  "gpt-5.1-chat-latest": {
-    "max_context": 128000,
-    "max_output": 16384,
+  "upstage/solar-pro2": {
+    "max_context": 65536,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "solar-pro2": {
+    "max_context": 65536,
+    "max_output": 8192,
+    "thinking_supported": true
+  },
+  "arcee-ai/trinity-mini": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "trinity-mini": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "arcee-ai/trinity-large-thinking": {
+    "max_context": 524288,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "trinity-large-thinking": {
+    "max_context": 524288,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "arcee-ai/trinity-large-preview": {
+    "max_context": 524288,
+    "max_output": 262144,
+    "thinking_supported": false
+  },
+  "trinity-large-preview": {
+    "max_context": 524288,
+    "max_output": 262144,
+    "thinking_supported": false
+  },
+  "arcee-ai/trinity-nano-preview": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": false
+  },
+  "trinity-nano-preview": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": false
+  },
+  "sarvam/sarvam-105b": {
+    "max_context": 131072,
+    "max_output": 131072,
+    "thinking_supported": true
+  },
+  "sarvam-105b": {
+    "max_context": 131072,
+    "max_output": 131072,
     "thinking_supported": true
   },
   "sarvam/sarvam-30b": {
@@ -3049,54 +3309,394 @@
     "max_output": 128000,
     "thinking_supported": true
   },
-  "sarvam/sarvam-105b": {
+  "tencent/hy3": {
+    "max_context": 256000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "hy3": {
+    "max_context": 256000,
+    "max_output": 128000,
+    "thinking_supported": true
+  },
+  "tencent/hy4-preview": {
+    "max_context": 1024000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "hy4-preview": {
+    "max_context": 1024000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "tencent/hy3-preview": {
+    "max_context": 256000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "hy3-preview": {
+    "max_context": 256000,
+    "max_output": 64000,
+    "thinking_supported": true
+  },
+  "xai/grok-4.3": {
+    "max_context": 1000000,
+    "max_output": 30000,
+    "thinking_supported": true
+  },
+  "grok-4.3": {
+    "max_context": 1000000,
+    "max_output": 30000,
+    "thinking_supported": true
+  },
+  "xai/grok-4.20-0309-reasoning": {
+    "max_context": 1000000,
+    "max_output": 30000,
+    "thinking_supported": true
+  },
+  "grok-4.20-0309-reasoning": {
+    "max_context": 1000000,
+    "max_output": 30000,
+    "thinking_supported": true
+  },
+  "xai/grok-4.5": {
+    "max_context": 500000,
+    "max_output": 500000,
+    "thinking_supported": true
+  },
+  "grok-4.5": {
+    "max_context": 500000,
+    "max_output": 500000,
+    "thinking_supported": true
+  },
+  "xai/grok-build-0.1": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "grok-build-0.1": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "xai/grok-imagine-video-1.5": {
+    "max_context": 1024,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "grok-imagine-video-1.5": {
+    "max_context": 1024,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "xai/grok-imagine-image-2.0": {
+    "max_context": 8000,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "grok-imagine-image-2.0": {
+    "max_context": 8000,
+    "max_output": 0,
+    "thinking_supported": false
+  },
+  "xai/grok-4.6": {
+    "max_context": 500000,
+    "max_output": 500000,
+    "thinking_supported": true
+  },
+  "grok-4.6": {
+    "max_context": 500000,
+    "max_output": 500000,
+    "thinking_supported": true
+  },
+  "xai/grok-4.1-fast": {
+    "max_context": 2000000,
+    "max_output": 30000,
+    "thinking_supported": false
+  },
+  "grok-4.1-fast": {
+    "max_context": 2000000,
+    "max_output": 30000,
+    "thinking_supported": false
+  },
+  "xai/grok-4.20-0309-non-reasoning": {
+    "max_context": 1000000,
+    "max_output": 30000,
+    "thinking_supported": false
+  },
+  "grok-4.20-0309-non-reasoning": {
+    "max_context": 1000000,
+    "max_output": 30000,
+    "thinking_supported": false
+  },
+  "mistral/pixtral-12b": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": false
+  },
+  "pixtral-12b": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": false
+  },
+  "mistral/codestral-22b-v0.1": {
+    "max_context": 32768,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "codestral-22b-v0.1": {
+    "max_context": 32768,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "mistral/devstral-small-2507": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": false
+  },
+  "devstral-small-2507": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": false
+  },
+  "mistral/mistral-small-2506": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "mistral-small-2506": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "mistral/devstral-2512": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": false
+  },
+  "devstral-2512": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": false
+  },
+  "mistral/magistral-medium-latest": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "magistral-medium-latest": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": true
+  },
+  "mistral/mistral-medium-latest": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "mistral-medium-latest": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "mistral/devstral-medium-2507": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": false
+  },
+  "devstral-medium-2507": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": false
+  },
+  "mistral/mistral-medium-2604": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "mistral-medium-2604": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": true
+  },
+  "mistral/mistral-large-2512": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": false
+  },
+  "mistral-large-2512": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": false
+  },
+  "mistral/devstral-medium-latest": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": false
+  },
+  "devstral-medium-latest": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": false
+  },
+  "mistral/voxtral-small-latest": {
+    "max_context": 32000,
+    "max_output": 32000,
+    "thinking_supported": false
+  },
+  "voxtral-small-latest": {
+    "max_context": 32000,
+    "max_output": 32000,
+    "thinking_supported": false
+  },
+  "mistral/mistral-nemo": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": false
+  },
+  "mistral-nemo": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": false
+  },
+  "mistral/mistral-small-latest": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "mistral-small-latest": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "mistral/mistral-large-latest": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": false
+  },
+  "mistral-large-latest": {
+    "max_context": 262144,
+    "max_output": 262144,
+    "thinking_supported": false
+  },
+  "mistral/mistral-large-2411": {
+    "max_context": 131072,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "mistral-large-2411": {
+    "max_context": 131072,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "mistral/mistral-small-2603": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "mistral-small-2603": {
+    "max_context": 256000,
+    "max_output": 256000,
+    "thinking_supported": true
+  },
+  "mistral/mistral-small-3-1-24b-instruct-2503": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "mistral-small-3-1-24b-instruct-2503": {
+    "max_context": 128000,
+    "max_output": 16384,
+    "thinking_supported": false
+  },
+  "mistral/mistral-medium-2505": {
     "max_context": 131072,
     "max_output": 131072,
-    "thinking_supported": true
+    "thinking_supported": false
   },
-  "sarvam-105b": {
+  "mistral-medium-2505": {
     "max_context": 131072,
     "max_output": 131072,
-    "thinking_supported": true
+    "thinking_supported": false
   },
-  "bytedance-seed/seed-2.0-code": {
-    "max_context": 262144,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "seed-2.0-code": {
-    "max_context": 262144,
-    "max_output": 131072,
-    "thinking_supported": true
-  },
-  "stepfun/step-3.5-flash": {
+  "mistral/codestral-latest": {
     "max_context": 256000,
-    "max_output": 256000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "codestral-latest": {
+    "max_context": 256000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "mistral/magistral-small-2506": {
+    "max_context": 131072,
+    "max_output": 8192,
     "thinking_supported": true
   },
-  "step-3.5-flash": {
-    "max_context": 256000,
-    "max_output": 256000,
+  "magistral-small-2506": {
+    "max_context": 131072,
+    "max_output": 8192,
     "thinking_supported": true
   },
-  "stepfun/step-3.7-flash": {
-    "max_context": 256000,
-    "max_output": 256000,
+  "mistral/ministral-8b-instruct-2410": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "ministral-8b-instruct-2410": {
+    "max_context": 131072,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "mistral/pixtral-large-latest": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": false
+  },
+  "pixtral-large-latest": {
+    "max_context": 128000,
+    "max_output": 128000,
+    "thinking_supported": false
+  },
+  "perplexity/sonar": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "sonar": {
+    "max_context": 128000,
+    "max_output": 4096,
+    "thinking_supported": false
+  },
+  "perplexity/sonar-reasoning-pro": {
+    "max_context": 128000,
+    "max_output": 4096,
     "thinking_supported": true
   },
-  "step-3.7-flash": {
-    "max_context": 256000,
-    "max_output": 256000,
+  "sonar-reasoning-pro": {
+    "max_context": 128000,
+    "max_output": 4096,
     "thinking_supported": true
   },
-  "stepfun/step-3.5-flash-2603": {
-    "max_context": 256000,
-    "max_output": 256000,
+  "perplexity/sonar-pro": {
+    "max_context": 200000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "sonar-pro": {
+    "max_context": 200000,
+    "max_output": 8192,
+    "thinking_supported": false
+  },
+  "perplexity/sonar-deep-research": {
+    "max_context": 128000,
+    "max_output": 32768,
     "thinking_supported": true
   },
-  "step-3.5-flash-2603": {
-    "max_context": 256000,
-    "max_output": 256000,
+  "sonar-deep-research": {
+    "max_context": 128000,
+    "max_output": 32768,
     "thinking_supported": true
   }
 }
