@@ -29,7 +29,7 @@ Run the whole suite with **pytest** (works offline — no API key needed for the
 python -m pytest test/ -q
 ```
 
-The suite currently collects 31 tests across `test_stream_protocol.py`, `test_sandbox.py`, `test_attachment_preview.py`, `test_service_architecture.py`, and `test_architecture_refactor.py`. Tests use `unittest.TestCase`-style classes and are pytest-discoverable even though there is no `conftest.py`.
+The suite covers streaming, sandboxing, attachments, service architecture, request parameters, message formatting, and Anthropic HTTP client compatibility. `test_anthropic_http_client.py` exercises model discovery and cloud OCR with real SDK client validation and mocked API methods (no API key or network). Tests use `unittest.TestCase`-style classes and are pytest-discoverable even though there is no `conftest.py`.
 
 Additional standalone scripts (not pytest-collected):
 
@@ -55,6 +55,8 @@ node test/test_stream_protocol_ui.js
 node test/test_attachment_display.js
 node test/test_conversation_render.js
 node test/test_settings_components.js
+node test/test_model_picker.js
+node test/test_platform_select.js
 
 # Require a real API key in config.json:
 python test/test_ds.py / test_ds2.py / test_ds3.py   # DeepSeek connectivity
@@ -93,7 +95,8 @@ claude_chat/
   sandbox.py            code sandbox (Linux Docker / Windows AppContainer), fail-closed
   stream_protocol.py    typed StreamEvent/StreamEventQueue/StreamTask state machine
   clients/
-    base.py             shared: sanitize_error_message, build_http_client, extract_api_message
+    base.py             shared: sanitize_error_message, build_http_client,
+                        build_anthropic_http_client (httpx2 for Claude), extract_api_message
     claude.py           Anthropic SDK streaming + web_search/fetch tool loop
     deepseek.py         OpenAI-compatible streaming + tool-call search + reasoning_content
     gemini.py           google-genai streaming + Google Search grounding + code sandbox
@@ -109,11 +112,12 @@ claude_chat/
     model_service.py       ModelService (model discovery, custom-provider CRUD, registry)
     attachment_store.py    managed attachment storage + bounded preview generation
   ui/
-    index.html          single-page app shell (loads libs/ then 18 JS modules)
+    index.html          single-page app shell (loads libs/ then the application JS modules)
     state.js, stream_protocol.js, dom.js, utils.js, attachment_display.js, api.js,
     attachment_preview.js, ui.js, chat.js, conversation_render.js, sandbox_settings.js,
     settings_components.js, settings_claude.js, settings_deepseek.js, settings_gemini.js,
-    settings.js, events.js, main.js    18 vanilla-JS modules, no framework
+    settings.js, events.js, main.js, model_picker.js, select_picker.js,
+    custom_params.js, model_config_editor.js    vanilla-JS modules, no framework
     style.css           Catppuccin Mocha theme
     fonts.css + fonts/  woff2 (Inter, JetBrains Mono, Outfit)
     libs/               offline JS bundles (marked, highlight, mermaid, purify)
@@ -186,3 +190,11 @@ On every startup, `DatabaseManager.__init__()` auto-migrates any `conversations/
 ## No CI
 
 No `.github/` directory, no CI workflows, no pre-commit hooks.
+
+## Anthropic HTTP compatibility
+
+Anthropic SDK 1.x uses `httpx2`. Every `Anthropic(http_client=...)` call must use `build_anthropic_http_client`, including model discovery and cloud OCR. Keep the generic `build_http_client` for other integrations. Declare `httpx2` directly in both `requirements.txt` and `pyproject.toml`; the Windows spec also includes it. When changing these entry points, run `python -m pytest test/test_anthropic_http_client.py -q`.
+
+## Manual model IDs
+
+The settings dialog saves `manual_model_ids` as a provider-to-ID-list mapping. `updateModelList` merges only the active provider's IDs into discovery results without duplicates. Preserve this behavior for empty discovery results and provider switches; `test/test_model_picker.js` covers these cases.

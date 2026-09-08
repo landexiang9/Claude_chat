@@ -16,6 +16,7 @@ dependencies = [
     "Pillow>=10.0.0",
     "keyring>=24.0.0",
     "httpx>=0.24.0",
+    "httpx2>=2.0.0,<3",
     "cryptography>=42.0.0",
     # Attachment parsing (keep in sync with requirements.txt)
     "beautifulsoup4>=4.12.0",

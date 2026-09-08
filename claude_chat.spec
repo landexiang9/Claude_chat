@@ -18,6 +18,7 @@ a = Analysis(
         'google.genai',
         'google.generativeai',
         'httpx',
+        'httpx2',
         'PIL',
         'PIL.ImageGrab',
         'cryptography',

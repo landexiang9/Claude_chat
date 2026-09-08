@@ -280,10 +280,10 @@ def ocr_image_local_or_cloud(file_path, ocr_mode="auto", cloud_provider="gemini"
         elif cloud_provider == "claude":
             try:
                 from anthropic import Anthropic
-                from claude_chat.clients import build_http_client
+                from claude_chat.clients.base import build_anthropic_http_client
                 
-                # 构建带有 proxy 的 httpx 客户端
-                http_client = build_http_client(proxy_mode, proxy_url)
+                # 构建带有 proxy 的 httpx2 客户端
+                http_client = build_anthropic_http_client(proxy_mode, proxy_url)
                 client = Anthropic(api_key=api_key, http_client=http_client)
                 
                 b64_data = base64.b64encode(image_bytes).decode("utf-8")

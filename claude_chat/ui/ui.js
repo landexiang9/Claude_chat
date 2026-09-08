@@ -184,6 +184,60 @@ function createSearchableModelPicker() {
 
 const searchableModelPicker = createSearchableModelPicker();
 
+document.getElementById("add-model-btn")?.addEventListener("click", () => {
+    const model = modelSelect.value;
+    const platform = config.active_platform || "claude";
+    const dialog = document.createElement("dialog");
+    dialog.style.cssText = "background:var(--base);color:var(--text);border:1px solid var(--surface1);border-radius:12px;padding:24px;width:min(420px,85vw)";
+    dialog.innerHTML = `<form>
+        <h3 style="margin-top:0">自定义请求模型 ID</h3>
+        <p class="model-name-id" style="overflow-wrap:anywhere"></p>
+        <label for="custom-model-id-input">模型 ID（用于 API 请求）</label>
+        <input id="custom-model-id-input" required maxlength="256" style="box-sizing:border-box;width:100%;margin:12px 0;padding:8px" autocomplete="off">
+        <p class="model-name-error" role="alert"></p>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button type="button" class="btn btn-secondary">取消</button>
+            <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+    </form>`;
+    dialog.querySelector(".model-name-id").textContent = model ? `当前模型 ID：${model}` : "输入供应商支持的模型 ID";
+    const input = dialog.querySelector("input");
+    input.value = model;
+    dialog.querySelector('button[type="button"]').onclick = () => dialog.close();
+    dialog.addEventListener("close", () => dialog.remove());
+    // Let the native dialog handle focus and Escape without closing the settings behind it.
+    dialog.addEventListener("keydown", event => {
+        if (event.key === "Tab" || event.key === "Escape") event.stopPropagation();
+    });
+    dialog.querySelector("form").onsubmit = async event => {
+        event.preventDefault();
+        const button = dialog.querySelector('button[type="submit"]');
+        button.disabled = true;
+        const id = input.value.trim();
+        if (!id) { button.disabled = false; input.focus(); return; }
+        const customIds = { ...config.manual_model_ids };
+        customIds[platform] = [...new Set([...(customIds[platform] || []), id])];
+        try {
+            const result = await apiBridge.save_config({ manual_model_ids: customIds });
+            if (result !== true) throw new Error("保存失败，请重试");
+            config.manual_model_ids = customIds;
+            if ((config.active_platform || "claude") === platform) {
+                updateModelList(availableModels, id, true);
+                modelSelect.value = id;
+                modelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+            dialog.close();
+        } catch (error) {
+            dialog.querySelector(".model-name-error").textContent = error.message || "保存失败，请重试";
+        } finally {
+            button.disabled = false;
+        }
+    };
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    input.focus();
+});
+
 function setModelListStatus(message) {
     modelSelect.innerHTML = "";
     const option = document.createElement("option");
@@ -197,6 +251,12 @@ function setModelListStatus(message) {
 function updateModelList(models, selectedModelId = config.model, preserveSelected = false) {
     modelSelect.innerHTML = "";
     const displayModels = Array.isArray(models) ? [...models] : [];
+    const customIds = config.manual_model_ids?.[config.active_platform || "claude"] || [];
+    for (const id of customIds) {
+        if (!displayModels.some(item => (typeof item === "string" ? item : item.id) === id)) {
+            displayModels.push({ id, display_name: id });
+        }
+    }
     const containsSelected = displayModels.some(m => (typeof m === 'string' ? m : m.id) === selectedModelId);
     if (preserveSelected && selectedModelId && !containsSelected) {
         displayModels.unshift({ id: selectedModelId, display_name: `${selectedModelId}（历史会话）` });

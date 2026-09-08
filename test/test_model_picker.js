@@ -270,4 +270,38 @@ assert(fallbackSelect.getAttribute("tabindex") === null, "fallback should restor
 assert(fallbackSelect.getAttribute("aria-hidden") === null, "fallback should expose the native select to assistive technology");
 assert(fallbackTrigger.classList.contains("hidden"), "fallback should hide the unavailable picker trigger");
 
+// Manually entered request IDs survive discovery refreshes and stay provider-scoped.
+const listStart = uiSource.indexOf("function updateModelList(");
+const listEnd = uiSource.indexOf("// 绑定模型列表更新", listStart);
+let renderedModels;
+const manualConfig = {
+    active_platform: "custom:a", model: "private/model-v2",
+    manual_model_ids: { "custom:a": ["private/model-v2", "remote"], "custom:b": ["other"] }
+};
+const listContext = vm.createContext({
+    config: manualConfig, document, modelSelect: document.createElement("select"),
+    searchableModelPicker: { setModels(models) { renderedModels = models; } },
+    apiBridge: { save_config() { throw new Error("refresh must preserve the selected request ID"); } },
+    currentConvId: null, window: {},
+    setModelListStatus() { throw new Error("manual IDs should remain available without discovery"); }
+});
+vm.runInContext(uiSource.slice(listStart, listEnd), listContext);
+listContext.updateModelList([{ id: "remote", display_name: "Remote" }]);
+assert(renderedModels.filter(m => m.id === "remote").length === 1, "manual IDs must not duplicate discovery results");
+assert(renderedModels.some(m => m.id === "private/model-v2"), "custom request ID must be retained exactly");
+assert(!renderedModels.some(m => m.id === "other"), "manual IDs must not leak across providers");
+listContext.updateModelList([]);
+assert(renderedModels.some(m => m.id === "private/model-v2"), "empty discovery must retain custom IDs");
+manualConfig.active_platform = "custom:b";
+manualConfig.model = "other";
+listContext.updateModelList([]);
+assert(renderedModels.length === 1 && renderedModels[0].id === "other", "switching providers must restore their own IDs");
+
+picker.setModels([{ id: "builtin" }, { id: "custom:a", label: "Provider A", group: "custom-providers" },
+    { id: "custom:b", label: "Provider B", group: "custom-providers" }], "builtin");
+searchInput.value = "";
+picker.filter();
+assert(results.children[1].style.borderTop === "1px solid var(--surface1)", "custom provider group must start with a divider");
+assert(!results.children[2].style.borderTop, "divider must not repeat before each provider");
+
 console.log("model picker regression tests passed");

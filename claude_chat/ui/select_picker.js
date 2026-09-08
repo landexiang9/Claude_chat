@@ -49,7 +49,8 @@
         const refresh = () => {
             const items = Array.from(select.options).filter(option => !option.hidden).map(option => ({
                 id: option.value,
-                label: option.parentElement?.tagName === "OPTGROUP"
+                group: option.parentElement?.dataset.customProviders === "true" ? "custom-providers" : "",
+                label: option.parentElement?.tagName === "OPTGROUP" && option.parentElement?.dataset.customProviders !== "true"
                     ? `${option.parentElement.label} · ${option.textContent}` : option.textContent
             }));
             picker.setModels(items, select.value);

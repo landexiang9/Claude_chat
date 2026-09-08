@@ -196,7 +196,7 @@ async function refreshPlatformSelect(providers = null) {
     if (providers && providers.length > 0) {
         const sep = document.createElement("optgroup");
         sep.dataset.customProviders = "true";
-        sep.label = "── 自定义提供商 ──";
+        sep.label = "────────────";
         providers.forEach(p => {
             const opt = document.createElement("option");
             opt.value = p.platform_id || `custom:${p.id}`;

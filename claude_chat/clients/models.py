@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx
 from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestError
 
-from .base import build_http_client
+from .base import build_anthropic_http_client
 
 logger = logging.getLogger("claude_chat.clients")
 
@@ -246,7 +246,7 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
         if not api_key:
             return []
         try:
-            http_client = build_http_client(proxy_mode, proxy_url)
+            http_client = build_anthropic_http_client(proxy_mode, proxy_url)
             client = Anthropic(api_key=api_key, http_client=http_client, timeout=30.0)
             models = client.models.list()
             

@@ -11,7 +11,7 @@
         }
         const id = String(model && model.id != null ? model.id : "");
         const label = String(model && (model.display_name || model.label) ? (model.display_name || model.label) : id);
-        return { id, label };
+        return { id, label, ...(model?.group ? { group: model.group } : {}) };
     }
 
     function filterModels(models, query, allowEmpty = false) {
@@ -139,7 +139,14 @@
 
         function render() {
             const visibleModels = filterModels(models, searchInput.value, native);
-            results.replaceChildren(...visibleModels.map(createResult));
+            results.replaceChildren(...visibleModels.map((item, index) => {
+                const result = createResult(item);
+                if (item.group && index > 0 && item.group !== visibleModels[index - 1].group) {
+                    result.style.borderTop = "1px solid var(--surface1)";
+                    result.style.marginTop = "6px";
+                }
+                return result;
+            }));
             emptyState.classList.toggle("hidden", visibleModels.length !== 0);
         }
 

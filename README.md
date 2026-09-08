@@ -106,20 +106,19 @@ Navigate to `http://<device-ip>:8000` from any browser on the network.
 | Package | Version | Description |
 |---------|---------|-------------|
 | pywebview | >=5.0 | Desktop GUI container |
-| anthropic | >=0.103.0 | Anthropic Claude SDK |
+| anthropic | >=1.2.0 | Anthropic Claude SDK |
 | openai | >=1.0.0 | DeepSeek (OpenAI-compatible) SDK |
 | google-genai | >=1.0.0 | Google Gemini SDK |
 | Pillow | >=10.0.0 | Image processing |
 | keyring | >=24.0.0 | Secure OS credential storage |
-| requests | >=2.28.0 | HTTP client for web search |
+| httpx | >=0.24.0 | HTTP client for search and other integrations |
+| httpx2 | >=2.0.0,<3 | HTTP client for Anthropic SDK 1.x |
+| cryptography | >=42.0.0 | Encrypted credential storage |
 | beautifulsoup4 | >=4.12.0 | Web page parsing |
 
-Optional (for enhanced file parsing):
-- `easyocr` — Local OCR for images on text-only platforms
-- `pypdf` — PDF text extraction
-- `python-docx` — Word document parsing
-- `openpyxl` — Excel file parsing
-- `python-pptx` — PowerPoint parsing
+File parsing dependencies are installed by `requirements.txt`: `beautifulsoup4>=4.12.0`, `pypdf>=4.0.0`, `python-docx>=1.1.0`, `openpyxl>=3.1.0`, and `python-pptx>=0.6.23`.
+
+Optional: `easyocr` for local image OCR on text-only platforms.
 
 ---
 
@@ -135,17 +134,18 @@ Claude_chat/
 ├── pyproject.toml          # Project metadata & linting config
 ├── claude_chat/            # Core application source
 │   ├── __init__.py         # Module initialization
-│   ├── app.py              # PyWebView GUI & JS bridge API
-│   ├── api_bridge.py       # HTTP API bridge for headless mode
+│   ├── app.py              # GUI and streaming task lifecycle
+│   ├── api_bridge.py       # Shared GUI/HTTP service facade
+│   ├── services/           # Config, conversations, files, execution, models
+│   ├── http_router.py      # HTTP endpoint validation and dispatch
 │   ├── config.py           # Configuration & secure storage manager
-│   ├── conversation.py     # Legacy conversation JSON reader
 │   ├── db.py               # SQLite database layer
 │   ├── search.py           # Web search engine integration
 │   ├── attachment_parser.py# File attachment parsing & OCR
 │   ├── server.py           # HTTP server for headless/web mode
 │   ├── clients/            # Multi-platform API clients
 │   │   ├── __init__.py     # Client module exports
-│   │   ├── base.py         # Shared utilities (HTTP client, error sanitization)
+│   │   ├── base.py         # Separate httpx/httpx2 clients and shared helpers
 │   │   ├── claude.py       # Anthropic Claude streaming client
 │   │   ├── deepseek.py     # DeepSeek (OpenAI-compatible) streaming client
 │   │   ├── gemini.py       # Google Gemini streaming client
@@ -160,6 +160,9 @@ Claude_chat/
 │       ├── dom.js          # DOM manipulation utilities
 │       ├── events.js       # Event handlers & shortcuts
 │       ├── main.js         # App initialization & stream callbacks
+│       ├── model_picker.js # Searchable model picker
+│       ├── select_picker.js# Searchable select adapter
+│       ├── model_config_editor.js # Per-model request settings
 │       ├── settings.js     # Settings panel logic
 │       ├── state.js        # Application state management
 │       ├── ui.js           # UI rendering & components
@@ -220,3 +223,48 @@ Claude_chat/
 | `-s` | `--server` | Force headless web server mode (no GUI window) |
 | | `--host <ip>` | Bind IP address (default: `127.0.0.1`; use `0.0.0.0` for LAN access) |
 | `-p` | `--port <port>` | HTTP server port (default: `8000`) |
+
+
+## Custom Model IDs
+
+In Settings, select a provider and click **自定义模型 ID** (Custom model ID) in the model settings area. Enter the exact model ID accepted by that provider and save. The ID is used in API requests and retained when model discovery refreshes or returns no models. IDs are saved separately for each provider in `manual_model_ids`; adding an ID does not grant access to a model. Custom providers appear as a separate group in the provider picker.
+
+## Updating a Linux Deployment
+
+From your existing checkout, with its virtual environment activated:
+
+```bash
+git pull --ff-only
+python -m pip install -r requirements.txt
+python -m pip check
+```
+
+Restart the running service through your existing process manager. For a manually launched server, stop the old process and run:
+
+```bash
+python claude_chat.py --server --host 0.0.0.0 --port 8000
+```
+
+### Claude reports `Invalid http_client` / `httpx2.Client`
+
+Anthropic SDK 1.x requires objects from `httpx2`. Passing `httpx.Client` fails during client construction, before any API request. This is an SDK compatibility issue on any operating system. Claude chat, model discovery, and cloud OCR must use `build_anthropic_http_client()` from `claude_chat/clients/base.py`. Other integrations retain their separate HTTP client builder.
+
+Update both source and dependencies, then restart. Installing `httpx2` alone does not change callers that still construct `httpx.Client`. Check the interpreter used by the actual service:
+
+```bash
+python -c "import sys, anthropic, httpx2; print(sys.executable); print('anthropic', anthropic.__version__); print(httpx2.Client)"
+```
+
+## Development Checks
+
+Install test and lint tools in the project environment:
+
+```bash
+python -m pip install pytest ruff
+python -m pytest test/ -q
+python -m pytest test/test_anthropic_http_client.py -q
+node test/test_model_picker.js
+node test/test_platform_select.js
+```
+
+The Claude HTTP regression tests use real SDK client validation with mocked API methods; they require no API key or network connection. They cover model discovery and cloud OCR. Node.js is needed only for the JavaScript checks. See `AGENTS.md` for the remaining checks and standalone integration scripts.

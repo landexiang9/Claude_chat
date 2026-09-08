@@ -65,3 +65,4 @@ test.pptx
 !test/test_model_config_editor_browser.js
 !test/test_message_formatting.py
 !test/test_message_formatting.js
+!test/test_anthropic_http_client.py

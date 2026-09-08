@@ -114,19 +114,19 @@ Claude Chat 是一个功能强大的桌面 GUI / Web 客户端，支持 **Claude
 | 依赖包 | 版本要求 | 用途描述 |
 | :--- | :--- | :--- |
 | `pywebview` | >=5.0 | 桌面 GUI 窗口容器 |
-| `anthropic` | >=0.103.0 | Anthropic Claude SDK |
+| `anthropic` | >=1.2.0 | Anthropic Claude SDK |
 | `openai` | >=1.0.0 | DeepSeek (OpenAI 兼容) SDK |
 | `google-genai` | >=1.0.0 | Google Gemini SDK |
 | `Pillow` | >=10.0.0 | 图像处理支持 |
 | `keyring` | >=24.0.0 | 操作系统级安全凭证存储 |
-| `httpx` | >=0.24.0 | 联网搜索/网络请求客户端 |
+| `httpx` | >=0.24.0 | 联网搜索及其他集成的 HTTP 客户端 |
+| `httpx2` | >=2.0.0,<3 | Anthropic SDK 1.x 使用的 HTTP 客户端 |
+| `cryptography` | >=42.0.0 | 凭证加密存储 |
+| `beautifulsoup4` | >=4.12.0 | 网页内容解析 |
 
-可选依赖（用于增强文件解析与本地 OCR）：
-- `easyocr` — 纯文本平台本地图片 OCR
-- `pypdf` — PDF 文本提取
-- `python-docx` — Word 文档解析
-- `openpyxl` — Excel 表格解析
-- `python-pptx` — PowerPoint 演示文稿解析
+文件解析依赖随 `requirements.txt` 一起安装：`pypdf>=4.0.0`、`python-docx>=1.1.0`、`openpyxl>=3.1.0`、`python-pptx>=0.6.23`。
+
+可选安装 `easyocr`，用于纯文本平台的本地图片文字识别。
 
 ---
 
@@ -142,17 +142,18 @@ Claude_chat/
 ├── pyproject.toml          # 项目元数据与 Ruff 格式化配置
 ├── claude_chat/            # 核心业务源码目录
 │   ├── __init__.py         # 包初始化
-│   ├── app.py              # PyWebView GUI 逻辑与 JS 桥接 API
-│   ├── api_bridge.py       # Headless 模式的 HTTP API 桥接层
+│   ├── app.py              # GUI 与流式任务生命周期
+│   ├── api_bridge.py       # GUI 与 HTTP 共用的服务入口
+│   ├── services/           # 配置、会话、文件、执行及模型服务
+│   ├── http_router.py      # HTTP 参数验证与路由分发
 │   ├── config.py           # 配置与凭证安全管理器
-│   ├── conversation.py     # 历史 JSON 对话读取适配器
 │   ├── db.py               # SQLite 数据库持久化层
 │   ├── search.py           # 统一网页搜索引擎接口
 │   ├── attachment_parser.py# 附件解析器与 OCR 管道
 │   ├── server.py           # 局域网 Web 服务器实现 (Headless)
 │   ├── clients/            # 多平台 API 客户端模块
 │   │   ├── __init__.py     # 客户端模块导出
-│   │   ├── base.py         # 共享工具函数 (HTTP 客户端、错误脱敏)
+│   │   ├── base.py         # 分别构建 httpx/httpx2 客户端及共享工具
 │   │   ├── claude.py       # Anthropic Claude 流式客户端
 │   │   ├── deepseek.py     # DeepSeek (OpenAI 兼容) 流式客户端
 │   │   ├── gemini.py       # Google Gemini 流式客户端
@@ -167,6 +168,9 @@ Claude_chat/
 │       ├── dom.js          # DOM 操作工具
 │       ├── events.js       # 事件处理与快捷键
 │       ├── main.js         # 应用初始化与流式回调
+│       ├── model_picker.js # 可搜索模型选择器
+│       ├── select_picker.js# 可搜索下拉框适配
+│       ├── model_config_editor.js # 模型请求参数编辑器
 │       ├── settings.js     # 设置面板逻辑
 │       ├── state.js        # 应用状态管理
 │       ├── ui.js           # UI 渲染与组件
@@ -227,3 +231,48 @@ Claude_chat/
 | `-s` | `--server` | 强制以纯 Web 服务模式 (Headless) 运行，不显示本地图形窗口 |
 | | `--host <ip>` | 指定 Web 服务绑定的网卡 IP (如 `0.0.0.0` 代表绑定所有网卡，默认为 `127.0.0.1`) |
 | `-p` | `--port <port>` | 指定 Web 服务的监听端口号 (默认: `8000`) |
+
+
+## 自定义模型 ID
+
+在设置中选择供应商，点击模型设置区域的 **自定义模型 ID**，输入供应商支持的准确模型 ID 并保存。该 ID 会直接用于 API 请求，刷新模型列表或接口返回空列表后仍会保留。各供应商的 ID 分别保存到 `manual_model_ids`，互不混用；添加 ID 本身不会开通模型访问权限。供应商选择器会将自定义供应商单独分组显示。
+
+## 更新 Linux 部署
+
+在已有项目目录中激活虚拟环境，然后执行：
+
+```bash
+git pull --ff-only
+python -m pip install -r requirements.txt
+python -m pip check
+```
+
+通过原有进程管理工具重启服务。如果此前手动启动，请停止旧进程后重新运行：
+
+```bash
+python claude_chat.py --server --host 0.0.0.0 --port 8000
+```
+
+### Claude 报错 `Invalid http_client` / `httpx2.Client`
+
+Anthropic SDK 1.x 要求使用 `httpx2` 中的对象。传入 `httpx.Client` 会在初始化客户端时失败，此时尚未发送 API 请求。这是 SDK 兼容问题，各操作系统都可能出现。Claude 聊天、模型列表和云端图片文字识别统一使用 `claude_chat/clients/base.py` 中的 `build_anthropic_http_client()`；其他集成保留独立的 HTTP 客户端构造函数。
+
+需要同时更新代码和依赖，然后重启服务。仅安装 `httpx2` 不会改变仍在创建 `httpx.Client` 的旧代码。请用服务实际使用的 Python 环境检查：
+
+```bash
+python -c "import sys, anthropic, httpx2; print(sys.executable); print('anthropic', anthropic.__version__); print(httpx2.Client)"
+```
+
+## 开发验证
+
+在项目环境中安装测试与检查工具：
+
+```bash
+python -m pip install pytest ruff
+python -m pytest test/ -q
+python -m pytest test/test_anthropic_http_client.py -q
+node test/test_model_picker.js
+node test/test_platform_select.js
+```
+
+Claude HTTP 回归测试保留真实 SDK 的客户端类型检查，仅模拟 API 方法，不需要密钥或联网，覆盖模型列表和云端图片文字识别。JavaScript 检查需要 Node.js。其他检查及独立集成脚本见 `AGENTS.md`。
