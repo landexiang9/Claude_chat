@@ -610,16 +610,22 @@
                             <input type="text" id="cp-models-api-url-input" placeholder="留空则使用上面的 API Base URL；可填独立的 /models 端点 (同样不要包含 /chat/completions)" style="width: 100%;">
                         </div>
                         <div class="form-group" style="padding: 9px 10px; border: 1px solid var(--surface0); border-radius: 7px;">
-                            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; user-select: none;">
-                                <input type="checkbox" id="cp-file-upload-enabled-input"> 使用 OpenAI 兼容的 Files API（默认关闭）
-                            </label>
+                            <label for="cp-provider-adapter-input">供应商与文件协议适配器:</label>
+                            <select id="cp-provider-adapter-input" style="width: 100%;">
+                                <option value="local">OpenAI Chat + 本地解析（默认）</option>
+                                <option value="openai_files">标准 OpenAI Files + file_id</option>
+                                <option value="openrouter">OpenRouter 原生图片/PDF</option>
+                                <option value="inline_images">OpenAI Chat 图片内联</option>
+                                <option value="anthropic">Anthropic Messages + Files</option>
+                                <option value="gemini">Gemini GenerateContent + Files</option>
+                            </select>
                             <div id="cp-file-upload-options" class="hidden" style="margin-top: 8px;">
                                 <label for="cp-file-upload-purpose-input">上传 purpose（默认 user_data）:</label>
                                 <input type="text" id="cp-file-upload-purpose-input" value="user_data" placeholder="user_data" style="width: 100%;">
                                 <label for="cp-file-upload-expiry-input" style="margin-top: 7px;">文件有效期（秒，默认 172800 / 48 小时）:</label>
-                                <input type="number" id="cp-file-upload-expiry-input" min="3600" max="2592000" step="3600" value="172800" style="width: 100%;">
-                                <p style="font-size: 10.5px; color: var(--subtext0); margin: 5px 0 0;">启用后调用该 Base URL 下的 /files，并在聊天内容中发送 file_id。仅适用于实现这一兼容协议的供应商。</p>
+                                <input type="number" id="cp-file-upload-expiry-input" min="3600" max="7776000" step="3600" value="172800" style="width: 100%;">
                             </div>
+                            <p id="cp-provider-adapter-help" style="font-size: 10.5px; color: var(--subtext0); margin: 5px 0 0;"></p>
                         </div>
                         <div class="form-group" id="cp-api-key-input-container">
                             <label for="cp-api-key-input">API Key:</label>

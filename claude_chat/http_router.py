@@ -156,6 +156,7 @@ class HttpApiRouter:
                 file_upload_enabled=body.get("file_upload_enabled", False),
                 file_upload_purpose=body.get("file_upload_purpose", "user_data"),
                 file_upload_expires_in_seconds=body.get("file_upload_expires_in_seconds", 172800),
+                provider_adapter=body.get("provider_adapter"),
             )
             self.send_json_response(result)
 
@@ -174,6 +175,7 @@ class HttpApiRouter:
                 file_upload_enabled=body.get("file_upload_enabled"),
                 file_upload_purpose=body.get("file_upload_purpose"),
                 file_upload_expires_in_seconds=body.get("file_upload_expires_in_seconds"),
+                provider_adapter=body.get("provider_adapter"),
             )
             self.send_json_response(result)
 

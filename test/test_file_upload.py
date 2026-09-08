@@ -244,6 +244,16 @@ def main():
         assert "parsed image" in custom_api_message["content"][0]["text"]
         assert "_attachment" not in custom_api_message["content"][0]
 
+        custom_inline_block = prepare_attachment_content(
+            image_attachment,
+            "custom:demo",
+            MemoryConfig({
+                "custom_providers": [{"id": "demo", "provider_adapter": "openrouter"}]
+            }),
+        )
+        assert custom_inline_block["type"] == "image"
+        assert custom_inline_block["source"]["file_path"] == str(image_path)
+
         legacy_block = {
             "type": "text",
             "text": "\n--- 附件文件: legacy.txt ---\nlegacy payload\n--- 附件结束 ---",

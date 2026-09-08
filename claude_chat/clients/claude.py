@@ -1,7 +1,4 @@
-import base64
-import json
 import logging
-from pathlib import Path
 from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestError
 
 from claude_chat.request_params import generation_params, supports_temperature
@@ -9,13 +6,19 @@ from claude_chat.clients.file_uploads import prepare_anthropic_files, upload_cac
 
 logger = logging.getLogger("claude_chat.clients")
 
-from .base import build_anthropic_http_client, extract_api_message, sanitize_error_message
+from .base import build_anthropic_http_client, sanitize_error_message
 
 
 _supports_temperature = supports_temperature
 
 
-def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None, enable_search=False, enable_web_fetch=True, web_fetch_limit=15000, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, depth=0, accumulated_input_tokens=0, accumulated_output_tokens=0, custom_params=None, request_params=None, file_upload_enabled=True, file_upload_expires_in_seconds=172800):
+def _anthropic_base_url(api_url):
+    """Normalize UI-style ``.../v1`` URLs because the SDK appends ``/v1`` itself."""
+    value = str(api_url or "").strip().rstrip("/")
+    return value[:-3] if value.endswith("/v1") else value
+
+
+def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None, enable_search=False, enable_web_fetch=True, web_fetch_limit=15000, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, depth=0, accumulated_input_tokens=0, accumulated_output_tokens=0, custom_params=None, request_params=None, file_upload_enabled=True, file_upload_expires_in_seconds=172800, api_url=""):
     """
     启动 Anthropic API 消息流式接收。
     通常运行在后台线程中，实时抓取流中的文本块（text_delta）和思考推理块（thinking_delta），
@@ -28,12 +31,16 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
             enable_search = False
 
         http_client = build_anthropic_http_client(proxy_mode, proxy_url)
-        client = Anthropic(api_key=api_key, http_client=http_client)
+        client_kwargs = {"api_key": api_key, "http_client": http_client}
+        normalized_api_url = _anthropic_base_url(api_url)
+        if normalized_api_url:
+            client_kwargs["base_url"] = normalized_api_url
+        client = Anthropic(**client_kwargs)
         if file_upload_enabled:
             messages = prepare_anthropic_files(
                 client,
                 messages,
-                upload_cache_namespace("anthropic", api_key, "https://api.anthropic.com"),
+                upload_cache_namespace("anthropic", api_key, normalized_api_url or "https://api.anthropic.com"),
                 file_upload_expires_in_seconds,
             )
         
@@ -317,6 +324,7 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
                     accumulated_output_tokens=accumulated_output_tokens + current_output_tokens,
                     file_upload_enabled=file_upload_enabled,
                     file_upload_expires_in_seconds=file_upload_expires_in_seconds,
+                    api_url=api_url,
                 )
                 return
 

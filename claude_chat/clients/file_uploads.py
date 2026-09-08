@@ -1,18 +1,18 @@
 """Provider-native file upload helpers.
 
-Local attachment paths never leave this module.  Each provider receives only the
-opaque identifier/URI returned by its official Files API.
+Local attachment paths never leave this module. Providers receive either an
+opaque Files API identifier/URI or the inline data required by their protocol.
 """
 
 from __future__ import annotations
 
+import base64
 import copy
 import hashlib
 import mimetypes
 import threading
 import time
 from pathlib import Path
-
 
 _CACHE_LOCK = threading.Lock()
 _UPLOAD_CACHE: dict[tuple, tuple[float, dict]] = {}
@@ -125,6 +125,59 @@ def prepare_openai_compatible_files(
             block.pop("_attachment", None)
             block["source"] = {"type": "file", "file_id": remote["file_id"], "media_type": mime_type}
     return prepared
+
+
+def prepare_inline_files(messages, *, openrouter_documents=False):
+    """Materialize local attachments into provider-native inline content blocks."""
+    prepared = copy.deepcopy(messages)
+    for message in prepared:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            local = _local_source(block)
+            if not local:
+                continue
+            path, mime_type = local
+            if block.get("type") == "image":
+                encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+                block.pop("_attachment", None)
+                block["source"] = {"type": "base64", "media_type": mime_type, "data": encoded}
+            elif block.get("type") in {"document", "file"} and openrouter_documents:
+                encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+                block.pop("_attachment", None)
+                block["source"] = {
+                    "type": "openrouter_file",
+                    "filename": path.name,
+                    "file_data": f"data:{mime_type};base64,{encoded}",
+                }
+    return prepared
+
+
+def prepare_custom_provider_files(
+    client,
+    messages,
+    namespace,
+    adapter,
+    *,
+    purpose="user_data",
+    expires_after_seconds=172800,
+):
+    """Apply the selected custom OpenAI-compatible attachment adapter."""
+    if adapter == "openai_files":
+        return prepare_openai_compatible_files(
+            client,
+            messages,
+            namespace,
+            purpose=purpose,
+            image_only=False,
+            expires_after_seconds=expires_after_seconds,
+        )
+    if adapter == "openrouter":
+        return prepare_inline_files(messages, openrouter_documents=True)
+    if adapter == "inline_images":
+        return prepare_inline_files(messages)
+    return copy.deepcopy(messages)
 
 
 def prepare_gemini_files(client, messages, namespace):

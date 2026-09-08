@@ -1,6 +1,7 @@
 """Normalize per-provider configuration into the shared client parameter shape."""
 
 from claude_chat.custom_params import validate_custom_params
+from claude_chat.provider_adapters import adapter_expiry_limit, normalize_custom_provider_adapter
 from claude_chat.config import DEFAULT_MAX_TOKENS, custom_platform_id, find_custom_provider
 
 
@@ -29,6 +30,7 @@ class PlatformParamMapper:
             "file_upload_enabled": True,
             "file_upload_expires_in_seconds": 172800,
             "file_upload_purpose": "user_data",
+            "provider_adapter": "local",
         }
 
         if active_platform == "claude":
@@ -110,6 +112,9 @@ class PlatformParamMapper:
         elif active_platform.startswith("custom:"):
             provider = find_custom_provider(config, active_platform) or {}
             provider_id = custom_platform_id(active_platform)
+            provider_adapter = normalize_custom_provider_adapter(
+                provider.get("provider_adapter"), provider.get("file_upload_enabled", False)
+            )
             params.update(
                 api_key=config.get(f"custom_{provider_id}_api_key", "") if provider_id else "",
                 api_url=provider.get("api_url", ""),
@@ -117,11 +122,15 @@ class PlatformParamMapper:
                 temperature=float(model_config.get("temperature", provider.get("temperature", 0.7))),
                 enable_search=False,
                 enable_web_fetch=False,
-                file_upload_enabled=bool(provider.get("file_upload_enabled", False)),
+                provider_adapter=provider_adapter,
+                file_upload_enabled=provider_adapter != "local",
                 file_upload_purpose=provider.get("file_upload_purpose", "user_data") or "user_data",
                 file_upload_expires_in_seconds=max(
                     3600,
-                    min(2592000, int(provider.get("file_upload_expires_in_seconds", 172800))),
+                    min(
+                        adapter_expiry_limit(provider_adapter),
+                        int(provider.get("file_upload_expires_in_seconds", 172800)),
+                    ),
                 ),
             )
             if model_config.get("thinking_enabled", provider.get("thinking_enabled", False)):

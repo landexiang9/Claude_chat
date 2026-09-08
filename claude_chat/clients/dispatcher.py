@@ -1,9 +1,4 @@
-import base64
-import json
 import logging
-from pathlib import Path
-import httpx
-from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestError
 
 logger = logging.getLogger("claude_chat.clients")
 
@@ -199,9 +194,59 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 file_upload_enabled=kwargs.get("file_upload_enabled", True),
             )
         elif active_platform.startswith("custom:"):
-            # 自定义 OpenAI 兼容提供商：复用 DeepSeek (OpenAI SDK) 客户端
             custom_api_key = kwargs.get("custom_api_key", "")
             custom_api_url = kwargs.get("custom_api_url", "")
+            provider_adapter = kwargs.get("provider_adapter", "local")
+            if provider_adapter == "anthropic":
+                return stream_claude_response_native(
+                    api_key=custom_api_key,
+                    api_url=custom_api_url,
+                    request_params=kwargs.get("request_params"),
+                    custom_params=kwargs.get("custom_params", {}),
+                    proxy_mode=proxy_mode,
+                    proxy_url=proxy_url,
+                    messages=messages,
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    thinking_config=thinking_config,
+                    streaming_queue=streaming_queue,
+                    abort_event=abort_event,
+                    on_stream_created=on_stream_created,
+                    system=system,
+                    enable_search=False,
+                    conv_id=conv_id,
+                    conv_manager=conv_manager,
+                    depth=depth,
+                    file_upload_enabled=True,
+                    file_upload_expires_in_seconds=kwargs.get("file_upload_expires_in_seconds", 172800),
+                )
+            if provider_adapter == "gemini":
+                return stream_gemini_response(
+                    api_key=custom_api_key,
+                    api_url=custom_api_url,
+                    request_params=kwargs.get("request_params"),
+                    custom_params=kwargs.get("custom_params", {}),
+                    proxy_mode=proxy_mode,
+                    proxy_url=proxy_url,
+                    messages=messages,
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    thinking_enabled=kwargs.get("thinking_enabled", False),
+                    thinking_budget=kwargs.get("thinking_budget", 1024),
+                    thinking_level=kwargs.get("thinking_level", "high"),
+                    streaming_queue=streaming_queue,
+                    abort_event=abort_event,
+                    on_stream_created=on_stream_created,
+                    system=system,
+                    enable_search=False,
+                    conv_id=conv_id,
+                    conv_manager=conv_manager,
+                    enable_code_sandbox=False,
+                    file_upload_enabled=True,
+                )
+            # OpenAI Chat, OpenAI Files, OpenRouter and inline-image adapters.
             return stream_deepseek_response(
                 api_key=custom_api_key,
                 api_url=custom_api_url,
@@ -231,6 +276,7 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 file_upload_purpose=kwargs.get("file_upload_purpose", "user_data"),
                 file_upload_image_only=False,
                 file_upload_expires_in_seconds=kwargs.get("file_upload_expires_in_seconds", 172800),
+                file_upload_adapter=provider_adapter,
             )
         else:
             raise ValueError(f"Unknown active platform: {active_platform}")

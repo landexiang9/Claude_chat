@@ -236,8 +236,8 @@ const apiBridge = {
 
     // 自定义模型提供商管理 (保存到服务器 config.json)
     list_custom_providers: () => checkIsNative() ? window.pywebview.api.list_custom_providers() : fetchJson('/api/custom_providers'),
-    add_custom_provider: (data) => checkIsNative() ? window.pywebview.api.add_custom_provider(data.name, data.api_url, data.api_key, data.models, data.temperature, data.max_tokens, data.models_api_url, data.file_upload_enabled, data.file_upload_purpose, data.file_upload_expires_in_seconds) : fetchJson('/api/add_custom_provider', 'POST', data),
-    update_custom_provider: (data) => checkIsNative() ? window.pywebview.api.update_custom_provider(data.id, data.name, data.api_url, data.api_key, data.models, data.temperature, data.max_tokens, data.models_api_url, data.clear_api_key, data.file_upload_enabled, data.file_upload_purpose, data.file_upload_expires_in_seconds) : fetchJson('/api/update_custom_provider', 'POST', data),
+    add_custom_provider: (data) => checkIsNative() ? window.pywebview.api.add_custom_provider(data.name, data.api_url, data.api_key, data.models, data.temperature, data.max_tokens, data.models_api_url, data.file_upload_enabled, data.file_upload_purpose, data.file_upload_expires_in_seconds, data.provider_adapter) : fetchJson('/api/add_custom_provider', 'POST', data),
+    update_custom_provider: (data) => checkIsNative() ? window.pywebview.api.update_custom_provider(data.id, data.name, data.api_url, data.api_key, data.models, data.temperature, data.max_tokens, data.models_api_url, data.clear_api_key, data.file_upload_enabled, data.file_upload_purpose, data.file_upload_expires_in_seconds, data.provider_adapter) : fetchJson('/api/update_custom_provider', 'POST', data),
     remove_custom_provider: (id) => checkIsNative() ? window.pywebview.api.remove_custom_provider(id) : fetchJson('/api/remove_custom_provider', 'POST', { id }),
 
     save_code_block: (content, suggest_name) => {

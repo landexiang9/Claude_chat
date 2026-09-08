@@ -18,6 +18,7 @@ from claude_chat.config import (
 )
 from claude_chat.db import deserialize_content
 from claude_chat.platform_params import PlatformParamMapper
+from claude_chat.provider_adapters import adapter_accepts_attachment, normalize_custom_provider_adapter
 from claude_chat.services.base import AppService
 from claude_chat.services.attachment_store import migrate_legacy_conversation_attachments
 from claude_chat.stream_protocol import StreamTaskState, is_stream_error_message
@@ -104,7 +105,10 @@ def prepare_attachment_content(att, platform, config):
         if not isinstance(config_data, dict):
             config_data = getattr(config, "values", {})
         custom_provider = find_custom_provider(config_data, platform) or {}
-    custom_file_upload = bool(custom_provider and custom_provider.get("file_upload_enabled", False))
+    custom_adapter = normalize_custom_provider_adapter(
+        custom_provider.get("provider_adapter") if custom_provider else None,
+        custom_provider.get("file_upload_enabled", False) if custom_provider else False,
+    )
     builtin_upload_enabled = {
         "claude": bool(config.get("claude_file_upload_enabled", True)),
         "deepseek": bool(config.get("deepseek_file_upload_enabled", True)),
@@ -117,7 +121,9 @@ def prepare_attachment_content(att, platform, config):
     needs_text_extraction = ext in OFFICE_EXTENSIONS or (
         platform == "deepseek" and ext in PDF_EXTENSIONS
     ) or (
-        str(platform).startswith("custom:") and not custom_file_upload and ext in IMAGE_EXTENSIONS | PDF_EXTENSIONS
+        str(platform).startswith("custom:")
+        and not adapter_accepts_attachment(custom_adapter, ext)
+        and ext in IMAGE_EXTENSIONS | PDF_EXTENSIONS
     ) or (
         platform in {"claude", "gemini"} and not builtin_upload_enabled and ext in IMAGE_EXTENSIONS | PDF_EXTENSIONS
     )
@@ -520,6 +526,7 @@ class ConversationService(AppService):
                     "file_upload_enabled": mapped["file_upload_enabled"],
                     "file_upload_expires_in_seconds": mapped["file_upload_expires_in_seconds"],
                     "file_upload_purpose": mapped["file_upload_purpose"],
+                    "provider_adapter": mapped["provider_adapter"],
                     "depth": 0
                 },
                 daemon=True

@@ -1,15 +1,15 @@
-import base64
 import json
 import logging
 from claude_chat.request_params import generation_params
-from claude_chat.clients.file_uploads import prepare_openai_compatible_files, upload_cache_namespace
-from pathlib import Path
-import httpx
-from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestError
+from claude_chat.clients.file_uploads import (
+    prepare_custom_provider_files,
+    prepare_openai_compatible_files,
+    upload_cache_namespace,
+)
 
 logger = logging.getLogger("claude_chat.clients")
 
-from .base import extract_api_message, build_http_client, sanitize_error_message
+from .base import build_http_client, sanitize_error_message
 
 def convert_messages_to_openai(messages):
     import json
@@ -46,6 +46,14 @@ def convert_messages_to_openai(messages):
                         source = block.get("source", {})
                         if source.get("file_id"):
                             file_parts.append({"type": "file", "file_id": source["file_id"]})
+                        elif source.get("type") == "openrouter_file" and source.get("file_data"):
+                            file_parts.append({
+                                "type": "file",
+                                "file": {
+                                    "filename": source.get("filename", "document.pdf"),
+                                    "file_data": source["file_data"],
+                                },
+                            })
                         else:
                             text_parts.append("[文档不可用]")
                     elif btype == "thinking":
@@ -107,7 +115,7 @@ def convert_messages_to_openai(messages):
             
     return openai_msgs
 
-def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", web_fetch_limit=15000, conv_id=None, conv_manager=None, previous_content_blocks=None, depth=0, thinking_config=None, accumulated_input_tokens=0, accumulated_output_tokens=0, custom_params=None, request_params=None, file_upload_enabled=True, file_upload_purpose="user_data", file_upload_image_only=True, file_upload_expires_in_seconds=172800):
+def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", web_fetch_limit=15000, conv_id=None, conv_manager=None, previous_content_blocks=None, depth=0, thinking_config=None, accumulated_input_tokens=0, accumulated_output_tokens=0, custom_params=None, request_params=None, file_upload_enabled=True, file_upload_purpose="user_data", file_upload_image_only=True, file_upload_expires_in_seconds=172800, file_upload_adapter=None):
     response_stream = None  # M-fix#10: 保证 finally 中一定可关闭,避免 abort/异常路径泄漏 HTTP 连接
     try:
         if depth >= 5:
@@ -117,7 +125,16 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
         from openai import OpenAI
         http_client = build_http_client(proxy_mode, proxy_url)
         client = OpenAI(api_key=api_key, base_url=api_url, http_client=http_client)
-        if file_upload_enabled:
+        if file_upload_adapter:
+            messages = prepare_custom_provider_files(
+                client,
+                messages,
+                upload_cache_namespace("custom", api_key, api_url),
+                file_upload_adapter,
+                purpose=file_upload_purpose,
+                expires_after_seconds=file_upload_expires_in_seconds,
+            )
+        elif file_upload_enabled:
             messages = prepare_openai_compatible_files(
                 client,
                 messages,
@@ -412,6 +429,7 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                     file_upload_purpose=file_upload_purpose,
                     file_upload_image_only=file_upload_image_only,
                     file_upload_expires_in_seconds=file_upload_expires_in_seconds,
+                    file_upload_adapter=file_upload_adapter,
                 )
                 return
 

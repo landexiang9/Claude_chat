@@ -808,7 +808,8 @@ const cpDisconnectKeyBtn = document.getElementById("cp-disconnect-key-btn");
 const cpModelsInput = document.getElementById("cp-models-input");
 const cpTempInput = document.getElementById("cp-temperature-input");
 const cpMaxTokensInput = document.getElementById("cp-max-tokens-input");
-const cpFileUploadEnabledInput = document.getElementById("cp-file-upload-enabled-input");
+const cpProviderAdapterInput = document.getElementById("cp-provider-adapter-input");
+const cpProviderAdapterHelp = document.getElementById("cp-provider-adapter-help");
 const cpFileUploadOptions = document.getElementById("cp-file-upload-options");
 const cpFileUploadPurposeInput = document.getElementById("cp-file-upload-purpose-input");
 const cpFileUploadExpiryInput = document.getElementById("cp-file-upload-expiry-input");
@@ -840,9 +841,8 @@ async function refreshCustomProvidersUI() {
         const modelsUrlLine = p.models_api_url
             ? ` · 模型地址: ${escapeHtml(p.models_api_url)}`
             : "";
-        const filesBadge = p.file_upload_enabled
-            ? ` · Files API (${escapeHtml(p.file_upload_purpose || "user_data")})`
-            : " · Files API 关闭";
+        const adapter = p.provider_adapter || (p.file_upload_enabled ? "openai_files" : "local");
+        const filesBadge = ` · 适配器: ${escapeHtml(adapter)}`;
         row.innerHTML = `
             <div style="display: flex; flex-direction: column; gap: 2px;">
                 <span style="font-size: 13px; color: var(--text); font-weight: 500;">${escapeHtml(p.name || p.id)} <span style="color: var(--subtext0); font-size: 11px;">(${escapeHtml(p.platform_id || "")})</span></span>
@@ -872,10 +872,10 @@ function resetCustomProviderForm() {
     cpModelsInput.value = "";
     cpTempInput.value = "0.7";
     cpMaxTokensInput.value = "4096";
-    cpFileUploadEnabledInput.checked = false;
+    cpProviderAdapterInput.value = "local";
     cpFileUploadPurposeInput.value = "user_data";
     cpFileUploadExpiryInput.value = "172800";
-    cpFileUploadOptions.classList.add("hidden");
+    updateCustomProviderAdapterUI();
     cpEditId.textContent = "";
     cpClearKeyPending = false;
     // 新增模式：显示输入框，隐藏状态
@@ -894,10 +894,10 @@ function startEditCustomProvider(id) {
     cpModelsInput.value = (p.models || []).join(", ");
     cpTempInput.value = p.temperature != null ? p.temperature : 0.7;
     cpMaxTokensInput.value = p.max_tokens != null ? p.max_tokens : 4096;
-    cpFileUploadEnabledInput.checked = !!p.file_upload_enabled;
+    cpProviderAdapterInput.value = p.provider_adapter || (p.file_upload_enabled ? "openai_files" : "local");
     cpFileUploadPurposeInput.value = p.file_upload_purpose || "user_data";
     cpFileUploadExpiryInput.value = p.file_upload_expires_in_seconds || 172800;
-    cpFileUploadOptions.classList.toggle("hidden", !cpFileUploadEnabledInput.checked);
+    updateCustomProviderAdapterUI();
     cpEditId.textContent = id;
     cpClearKeyPending = false;
     // 编辑模式：参考内置 apikey 形式，已配置则显示状态+更换/断开，未配置则显示输入框
@@ -935,10 +935,28 @@ if (cpCancelBtn) {
     cpCancelBtn.onclick = () => { cpForm.classList.add("hidden"); };
 }
 
-if (cpFileUploadEnabledInput) {
-    cpFileUploadEnabledInput.onchange = () => {
-        cpFileUploadOptions.classList.toggle("hidden", !cpFileUploadEnabledInput.checked);
+function updateCustomProviderAdapterUI() {
+    if (!cpProviderAdapterInput) return;
+    const adapter = cpProviderAdapterInput.value || "local";
+    cpFileUploadOptions.classList.toggle("hidden", !["openai_files", "anthropic"].includes(adapter));
+    const purposeVisible = adapter === "openai_files";
+    cpFileUploadPurposeInput.previousElementSibling.classList.toggle("hidden", !purposeVisible);
+    cpFileUploadPurposeInput.classList.toggle("hidden", !purposeVisible);
+    cpFileUploadExpiryInput.max = adapter === "anthropic" ? "7776000" : "2592000";
+    const help = {
+        local: "图片、PDF 和 Office 文件均在本地提取为文本，不调用远端文件接口。",
+        openai_files: "调用 Base URL 下的 /files，随后在 Chat Completions 中引用 file_id。",
+        openrouter: "图片使用 image_url，PDF 使用 OpenRouter 官方 file_data 内容块；不会调用 /files。",
+        inline_images: "图片以内联 data URL 发送；PDF 和 Office 文件仍在本地解析。",
+        anthropic: "聊天改走 Anthropic Messages，图片/PDF 通过兼容的 Anthropic Files API 上传。",
+        gemini: "聊天改走 Gemini GenerateContent，图片/PDF 通过兼容的 Gemini Files API 上传。"
     };
+    if (cpProviderAdapterHelp) cpProviderAdapterHelp.textContent = help[adapter] || help.local;
+}
+
+if (cpProviderAdapterInput) {
+    cpProviderAdapterInput.onchange = updateCustomProviderAdapterUI;
+    updateCustomProviderAdapterUI();
 }
 
 // 自定义提供商 API Key 状态控制：复刻内置 apikey 的"更换/断开"形式
@@ -968,14 +986,15 @@ if (cpSaveBtn) {
         const models = cpModelsInput.value.split(",").map(s => s.trim()).filter(Boolean);
         const temperature = parseFloat(cpTempInput.value) || 0.7;
         const maxTokens = parseInt(cpMaxTokensInput.value) || 4096;
-        const fileUploadEnabled = typeof cpFileUploadEnabledInput !== "undefined"
-            ? cpFileUploadEnabledInput.checked
-            : false;
+        const providerAdapter = typeof cpProviderAdapterInput !== "undefined" && cpProviderAdapterInput
+            ? cpProviderAdapterInput.value || "local"
+            : "local";
+        const fileUploadEnabled = providerAdapter !== "local";
         const fileUploadPurpose = typeof cpFileUploadPurposeInput !== "undefined"
             ? cpFileUploadPurposeInput.value.trim() || "user_data"
             : "user_data";
         const fileUploadExpiry = typeof cpFileUploadExpiryInput !== "undefined"
-            ? Math.max(3600, Math.min(2592000, parseInt(cpFileUploadExpiryInput.value) || 172800))
+            ? Math.max(3600, Math.min(providerAdapter === "anthropic" ? 7776000 : 2592000, parseInt(cpFileUploadExpiryInput.value) || 172800))
             : 172800;
         const apiKey = cpApiKeyInput.value.trim();
         const editId = cpEditId.textContent.trim();
@@ -988,6 +1007,7 @@ if (cpSaveBtn) {
             const updateData = {
                 id: editId, name, api_url: apiUrl, models_api_url: modelsApiUrl,
                 models, temperature, max_tokens: maxTokens,
+                provider_adapter: providerAdapter,
                 file_upload_enabled: fileUploadEnabled, file_upload_purpose: fileUploadPurpose,
                 file_upload_expires_in_seconds: fileUploadExpiry
             };
@@ -1001,6 +1021,7 @@ if (cpSaveBtn) {
             if (!apiKey) { alert("新增提供商时 API Key 不能为空"); return; }
             res = await apiBridge.add_custom_provider({
                 name, api_url: apiUrl, models_api_url: modelsApiUrl, api_key: apiKey, models, temperature, max_tokens: maxTokens,
+                provider_adapter: providerAdapter,
                 file_upload_enabled: fileUploadEnabled, file_upload_purpose: fileUploadPurpose,
                 file_upload_expires_in_seconds: fileUploadExpiry
             });
