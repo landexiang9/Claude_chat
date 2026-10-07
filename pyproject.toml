@@ -1,7 +1,7 @@
 [project]
-name = "claude-chat"
+name = "chatudex"
 version = "1.0.0"
-description = "Multi-platform AI desktop GUI / web client for Claude, DeepSeek, and Gemini APIs, built with pywebview."
+description = "Chatudex: multi-platform AI desktop GUI / web client for Claude, DeepSeek, and Gemini APIs, built with pywebview."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -11,7 +11,7 @@ authors = [
 dependencies = [
     "pywebview>=5.0",
     "anthropic>=1.2.0",
-    "openai>=1.0.0",
+    "openai>=2.0.0",
     "google-genai>=1.0.0",
     "Pillow>=10.0.0",
     "keyring>=24.0.0",
@@ -26,6 +26,9 @@ dependencies = [
     "pypdf>=4.0.0",
 ]
 
+
+[project.optional-dependencies]
+local-memory = ["sentence-transformers"]
 
 [tool.ruff]
 line-length = 120

@@ -7,6 +7,7 @@ RESERVED_PARAMS = {
     "model", "messages", "contents", "stream", "stream_options", "system", "system_instruction",
     "tools", "tool_choice", "api_key", "base_url", "api_url", "http_options", "extra_headers",
     "extra_query", "extra_body", "timeout", "__proto__", "constructor", "prototype",
+    "input", "instructions", "previous_response_id", "conversation", "background",
 }
 
 

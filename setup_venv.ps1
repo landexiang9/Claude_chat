@@ -5,7 +5,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 Host -Id 0 | Out-Null # Ensure console uses UTF8 if possible
 
 Write-Host "===================================================" -ForegroundColor Cyan
-Write-Host "  开始配置 Claude Chat 运行与开发虚拟环境 (.venv)" -ForegroundColor Cyan
+Write-Host "  开始配置 Chatudex 运行与开发虚拟环境 (.venv)" -ForegroundColor Cyan
 Write-Host "===================================================" -ForegroundColor Cyan
 
 # 1. 检测 Python 是否安装
@@ -57,7 +57,7 @@ Write-Host "===================================================" -ForegroundColo
 Write-Host "  配置完成！" -ForegroundColor Green
 Write-Host "===================================================" -ForegroundColor Cyan
 Write-Host "  您现在可以通过以下命令运行项目：" -ForegroundColor White
-Write-Host "    .venv\Scripts\python.exe claude_chat.py" -ForegroundColor Yellow
+Write-Host "    .venv\Scripts\python.exe chatudex.py" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  或者双击运行主程序，或执行打包脚本：" -ForegroundColor White
 Write-Host "    .venv\Scripts\python.exe build_executable.py" -ForegroundColor Yellow

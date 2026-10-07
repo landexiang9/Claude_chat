@@ -5,6 +5,7 @@ logger = logging.getLogger("claude_chat.clients")
 from .claude import stream_claude_response_native
 from .deepseek import stream_deepseek_response
 from .gemini import stream_gemini_response
+from .responses import stream_responses_response
 from .base import sanitize_error_message
 
 def parse_markdown_images_to_blocks(text):
@@ -76,6 +77,9 @@ def preprocess_message_content(content):
 def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None, enable_search=False, enable_web_fetch=True, web_fetch_limit=15000, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, **kwargs):
     try:
         active_platform = kwargs.get("active_platform", "claude")
+        uses_responses = (
+            active_platform == "deepseek" or active_platform.startswith("custom:")
+        ) and kwargs.get("provider_adapter") == "responses"
 
         # M4: 仅 Claude 平台做 base64 图片块预处理，DeepSeek/Custom 平台不做转换，
         # 否则 Anthropic 格式 image block 会被 convert_messages_to_openai 替换为 "[图片]"，
@@ -83,6 +87,11 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
         processed_messages = []
         for msg in messages:
             content = msg.get("content")
+            if isinstance(content, list) and not uses_responses:
+                content = [
+                    {key: value for key, value in block.items() if key != "_responses"}
+                    if isinstance(block, dict) else block for block in content
+                ]
             if active_platform == "claude":
                 processed_content = preprocess_message_content(content)
             else:
@@ -128,6 +137,19 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
         elif active_platform == "deepseek":
             deepseek_api_key = kwargs.get("deepseek_api_key", "")
             deepseek_api_url = kwargs.get("deepseek_api_url", "https://api.deepseek.com")
+            if uses_responses:
+                return stream_responses_response(
+                    api_key=deepseek_api_key, api_url=deepseek_api_url,
+                    deepseek_native=True, enable_search=enable_search,
+                    proxy_mode=proxy_mode, proxy_url=proxy_url,
+                    messages=messages, model=model, max_tokens=max_tokens, temperature=temperature,
+                    streaming_queue=streaming_queue, abort_event=abort_event,
+                    on_stream_created=on_stream_created, system=system, thinking_config=thinking_config,
+                    request_params=kwargs.get("request_params"), custom_params=kwargs.get("custom_params", {}),
+                    file_upload_enabled=kwargs.get("file_upload_enabled", True),
+                    file_upload_purpose=kwargs.get("file_upload_purpose", "user_data"),
+                    file_upload_expires_in_seconds=kwargs.get("file_upload_expires_in_seconds", 172800),
+                )
             return stream_deepseek_response(
                 api_key=deepseek_api_key,
                 api_url=deepseek_api_url,
@@ -197,6 +219,26 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
             custom_api_key = kwargs.get("custom_api_key", "")
             custom_api_url = kwargs.get("custom_api_url", "")
             provider_adapter = kwargs.get("provider_adapter", "local")
+            if provider_adapter == "responses":
+                return stream_responses_response(
+                    api_key=custom_api_key,
+                    api_url=custom_api_url,
+                    proxy_mode=proxy_mode,
+                    proxy_url=proxy_url,
+                    messages=messages,
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    thinking_config=thinking_config,
+                    streaming_queue=streaming_queue,
+                    abort_event=abort_event,
+                    on_stream_created=on_stream_created,
+                    system=system,
+                    request_params=kwargs.get("request_params"),
+                    custom_params=kwargs.get("custom_params", {}),
+                    file_upload_purpose=kwargs.get("file_upload_purpose", "user_data"),
+                    file_upload_expires_in_seconds=kwargs.get("file_upload_expires_in_seconds", 172800),
+                )
             if provider_adapter == "anthropic":
                 return stream_claude_response_native(
                     api_key=custom_api_key,

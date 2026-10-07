@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Claude Chat - PyInstaller 打包构建脚本
+Chatudex - PyInstaller 打包构建脚本
 用于自动检测 PyInstaller 环境并根据 spec 配置文件将程序打包为单个独立的 Windows 可执行文件。
 """
 import sys
@@ -10,7 +10,7 @@ from pathlib import Path
 
 def print_banner():
     print("===================================================")
-    print("  开始打包 Claude Chat 为独立 Windows 可执行程序")
+    print("  开始打包 Chatudex 为独立 Windows 可执行程序")
     print("===================================================")
 
 def check_pyinstaller():
@@ -31,7 +31,7 @@ def check_pyinstaller():
 
 def build():
     print("[2/3] 正在执行 PyInstaller 编译打包流程...")
-    spec_path = Path(__file__).parent / "claude_chat.spec"
+    spec_path = Path(__file__).parent / "chatudex.spec"
     
     if not spec_path.exists():
         print(f"[错误] 未找到配置文件: {spec_path}")
@@ -54,7 +54,7 @@ def build():
 def verify_output():
     print("[3/3] 正在验证打包结果...")
     dist_dir = Path(__file__).parent / "dist"
-    exe_file = dist_dir / "ClaudeChat.exe"
+    exe_file = dist_dir / "Chatudex.exe"
     
     if exe_file.exists():
         size_mb = exe_file.stat().st_size / (1024 * 1024)

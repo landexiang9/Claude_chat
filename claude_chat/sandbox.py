@@ -317,7 +317,7 @@ def _probe_windows_appcontainer() -> tuple[bool, str]:
     try:
         hr = userenv.CreateAppContainerProfile(
             profile_name,
-            "Claude Chat Sandbox Probe",
+            "Chatudex Sandbox Probe",
             "Temporary AppContainer capability probe",
             None,
             0,
@@ -430,7 +430,7 @@ def _get_windows_appcontainer_profile() -> tuple[ctypes.c_void_p, Path]:
 
     hr = userenv.CreateAppContainerProfile(
         APP_CONTAINER_NAME,
-        "Claude Chat Code Sandbox",
+        "Chatudex Code Sandbox",
         "Restricted Python and Node.js execution",
         None,
         0,

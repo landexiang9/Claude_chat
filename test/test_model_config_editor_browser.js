@@ -9,8 +9,8 @@ const fs = require('fs/promises'); const path = require('path'); const assert = 
    const url = new URL(route.request().url()); if (url.hostname !== 'qa.local') return route.abort();
    const name=decodeURIComponent(url.pathname).replace(/^\//,'') || 'index.html';
    if (name === 'api/preview_model_request') {
-    const script = 'import json,sys; from claude_chat.request_params import preview_generation_params,validate_request_params; d=json.loads(sys.argv[1]); p=preview_generation_params(d["platform"],d["model"],{"model_configs":{d["model"]:d.get("model_config",{})}}); validate_request_params(p,d["platform"]); print(json.dumps({"params":p},ensure_ascii=False))';
-    const {stdout} = await require('util').promisify(require('child_process').execFile)('python',['-c',script,route.request().postData()],{env:{...process.env,PYTHONIOENCODING:'utf-8'}});
+    const script = 'import json,sys; from claude_chat.request_params import preview_generation_params,request_protocol; d=json.loads(sys.argv[1]); c={"deepseek_use_responses":d.get("deepseek_use_responses",False),"model_configs":{d["model"]:d.get("model_config",{})},"custom_providers":[{"id":"responses-qa","provider_adapter":"responses"}]}; p=preview_generation_params(d["platform"],d["model"],c); print(json.dumps({"params":p,"request_protocol":request_protocol(d["platform"],c)},ensure_ascii=False))';
+    const {stdout} = await require('util').promisify(require('child_process').execFile)(process.env.PYTHON_EXECUTABLE || 'python',['-c',script,route.request().postData()],{env:{...process.env,PYTHONIOENCODING:'utf-8'}});
     return route.fulfill({json:JSON.parse(stdout)});
    }
    if (name.startsWith('api/')) return route.fulfill({json:{}});
@@ -45,6 +45,7 @@ const fs = require('fs/promises'); const path = require('path'); const assert = 
   await page.keyboard.press('Escape');
   await page.locator('#settings-btn').click();
   await page.waitForFunction(()=>!document.getElementById('model-request-json').disabled);
+  await page.locator('[data-settings-nav="providers"]').click();
   assert.equal(await page.locator('#model-request-json-error').innerText(),'');
   const nativeCount=await page.locator('#settings-modal select').count();
   assert.equal(await page.locator('#settings-modal select.unified-select-native').count(),nativeCount);
@@ -62,6 +63,7 @@ const fs = require('fs/promises'); const path = require('path'); const assert = 
   assert.equal(await page.evaluate(()=>window.savedConfig.model_configs['model-one'].custom_params.top_p),0.85);
   await page.locator('#settings-btn').click();
   await page.waitForFunction(()=>!document.getElementById('model-request-json').disabled);
+  await page.locator('[data-settings-nav="model"]').click();
   assert.equal(await page.locator('#model-request-json-error').innerText(),'');
   assert.equal(await page.locator('.custom-param-row textarea').inputValue(),'0.85');
   await page.locator('[data-settings-nav="model"]').click();
@@ -83,6 +85,7 @@ const fs = require('fs/promises'); const path = require('path'); const assert = 
   await page.setViewportSize({width:1280,height:900});
   await page.locator('#settings-btn').click();
   await page.waitForFunction(()=>!document.getElementById('model-request-json').disabled);
+  await page.locator('[data-settings-nav="model"]').click();
   const editor=page.locator('#model-request-json');
   const json={max_tokens:4096,temperature:0.333,thinking:{type:'enabled',budget_tokens:512},output_config:{format:{type:'json_schema',schema:{type:'object'}}},top_p:0.6,metadata:{user_id:'test'}};
   await editor.fill(JSON.stringify(json));
@@ -132,6 +135,7 @@ const fs = require('fs/promises'); const path = require('path'); const assert = 
   assert.deepEqual(await page.evaluate(()=>window.savedConfig.model_configs['model-one'].request_params),json);
   await page.locator('#settings-btn').click();
   await page.waitForFunction(()=>!document.getElementById('model-request-json').disabled);
+  await page.locator('[data-settings-nav="model"]').click();
   assert.deepEqual(JSON.parse(await editor.inputValue()),json);
   assert(await page.locator('#model-temp-input').isDisabled());
   // Different provider schemas are recognized without model-registry capability gating.
@@ -145,6 +149,63 @@ const fs = require('fs/promises'); const path = require('path'); const assert = 
   assert.equal(await page.locator('#model-thinking-budget-input').inputValue(),'512');
   await page.locator('#model-thinking-budget-input').fill('1024');
   assert.deepEqual(JSON.parse(await editor.inputValue()).thinking_config,{thinking_budget:1024,include_thoughts:true});
+  // DeepSeek's actual toggle preserves a separate parameter draft for each protocol.
+  await page.evaluate(async()=>{await ModelConfigEditor.load('deepseek-chat','deepseek',{request_params:{max_tokens:2048,reasoning_effort:'medium',frequency_penalty:0.4}});});
+  await page.evaluate(()=>document.getElementById('deepseek-use-responses-input').click());
+  await page.waitForFunction(()=>!document.getElementById('deepseek-use-responses-input').disabled);
+  assert.equal(await page.locator('#model-max-tokens-label').innerText(),'Max Output Tokens');
+  assert(!('frequency_penalty' in JSON.parse(await editor.inputValue())));
+  assert(await page.locator('#deepseek-enable-search-input').isEnabled());
+  assert.match(await page.locator('#deepseek-search-label').innerText(), /官方/);
+  await page.evaluate(()=>{const input=document.getElementById('deepseek-enable-search-input'); input.checked=true; input.dispatchEvent(new Event('change'));});
+  assert(await page.locator('#deepseek-search-group').evaluate(el=>el.classList.contains('hidden')));
+  await page.locator('#model-thinking-enabled-input').uncheck();
+  assert.equal(JSON.parse(await editor.inputValue()).reasoning.effort, 'none');
+  await page.locator('#model-thinking-enabled-input').check();
+  await page.locator('#model-thinking-level-select').selectOption('max',{force:true});
+  assert.equal(JSON.parse(await editor.inputValue()).reasoning.effort, 'max');
+  await editor.fill(JSON.stringify({max_output_tokens:3072,reasoning:{effort:'low',summary:'auto'},text:{verbosity:'low'}}));
+  await page.evaluate(()=>document.getElementById('deepseek-use-responses-input').click());
+  await page.waitForFunction(()=>!document.getElementById('deepseek-use-responses-input').disabled);
+  assert.deepEqual(JSON.parse(await editor.inputValue()),{max_tokens:2048,reasoning_effort:'medium',frequency_penalty:0.4});
+  assert(await page.locator('#deepseek-enable-search-input').isEnabled());
+  await page.evaluate(()=>document.getElementById('deepseek-use-responses-input').click());
+  await page.waitForFunction(()=>!document.getElementById('deepseek-use-responses-input').disabled);
+  assert.deepEqual(JSON.parse(await editor.inputValue()),{max_output_tokens:3072,reasoning:{effort:'low',summary:'auto'},text:{verbosity:'low'}});
+  await page.evaluate(async()=>{window.deepseekDraft=await ModelConfigEditor.prepareSave(); window.deepseekConfig={}; PlatformSettings.saveAll(window.deepseekConfig); ModelConfigEditor.reset(); PlatformSettings.loadAll(window.deepseekConfig); await ModelConfigEditor.load('deepseek-chat','deepseek',window.deepseekDraft);});
+  assert.equal(await page.evaluate(()=>window.deepseekConfig.deepseek_use_responses),true);
+  assert.equal(JSON.parse(await editor.inputValue()).max_output_tokens,3072);
+  await editor.fill('{broken');
+  await page.evaluate(()=>document.getElementById('deepseek-use-responses-input').click());
+  await page.waitForFunction(()=>!document.getElementById('deepseek-use-responses-input').disabled);
+  assert(await page.locator('#deepseek-use-responses-input').isChecked());
+  await page.locator('#restore-model-json-btn').click();
+  await page.evaluate(()=>document.getElementById('deepseek-use-responses-input').click());
+  await page.waitForFunction(()=>!document.getElementById('deepseek-use-responses-input').disabled);
+  // Responses uses a different token key and nested reasoning, while retaining the custom provider ID.
+  await page.evaluate(async()=>{await ModelConfigEditor.load('gpt-5','custom:responses-qa',{request_params:{max_tokens:2048,reasoning_effort:'medium'}});});
+  assert.equal(await page.locator('#model-max-tokens-label').innerText(),'Max Output Tokens');
+  assert.equal(await page.locator('#model-max-tokens-input').inputValue(),'2048');
+  assert.equal(await page.locator('#model-thinking-level-select').inputValue(),'medium');
+  assert(await page.locator('#model-thinking-enabled-input').isChecked());
+  assert.equal(await page.locator('.custom-param-row').count(),0);
+  await page.locator('#model-max-tokens-input').fill('3072');
+  assert.equal(JSON.parse(await editor.inputValue()).max_output_tokens,3072);
+  assert(!('max_tokens' in JSON.parse(await editor.inputValue())));
+  await editor.fill(JSON.stringify({max_output_tokens:3072,reasoning:{effort:'high',summary:'auto'},text:{verbosity:'low'}}));
+  await page.locator('#model-thinking-level-select').selectOption('low',{force:true});
+  assert.deepEqual(JSON.parse(await editor.inputValue()).reasoning,{effort:'low',summary:'auto'});
+  const responseDraft = await page.evaluate(()=>ModelConfigEditor.prepareSave());
+  assert.equal(responseDraft.request_platform,'custom:responses-qa');
+  assert.equal(responseDraft.max_tokens,3072);
+  assert.equal(responseDraft.thinking_level,'low');
+  assert.deepEqual(responseDraft.request_params.text,{verbosity:'low'});
+  await page.locator('#model-thinking-enabled-input').uncheck();
+  assert(!('reasoning' in JSON.parse(await editor.inputValue())));
+  await page.evaluate(()=>{document.getElementById('cp-provider-adapter-input').value='responses'; updateCustomProviderAdapterUI();});
+  assert(!(await page.locator('#cp-file-upload-options').evaluate(el=>el.classList.contains('hidden'))));
+  assert(!(await page.locator('#cp-file-upload-purpose-input').evaluate(el=>el.classList.contains('hidden'))));
+  assert.match(await page.locator('#cp-provider-adapter-help').textContent(),/Responses/);
   await page.evaluate(async()=>{ModelConfigEditor.reset(); const first=ModelConfigEditor.load('model-one','claude',{}); const second=ModelConfigEditor.load('model-two','deepseek',{}); await Promise.all([first,second]);});
   assert(await page.locator('#add-custom-param-btn').isEnabled());
   // A validation response for an old draft must not overwrite more recent edits.
@@ -153,6 +214,25 @@ const fs = require('fs/promises'); const path = require('path'); const assert = 
   await editor.fill('{"temperature":0.456}');
   assert.equal(await page.evaluate(async()=>{window.resolvePreview(); const result=await window.pendingDraft; apiBridge.preview_model_request=window.realPreview; return result;}),null);
   assert.equal(JSON.parse(await editor.inputValue()).temperature,0.456);
+  // Native search cards match call IDs even when calls overlap, and survive history reload.
+  const nativeUI = await page.evaluate(async()=>{
+   config.active_platform='deepseek'; config.deepseek_use_responses=true; config.deepseek_enable_web_search=true;
+   updateSearchBtnUI();
+   messageList.innerHTML=''; appendMessage('assistant','', '',true);
+   await window.onStreamMessage('search_start',{id:'ws_1',query:'first'});
+   await window.onStreamMessage('search_start',{id:'ws_2',query:'second'});
+   const searches=[{id:'ws_1',query:'first',engine:'deepseek_native',results:[]},{id:'ws_2',query:'second',engine:'deepseek_native',results:[]}];
+   for(const search of searches) await window.onStreamMessage('search_done',search);
+   const live=Array.from(messageList.querySelectorAll('.search-card')).map(card=>card.textContent);
+   const content=[{type:'text',text:'answer',_responses:{searches}}];
+   const tools=extractToolCallsFromMsg({role:'assistant',content});
+   messageList.innerHTML=''; appendMessage('assistant',content,'',false,0,tools);
+   return {live,history:messageList.textContent,title:webSearchBtn.title,count:tools.length};
+  });
+  assert.equal(nativeUI.live.length,2); assert(nativeUI.live[0].includes('first')); assert(nativeUI.live[1].includes('second'));
+  assert(nativeUI.live.every(text=>text.includes('已完成')&&!text.includes('未找到')));
+  assert.equal(nativeUI.count,2); assert(nativeUI.history.includes('DeepSeek 已完成')); assert(!nativeUI.history.includes('未找到'));
+  assert(nativeUI.title.includes('DeepSeek 官方搜索'));
   assert.deepEqual(errors,[]);
   console.log('Browser QA passed: dropdown regressions, JSON/form synchronization, precision, nested fields, deletion, save/reopen, invalid drafts, provider schemas and stale-response protection.');
  } catch(e) { console.log(await page.locator("#model-request-json-error").innerText(),await page.locator("#custom-params-error").innerText(),await page.locator("#model-request-json").inputValue()); console.log(errors); throw e; } finally { await browser.close(); }

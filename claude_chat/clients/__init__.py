@@ -1,4 +1,10 @@
-from .base import sanitize_error_message, build_http_client, extract_api_message, extract_final_response_text
+from .base import (
+    sanitize_error_message,
+    build_http_client,
+    extract_api_message,
+    extract_final_response_text,
+    extract_final_response_content,
+)
 from .claude import stream_claude_response_native
 from .deepseek import stream_deepseek_response, convert_messages_to_openai
 from .gemini import stream_gemini_response, convert_messages_to_gemini

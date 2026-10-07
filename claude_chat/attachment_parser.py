@@ -256,19 +256,18 @@ def ocr_image_local_or_cloud(file_path, ocr_mode="auto", cloud_provider="gemini"
             try:
                 from google import genai
                 from google.genai import types
-                from claude_chat.clients import build_http_client
+                from claude_chat.clients.gemini_http import build_gemini_http_options
                 
-                # 构建带有 proxy 的 httpx 客户端
-                http_client = build_http_client(proxy_mode, proxy_url)
-                client = genai.Client(api_key=api_key, http_options={"httpx_client": http_client})
-                
-                response = client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=[
-                        types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                        prompt
-                    ]
+                client = genai.Client(
+                    api_key=api_key,
+                    http_options=build_gemini_http_options(proxy_mode, proxy_url, timeout_ms=30000),
                 )
+
+                with client:
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type), prompt],
+                    )
                 if response and response.text:
                     return response.text.strip()
                 else:

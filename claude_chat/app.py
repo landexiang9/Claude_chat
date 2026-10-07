@@ -1,5 +1,5 @@
 """
-Claude Chat - pywebview 桌面客户端核心应用模块
+Chatudex - pywebview 桌面客户端核心应用模块
 基于 pywebview 将前端的 HTML/JS/CSS 视图层与后端的 Python 逻辑层及本地 SQLite 数据库进行绑定。
 """
 
@@ -25,7 +25,12 @@ logger = logging.getLogger("claude_chat")
 
 from claude_chat.config import FALLBACK_MODELS, ConfigManager, find_custom_provider, custom_platform_id
 from claude_chat.db import DatabaseManager
-from claude_chat.clients import fetch_available_models, get_default_capabilities, sanitize_error_message, extract_final_response_text
+from claude_chat.clients import (
+    fetch_available_models,
+    get_default_capabilities,
+    sanitize_error_message,
+    extract_final_response_content,
+)
 from claude_chat.sandbox import cleanup_sandbox_process, terminate_sandbox_process
 from claude_chat.stream_protocol import (
     StreamEvent,
@@ -53,6 +58,9 @@ class ClaudeChatApp:
         # 初始化数据库与配置管理器
         self.config = ConfigManager()
         self.conv_manager = DatabaseManager()
+        from claude_chat.memory_store import MemoryStore
+        self._memory_store = MemoryStore(self.conv_manager)
+        temporary_attachments = self._memory_store.cleanup_temporary()
         self.current_conv = None
         
         # 加载初始的模型列表
@@ -75,6 +83,8 @@ class ClaudeChatApp:
         
         # 挂载的终端日志监听回调列表
         self.console_listeners = []
+        for preview_id in temporary_attachments:
+            WebAPI(self).discard_pending_attachment(preview_id)
 
     @property
     def is_streaming(self):
@@ -122,6 +132,11 @@ class ClaudeChatApp:
                     state = StreamTaskState.ABORTED
                 target.transition(state)
             target.clear_stream()
+            if state == StreamTaskState.COMPLETED and hasattr(self.conv_manager, "get_connection"):
+                try:
+                    WebAPI(self).schedule_memory_learning(target.conversation_id)
+                except Exception:
+                    logger.exception("Unable to schedule memory learning")
 
     def abort_generation(self):
         """
@@ -310,7 +325,7 @@ class ClaudeChatApp:
             return
             
         # 图形界面 (GUI) 模式
-        logger.info("正在通过 pywebview 渲染启动 Claude Chat 图形界面...")
+        logger.info("正在通过 pywebview 渲染启动 Chatudex 图形界面...")
         if port:
             protocol = "https" if is_ssl else "http"
             url_target = f"{protocol}://localhost:{port}/?token={self.config.get('security_token', '')}"
@@ -323,7 +338,7 @@ class ClaudeChatApp:
         
         # 初始化图形窗口
         self.window = webview.create_window(
-            title="Claude Chat",
+            title="Chatudex",
             url=url_target,
             js_api=api,
             width=1200,
@@ -334,7 +349,9 @@ class ClaudeChatApp:
         )
         
         # 挂载并进入 GUI 事件循环
-        webview.start()
+        # Resolve from the package so this also works inside a PyInstaller bundle.
+        icon_path = Path(__file__).parent / "ui" / "icons" / "chatudex.ico"
+        webview.start(icon=str(icon_path))
         
         # 退出窗口后的清理收尾阶段
         logger.info("图形窗口已被关闭。正在开始清理所有后台代码运行子进程...")
@@ -458,13 +475,13 @@ class ClaudeChatApp:
                     if conv_id:
                         input_tokens = msg_data.get("input_tokens", 0)
                         output_tokens = msg_data.get("output_tokens", 0)
-                        final_text = extract_final_response_text(msg_data, streaming_text)
+                        final_content = extract_final_response_content(msg_data, streaming_text)
                         thinking = msg_data.get("thinking")
                         if thinking is None:
                             thinking = streaming_thinking_text if streaming_thinking_text else None
                         self.conv_manager.add_assistant_message_and_update_tokens(
                             conv_id,
-                            final_text,
+                            final_content,
                             thinking,
                             input_tokens,
                             output_tokens

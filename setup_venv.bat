@@ -1,10 +1,10 @@
 @echo off
-:: Claude Chat 虚拟环境一键配置脚本 (Windows CMD)
+:: Chatudex 虚拟环境一键配置脚本 (Windows CMD)
 :: 用于自动创建虚拟环境、升级 pip 并安装所有依赖项
 
 chcp 65001 >nul
 echo ===================================================
-echo   开始配置 Claude Chat 运行与开发虚拟环境 (.venv)
+echo   开始配置 Chatudex 运行与开发虚拟环境 (.venv)
 echo ===================================================
 
 :: 1. 检测 Python 是否安装
@@ -52,7 +52,7 @@ echo ===================================================
 echo   配置完成！
 echo ===================================================
 echo   您现在可以通过以下命令运行项目：
-echo     .venv\Scripts\python.exe claude_chat.py
+echo     .venv\Scripts\python.exe chatudex.py
 echo.
 echo   或者双击运行主程序，或执行打包脚本：
 echo     .venv\Scripts\python.exe build_executable.py

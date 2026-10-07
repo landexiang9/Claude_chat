@@ -25,7 +25,7 @@ def on_loaded():
     app.window.destroy()
 
 app.window = webview.create_window(
-    title="Claude Chat Profiler",
+    title="Chatudex Profiler",
     url=str(html_file.resolve()),
     js_api=api,
 )

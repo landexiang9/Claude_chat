@@ -12,7 +12,7 @@ from datetime import datetime
 import logging
 logger = logging.getLogger("claude_chat")
 
-from claude_chat.clients import extract_final_response_text, sanitize_error_message
+from claude_chat.clients import extract_final_response_content, sanitize_error_message
 from claude_chat.http_router import HttpApiRouter
 from claude_chat.stream_protocol import (
     StreamEvent,
@@ -147,7 +147,7 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         ext = Path(file_path).suffix.lower()
         mime_map = {
             ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-            ".gif": "image/gif", ".webp": "image/webp", ".pdf": "application/pdf",
+            ".gif": "image/gif", ".webp": "image/webp", ".ico": "image/x-icon", ".pdf": "application/pdf",
             ".txt": "text/plain", ".py": "text/x-python", ".js": "text/javascript",
             ".ts": "text/typescript", ".html": "text/html", ".css": "text/css",
             ".json": "application/json", ".xml": "application/xml",
@@ -408,6 +408,12 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
         # 发送流式 HTTP 响应头
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        # Prevent reverse proxies from buffering or transforming the incremental
+        # NDJSON response into one large payload.  ``flush()`` below only drains
+        # Python's own buffer; these headers cover common deployment proxies
+        # (notably nginx) that would otherwise be free to buffer the stream.
+        self.send_header("Cache-Control", "no-cache, no-store, no-transform")
+        self.send_header("X-Accel-Buffering", "no")
         self._send_cors_headers()
         self.send_header("Referrer-Policy", "same-origin")
         self.end_headers()
@@ -434,13 +440,13 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                     # load_conversation 会返回旧缓存,新消息被判定为"缺失"(done 竞态)。
                     input_tokens = msg_data.get("input_tokens", 0)
                     output_tokens = msg_data.get("output_tokens", 0)
-                    final_text = extract_final_response_text(msg_data, streaming_text)
+                    final_content = extract_final_response_content(msg_data, streaming_text)
                     thinking = msg_data.get("thinking")
                     if thinking is None:
                         thinking = streaming_thinking_text if streaming_thinking_text else None
                     self.server.api._app.conv_manager.add_assistant_message_and_update_tokens(
                         conv_id, 
-                        final_text,
+                        final_content,
                         thinking, 
                         input_tokens, 
                         output_tokens
@@ -487,9 +493,11 @@ class ClaudeChatHTTPHandler(BaseHTTPRequestHandler):
                     self.server.api._app.set_streaming_done(StreamTaskState.FAILED, task)
                     self._write_stream_line(event)
                     break
-                else:
-                    # 普通事件(text/thinking/search_*/fetch_*)立即透传
-                    self._write_stream_line(event)
+
+                # Every non-terminal event must be forwarded immediately.  Text
+                # and thinking chunks are also accumulated above for persistence;
+                # accumulation must never replace transport to the browser.
+                self._write_stream_line(event)
             except queue.Empty:
                 logger.warning("模型流输出队列超时。")
                 # M-fix#19: 超时不能直接丢已累积的流式文本;按 error 模式增量存档并停止后端生成线程

@@ -63,7 +63,17 @@ class PlatformParamMapper:
                     params["thinking_config"] = {"type": "enabled", "budget_tokens": int(budget)}
 
         elif active_platform == "deepseek":
+            protocol = "responses" if config.get("deepseek_use_responses", False) else "deepseek"
+            profiles = model_config.get("request_params_by_protocol", {})
+            if protocol in profiles:
+                params["request_params"] = profiles[protocol]
+                params["custom_params"] = {}
+            elif model_config.get("request_protocol", "deepseek") != protocol:
+                # Carry over common controls, but keep each protocol's JSON separate.
+                params["request_params"] = None
+                params["custom_params"] = {}
             params.update(
+                provider_adapter="responses" if protocol == "responses" else "local",
                 api_key=config.get("deepseek_api_key", ""),
                 api_url=config.get("deepseek_api_url", "https://api.deepseek.com"),
                 max_tokens=int(

@@ -34,7 +34,7 @@ def _do_fetch_registry():
     try:
         response = httpx.get(
             "https://models.dev/models.json",
-            headers={"User-Agent": "ClaudeChat"},
+            headers={"User-Agent": "Chatudex"},
             timeout=15.0,
             follow_redirects=True
         )
@@ -321,25 +321,15 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
             
         try:
             from google import genai
-            from google.genai import types
-            import httpx
-            
-            http_options_kwargs = {}
-            if platform_api_url and isinstance(platform_api_url, str) and platform_api_url.strip():
-                http_options_kwargs["api_endpoint"] = platform_api_url.strip()
-            if proxy_mode == "custom" and isinstance(proxy_url, str) and proxy_url.strip():
-                http_options_kwargs["client_args"] = {"transport": httpx.HTTPTransport(proxy=proxy_url.strip(), timeout=30.0)}
-                http_options_kwargs["async_client_args"] = {"transport": httpx.AsyncHTTPTransport(proxy=proxy_url.strip(), timeout=30.0)}
-            elif proxy_mode == "none":
-                http_options_kwargs["client_args"] = {"trust_env": False, "timeout": httpx.Timeout(30.0, connect=10.0)}
-                http_options_kwargs["async_client_args"] = {"trust_env": False, "timeout": httpx.Timeout(30.0, connect=10.0)}
-                
-            client_kwargs = {"api_key": api_key}
-            if http_options_kwargs:
-                client_kwargs["http_options"] = types.HttpOptions(**http_options_kwargs)
-                
-            client = genai.Client(**client_kwargs)
-            models_list = client.models.list()
+            from .gemini_http import build_gemini_http_options
+
+            client = genai.Client(api_key=api_key, http_options=build_gemini_http_options(
+                proxy_mode, proxy_url, platform_api_url, timeout_ms=30000
+            ))
+            try:
+                models_list = list(client.models.list())
+            finally:
+                client.close()
             
             gemini_models = []
             for m in models_list:
@@ -347,8 +337,10 @@ def fetch_available_models(api_key, proxy_mode, proxy_url, active_platform="clau
                 if actions and "generateContent" not in actions:
                     continue
                     
-                mid = m.name
-                clean_id = mid.replace("models/", "")
+                mid = getattr(m, "name", None)
+                if not mid:
+                    continue
+                clean_id = mid.removeprefix("models/")
                 display = m.display_name if getattr(m, "display_name", None) else clean_id
                 
                 is_thinking_supported = False

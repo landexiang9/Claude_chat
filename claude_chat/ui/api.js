@@ -165,6 +165,15 @@ function serializeSaveConfig(cfg) {
 }
 
 const apiBridge = {
+    memory_operation: async (action, data = {}) => {
+        if (checkIsNative()) return window.pywebview.api.memory_operation(action, data);
+        const response = await fetch(`/api/memory/${encodeURIComponent(action)}`, {
+            method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
+        });
+        const result = await response.json();
+        if (!response.ok && !result.error) result.error = `HTTP ${response.status}`;
+        return result;
+    },
     get_config: () => checkIsNative() ? window.pywebview.api.get_config() : fetchJson('/api/config'),
     save_config: (cfg) => serializeSaveConfig(cfg),
     preview_model_request: (data) => checkIsNative() ? window.pywebview.api.preview_model_request(data) : fetchJson("/api/preview_model_request", "POST", data),

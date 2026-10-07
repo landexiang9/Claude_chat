@@ -3,7 +3,7 @@
 block_cipher = None
 
 a = Analysis(
-    ['claude_chat.py'],
+    ['chatudex.py'],
     pathex=[],
     binaries=[],
     datas=[
@@ -46,7 +46,8 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='ClaudeChat',
+    name='Chatudex',
+    icon='claude_chat/ui/icons/chatudex.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

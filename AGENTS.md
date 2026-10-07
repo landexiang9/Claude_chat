@@ -1,15 +1,17 @@
-# AGENTS.md — Claude Chat
+# AGENTS.md — Chatudex
+
+The product name is Chatudex. `chatudex.py` and `chatudex.spec` are the canonical launch/build entrypoints; `claude_chat.py` remains a compatibility launcher. Keep the internal `claude_chat` package, database filenames, credential service names, encryption salts and sandbox identities stable so existing data and runtime permissions remain usable. Runtime icons live in `claude_chat/ui/icons/`; original artwork lives in `assets/branding/`.
 
 ## Run / Build
 
 ```bash
 # GUI mode (Windows, pywebview + WebView2)
-python claude_chat.py
+python chatudex.py
 
 # Headless HTTP server mode
-python claude_chat.py --server --host 0.0.0.0 --port 8000
+python chatudex.py --server --host 0.0.0.0 --port 8000
 
-# Package to ClaudeChat.exe (uses claude_chat.spec)
+# Package to Chatudex.exe (uses chatudex.spec)
 python build_executable.py
 
 # Lint / format (line-length=120, target py310)
@@ -19,7 +21,7 @@ ruff format .
 
 Setup scripts (`setup_venv.bat` / `setup_venv.ps1`) create `.venv/` and install `requirements.txt` plus `pyinstaller` and `ruff`. Neither `pyinstaller` nor `ruff` is in `requirements.txt`.
 
-`claude_chat.py` also accepts a hidden `--sandbox-worker <script.py>` mode: the PyInstaller-built `ClaudeChat.exe` re-invokes itself as the AppContainer Python runtime for the Windows code sandbox. It runs the given script via `runpy` and exits — it must not initialize the GUI, DB, config, or API clients.
+`chatudex.py` also accepts a hidden `--sandbox-worker <script.py>` mode: the PyInstaller-built `Chatudex.exe` re-invokes itself as the AppContainer Python runtime for the Windows code sandbox. It runs the given script via `runpy` and exits — it must not initialize the GUI, DB, config, or API clients.
 
 ## Tests
 
@@ -29,7 +31,7 @@ Run the whole suite with **pytest** (works offline — no API key needed for the
 python -m pytest test/ -q
 ```
 
-The suite covers streaming, sandboxing, attachments, service architecture, request parameters, message formatting, and Anthropic HTTP client compatibility. `test_anthropic_http_client.py` exercises model discovery and cloud OCR with real SDK client validation and mocked API methods (no API key or network). Tests use `unittest.TestCase`-style classes and are pytest-discoverable even though there is no `conftest.py`.
+The suite covers streaming, sandboxing, attachments, service architecture, request parameters, message formatting, and Anthropic HTTP client compatibility. `test_anthropic_http_client.py` exercises model discovery and cloud OCR with real SDK client validation and mocked API methods (no API key or network). `test/conftest.py` redirects configuration, database and attachment paths to a temporary directory and mocks the credential store before collection. It excludes manual integration scripts whose imports modify app state. Keep this isolation enabled when running pytest.
 
 Additional standalone scripts (not pytest-collected):
 
@@ -42,8 +44,8 @@ python test/test_genai_types.py        # google.genai.types import smoke test
 python test/test_fixed_regressions.py  # historical regression checks (prints "passed")
 python test/test_thinking_tag_parser.py# streaming <thought> tag splitter
 
-# Safe, writes a tempfile DB:
-python test/test_save_config.py        # WebAPI.save_config → DB sync (uses api_bridge.WebAPI)
+# Unsafe legacy manual probe; do not run against personal app data:
+# python test/test_save_config.py      # Only isolates DB; rewrites real config.json on import
 
 # Safe, uses memory/in-memory app stubs:
 python test/test_file_upload.py        # attachment upload / prepare / discard paths
@@ -74,7 +76,7 @@ python -m py_compile claude_chat/app.py claude_chat/api_bridge.py && echo OK
 ## Architecture
 
 ```
-claude_chat.py          thin entrypoint → ClaudeChatApp (+ --sandbox-worker runner)
+chatudex.py          thin entrypoint → ClaudeChatApp (+ --sandbox-worker runner)
 claude_chat/
   app.py                ClaudeChatApp (mainloop, pywebview window, stream-task lifecycle,
                         GUI reader thread _process_sending_stream, model refresh)
@@ -118,7 +120,8 @@ claude_chat/
     settings_components.js, settings_claude.js, settings_deepseek.js, settings_gemini.js,
     settings.js, events.js, main.js, model_picker.js, select_picker.js,
     custom_params.js, model_config_editor.js    vanilla-JS modules, no framework
-    style.css           Catppuccin Mocha theme
+    style.css + workspace.css  base components + light/dark/mobile workspace
+    settings.css          settings sidebar, category pages, grouped rows and mobile layout
     fonts.css + fonts/  woff2 (Inter, JetBrains Mono, Outfit)
     libs/               offline JS bundles (marked, highlight, mermaid, purify)
 ```
@@ -181,7 +184,7 @@ Three tiers in `config.py` — machine-fingerprint PBKDF2 key derivation (`confi
 - `test_dialog.py` — manual pywebview dialog probe (dev tool, ignored).
 - `refactor_js.py` / `refactor_settings.py` / `refactor_ui.py` — historical UI-split scripts, still tracked; see Architecture note above.
 - `app_js_mods*.txt`, `scratch/`, `debug.txt`, `models_registry.json` — developer artifacts / cached registry, not part of the app.
-- `dist/ClaudeChat.exe` — PyInstaller build output; `build/` holds intermediate artifacts.
+- `dist/Chatudex.exe` — PyInstaller build output; `build/` holds intermediate artifacts.
 
 ## Legacy migration
 
@@ -198,3 +201,24 @@ Anthropic SDK 1.x uses `httpx2`. Every `Anthropic(http_client=...)` call must us
 ## Manual model IDs
 
 The settings dialog saves `manual_model_ids` as a provider-to-ID-list mapping. `updateModelList` merges only the active provider's IDs into discovery results without duplicates. Preserve this behavior for empty discovery results and provider switches; `test/test_model_picker.js` covers these cases.
+
+
+## Settings workspace
+
+`ui/settings.js` owns category navigation and label/description search; `ui/settings.css` is loaded after the workspace styles. Categories are `general`, `appearance`, `presets`, `providers`, `model`, `custom`, `files`, and `server`. Only the selected `[data-settings-section]` is visible via its `hidden` attribute. Preserve control IDs and drafts across navigation: global Save reads every category, including hidden ones. Invalid model JSON/custom parameters must reveal the model page; save failures remain visible in the settings footer. Theme selection applies immediately. The assistant-presets shortcut opens `presets`.
+
+Search must never index input values or credentials. Navigation supports arrow keys/Home/End; Escape clears a nonempty search before closing the dialog. `test/test_settings_navigation_browser.js` covers navigation, search, cross-page drafts/validation/save, themes, mobile overflow and preset dialogs with local assets and mocked APIs. Run it with Node and Playwright/Edge; set `PLAYWRIGHT_MODULE` if needed. Also run `test/test_model_config_editor_browser.js` with `PYTHON_EXECUTABLE` pointing to the project environment for parameter-editor regressions.
+
+## Memory and theme
+
+`memory_store.py` owns SQLite memory, privacy, retrieval, revisions and forgetting hashes. `services/memory_service.py` adds memory operations to WebAPI; HTTP uses authenticated `POST /api/memory/<action>`. Background extraction follows the current or selected configured provider, runs after 3 new user messages with a 5-minute interval, and requires verbatim user evidence. Preserve epoch checks, manual-edit precedence, source existence checks and privacy inheritance when changing these paths. Never reintroduce automatic conversation deletion on listing.
+
+`ui/theme.js` applies persistent light/dark/system mode before paint; `workspace.css` and `workspace.js` add mobile layout and memory controls. New regression coverage: `test/test_memory.py`, `test/test_gemini_http_client.py`, `test/test_workspace_browser.js`, `test/test_workspace_http_browser.js`. Browser checks use Playwright with Edge; set PLAYWRIGHT_MODULE to the available installation and PYTHON_EXECUTABLE to the project virtual environment for full HTTP checks. They isolate config/DB/credentials and do not call real models.
+
+## Hybrid memory
+
+`memory_schema.py` performs additive migrations; `memory_resolver.py` owns typed fields/conflicts/versions; `memory_embeddings.py` handles independent embedding transports; `memory_vectors.py` indexes local float32 vectors; `memory_hybrid.py` merges retrieval and builds bounded context. The UI extension is `ui/memory_advanced.js`. Cloud/keyword modes use existing dependencies; local Sentence Transformers is optional. Do not download models or invoke paid embeddings during automated checks.
+
+Run `python -m pytest test/test_memory.py test/test_memory_hybrid.py -q` for real isolated SQLite regressions. `python test/test_memory_benchmark.py` produces a controlled offline benchmark in `scratch/memory-validation.json`; its recall results verify the pipeline, not real-model quality. Preserve epoch/content/version checks before async write-back, scope inheritance, verbatim live user evidence, atomic import/delete, unchanged-setting index retention and automatic retry backoff. JSON export v2 includes historical versions; imports keep external provenance untrusted.
+
+Embedding model discovery uses `memory_operation("embedding_models", {"platform": ...})`, separate from chat-model discovery. `memory_embeddings.fetch_embedding_models` filters Gemini embedding actions, uses OpenRouter's dedicated catalog, and filters compatible catalogs by capabilities/name. Reuse configured keys/proxies/models URL, keep network I/O outside the app lock, never generate paid vectors to discover models, and retain manual IDs on errors/empty lists. `test/test_embedding_model_discovery.py` and the HTTP browser regression cover discovery, selection, retry and stale-provider responses.

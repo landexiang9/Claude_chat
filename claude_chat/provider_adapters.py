@@ -3,6 +3,7 @@
 CUSTOM_PROVIDER_ADAPTERS = {
     "local",
     "openai_files",
+    "responses",
     "openrouter",
     "inline_images",
     "anthropic",
@@ -14,6 +15,7 @@ _ALIASES = {
     "none": "local",
     "openai": "openai_files",
     "files": "openai_files",
+    "openai_responses": "responses",
     "openrouter_inline": "openrouter",
     "inline": "inline_images",
     "anthropic_files": "anthropic",
@@ -36,12 +38,12 @@ def adapter_accepts_attachment(adapter, extension):
     if extension in {".png", ".jpg", ".jpeg", ".gif", ".webp"}:
         return adapter != "local"
     if extension == ".pdf":
-        return adapter in {"openai_files", "openrouter", "anthropic", "gemini"}
+        return adapter in {"openai_files", "responses", "openrouter", "anthropic", "gemini"}
     return False
 
 
 def adapter_uses_remote_files_api(adapter):
-    return normalize_custom_provider_adapter(adapter) in {"openai_files", "anthropic", "gemini"}
+    return normalize_custom_provider_adapter(adapter) in {"openai_files", "responses", "anthropic", "gemini"}
 
 
 def adapter_expiry_limit(adapter):

@@ -121,10 +121,9 @@ FALLBACK_MODELS_DEEPSEEK = [
 ]
 
 FALLBACK_MODELS_GEMINI = [
-    "gemini-2.0-flash",
-    "gemini-2.0-pro-exp",
-    "gemini-1.5-pro",
-    "gemini-1.5-flash",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
 ]
 
 # 支持上传/解析的文件扩展名分类
@@ -245,6 +244,7 @@ class ConfigManager:
     def __init__(self):
         import threading
         self._lock = threading.RLock()
+        self._unresolved_api_keys = {}
         setup_logging()
         # 默认系统配置数据结构
 
@@ -255,6 +255,7 @@ class ConfigManager:
             "deepseek_api_key": "",
             "gemini_api_key": "",
             "deepseek_api_url": "https://api.deepseek.com",
+            "deepseek_use_responses": False,
             "gemini_api_url": "",
             # Provider-native Files APIs are the default attachment transport.
             "claude_file_upload_enabled": True,
@@ -352,6 +353,7 @@ class ConfigManager:
     _BOOL_KEYS = {
         "thinking_enabled", "enable_web_search", "enable_web_fetch", "enable_code_sandbox",
         "auto_run_code", "deepseek_enable_web_search", "deepseek_enable_web_fetch",
+        "deepseek_use_responses",
         "gemini_thinking_enabled", "gemini_enable_web_search",
         "gemini_enable_code_sandbox", "enable_server", "enable_ssl",
         "claude_file_upload_enabled", "deepseek_file_upload_enabled", "gemini_file_upload_enabled",
@@ -398,6 +400,7 @@ class ConfigManager:
                     
                     # 用读取到的字段覆盖更新默认配置字典
                     self.data.update(loaded)
+                    self._unresolved_api_keys = {}
                     
                     # M5: 类型校验 — 防止 config.json 中的错误类型(None/字符串)导致
                     # 后续 int()/float()/bool() 转换崩溃或逻辑反转(如 bool("false")=True)
@@ -434,6 +437,12 @@ class ConfigManager:
                             key_val = loaded[key]
                             
                         self.data[key] = key_val
+                        if not key_val and (obf or storage in ("keyring", "aes", "xor")):
+                            self._unresolved_api_keys[key] = {
+                                f"{key}_storage": storage,
+                                f"{key}_obfuscated": obf,
+                            }
+                            logger.warning("%s 暂时无法读取，保留原加密备份", key)
                         
                 except (json.JSONDecodeError, Exception) as e:
                     logger.error(f"加载配置文件出错: {e}")
@@ -472,6 +481,12 @@ class ConfigManager:
                 # M1 防御：config.get 可能返回 None，strip() 前做类型检查
                 raw = to_save.get(key)
                 key_val = raw.strip() if isinstance(raw, str) else ""
+
+                unresolved = getattr(self, "_unresolved_api_keys", {}).get(key)
+                if not key_val and unresolved:
+                    to_save[key] = ""
+                    to_save.update(unresolved)
+                    continue
 
                 # 清除要写入磁盘的明文字段
                 to_save[key] = ""
@@ -522,9 +537,13 @@ class ConfigManager:
         with self._lock:
             missing = object()
             previous = self.data.get(key, missing)
+            unresolved = getattr(self, "_unresolved_api_keys", {})
+            previous_backup = unresolved.pop(key, None)
             self.data[key] = value
             if self.save():
                 return True
+            if previous_backup is not None:
+                unresolved[key] = previous_backup
             if previous is missing:
                 self.data.pop(key, None)
             else:
@@ -539,10 +558,13 @@ class ConfigManager:
         with self._lock:
             missing = object()
             previous = {k: self.data.get(k, missing) for k in updates}
+            unresolved = getattr(self, "_unresolved_api_keys", {})
+            previous_backups = {key: unresolved.pop(key) for key in updates if key in unresolved}
             for k, v in updates.items():
                 self.data[k] = v
             if self.save():
                 return True
+            unresolved.update(previous_backups)
             for key, value in previous.items():
                 if value is missing:
                     self.data.pop(key, None)

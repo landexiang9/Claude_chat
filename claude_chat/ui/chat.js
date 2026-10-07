@@ -6,6 +6,9 @@ function extractToolCallsFromMsg(msg, nextMsg) {
     // 1. 处理 Claude 官方原生搜索 (在同一个 assistant 消息内部的 content 列表中)
     if (Array.isArray(msg.content)) {
         msg.content.forEach(item => {
+            if (Array.isArray(item?._responses?.searches)) {
+                toolCalls.push(...item._responses.searches.map(search => ({...search, type: "search"})));
+            }
             if (item && (item.type === "server_tool_use" || item.type === "tool_use") && item.name === "web_search") {
                 const toolId = item.id;
                 const query = item.input ? item.input.query : "";
@@ -60,6 +63,10 @@ function extractToolCallsFromMsg(msg, nextMsg) {
 }
 // 选中并加载指定的对话
 async function selectConversation(id) {
+    if (!isStreaming && currentConvId && currentConvId !== id && window.ChatMemory) {
+        // Server checks persisted privacy; stale frontend state can never delete a normal chat.
+        await apiBridge.memory_operation('discard_temporary', {conv_id: currentConvId});
+    }
     if (isStreaming) return;
     currentConvId = id;
     
@@ -91,7 +98,7 @@ async function selectConversation(id) {
     if (currentConversationTitle) {
         currentConversationTitle.textContent = conv.title || summary?.title || "新对话";
     }
-    document.title = `${conv.title || summary?.title || "新对话"} · Claude Chat`;
+    document.title = `${conv.title || summary?.title || "新对话"} · Chatudex`;
     
     // 设置 Token 统计标签展示
     if (conv.input_tokens !== undefined && conv.output_tokens !== undefined) {
@@ -160,6 +167,8 @@ async function selectConversation(id) {
         }
         if (window.updateModelSettingsUI) window.updateModelSettingsUI();
     }
+    await window.ChatMemory?.refreshContext();
+
 }
 // 开启全新对话会话
 async function startNewChat() {
@@ -167,6 +176,7 @@ async function startNewChat() {
     const newConv = await apiBridge.new_conversation();
     await loadConversations();
     await selectConversation(newConv.id);
+    await window.ChatMemory?.refreshContext();
 }
 
 newChatBtn.onclick = startNewChat;
@@ -295,11 +305,12 @@ window.onStreamMessage = async (type, data) => {
         const card = document.querySelector("#streaming-msg-row .message-card");
         if (card) {
             const oldSearchCard = document.querySelector(".search-card[id^='streaming-search-card-']");
-            if (oldSearchCard) oldSearchCard.remove();
+            if (oldSearchCard && !data.id) oldSearchCard.remove();
             
             const searchCard = document.createElement("div");
-            searchCard.id = `streaming-search-card-${Date.now()}`;
+            searchCard.id = `streaming-search-card-${data.id || Date.now()}`;
             searchCard.className = "search-card";
+            if (data.id) searchCard.dataset.searchId = data.id;
             const queryText = data.query ? `：${escapeHtml(data.query)}` : "";  // M-fix#14: 转义,与 search_done 一致,防 XSS
             searchCard.innerHTML = `
                 <div class="search-card-header">
@@ -321,7 +332,9 @@ window.onStreamMessage = async (type, data) => {
         }
         
     } else if (type === "search_done") {
-        const searchCard = document.querySelector(".search-card[id^='streaming-search-card-']");
+        const searchCard = data.id
+            ? Array.from(document.querySelectorAll("#streaming-msg-row .search-card")).find(card => card.dataset.searchId === data.id)
+            : document.querySelector(".search-card[id^='streaming-search-card-']");
         if (searchCard) {
             searchCard.removeAttribute("id");
             
@@ -331,7 +344,7 @@ window.onStreamMessage = async (type, data) => {
             
             if (header) {
                 let statusText = `已找到 ${results.length} 个关于“${escapeHtml(data.query)}”的搜索结果`;
-                if (data.engine === "claude") {
+                if (data.engine === "claude" || data.engine === "deepseek_native") {
                     statusText = `已完成关于“${escapeHtml(data.query)}”的联网检索`;
                 }
                 header.innerHTML = `
@@ -352,7 +365,9 @@ window.onStreamMessage = async (type, data) => {
             
             if (sBody) {
                 sBody.innerHTML = "";
-                if (results.length === 0 && data.engine !== "claude") {
+                if (results.length === 0 && data.engine === "deepseek_native") {
+                    sBody.textContent = "搜索由 DeepSeek 服务端完成。";
+                } else if (results.length === 0 && data.engine !== "claude") {
                     sBody.innerHTML = `<div style="font-size: 11.5px; color: var(--subtext0); padding: 4px;">未找到相关搜索结果。</div>`;
                 } else if (results.length > 0) {
                     results.forEach(res => {
@@ -385,6 +400,7 @@ window.onStreamMessage = async (type, data) => {
                     else if (engine === "tavily") engineDisplayName = "Tavily Search API";
                     else if (engine === "jina") engineDisplayName = "Jina Search API";
                     else if (engine === "claude") engineDisplayName = "Claude 官方原生搜索";
+                    else if (engine === "deepseek_native") engineDisplayName = "DeepSeek 官方搜索";
                     
                     let usageStr = "";
                     if (data.usage) {

@@ -18,6 +18,21 @@ def extract_final_response_text(done_data, fallback=""):
             text_parts.append(str(block.get("text", "")))
     return "".join(text_parts) if found_text_block else fallback
 
+
+def extract_final_response_content(done_data, fallback=""):
+    """Keep Responses continuation metadata when persisting the final assistant reply."""
+    from copy import deepcopy
+
+    text = extract_final_response_text(done_data, fallback)
+    blocks = done_data.get("content_blocks", []) if isinstance(done_data, dict) else []
+    for block in blocks if isinstance(blocks, list) else []:
+        if isinstance(block, dict) and block.get("type") == "text":
+            context = block.get("_responses")
+            if isinstance(context, dict) and context.get("text") == text:
+                return [{"type": "text", "text": text, "_responses": deepcopy(context)}]
+    return text
+
+
 def sanitize_error_message(err, max_length=300):
     """
     过滤错误消息中的敏感信息，例如 API Keys (如 sk-... 等高危敏感字符)。

@@ -3,6 +3,9 @@
     const $ = id => document.getElementById(id);
     const clone = value => JSON.parse(JSON.stringify(value));
     let params = {}, model = "", platform = "claude", base = {}, revision = 0;
+    let protocol = "claude";
+    let previewOptions = {};
+    const isResponses = () => protocol === "responses";
     let dirty = false, loading = null, ready = false, jsonInvalid = false, formInvalid = false;
     let controlStates = null, editVersion = 0;
     function setBusy(busy) {
@@ -16,8 +19,9 @@
     }
     const knownKeys = () => platform === "claude" ? ["temperature", "max_tokens", "thinking", "output_config"]
         : platform === "gemini" ? ["temperature", "max_output_tokens", "thinking_config"]
+        : isResponses() ? ["temperature", "max_output_tokens", "reasoning"]
         : ["temperature", "max_tokens", "reasoning_effort"];
-    const tokenKey = () => platform === "gemini" ? "max_output_tokens" : "max_tokens";
+    const tokenKey = () => platform === "gemini" || isResponses() ? "max_output_tokens" : "max_tokens";
     const extras = value => Object.fromEntries(Object.entries(value).filter(([key]) => !knownKeys().includes(key)));
     function error(message = "") {
         const element = $("model-request-json-error");
@@ -31,10 +35,11 @@
             if (key in value && (!Number.isSafeInteger(value[key]) || value[key] <= 0)) throw new Error(`${key} 必须是正整数。`);
         }
         if (platform === "claude" && !("max_tokens" in value)) throw new Error("Claude 请求必须包含 max_tokens。");
-        for (const key of ["thinking", "thinking_config", "output_config"]) {
+        for (const key of ["thinking", "thinking_config", "output_config", "reasoning", "text"]) {
             if (key in value && (!value[key] || Array.isArray(value[key]) || typeof value[key] !== "object")) throw new Error(`${key} 必须是对象。`);
         }
         if ("reasoning_effort" in value && typeof value.reasoning_effort !== "string") throw new Error("reasoning_effort 必须是文本。");
+        if (value.reasoning && "effort" in value.reasoning && typeof value.reasoning.effort !== "string") throw new Error("reasoning.effort 必须是文本。");
         // JSON.parse permits numeric overflow; reject it before a JSON round-trip could turn it into null.
         const finite = val => typeof val === "number" ? Number.isFinite(val) : !val || typeof val !== "object" || Object.values(val).every(finite);
         if (!finite(value)) throw new Error("JSON 中的数字不能超出有限范围。");
@@ -44,7 +49,8 @@
     function show(id, visible) { $(id)?.classList.toggle("hidden", !visible); }
     function effortValue() {
         return platform === "claude" ? params.output_config?.effort
-            : platform === "gemini" ? params.thinking_config?.thinking_level : params.reasoning_effort;
+            : platform === "gemini" ? params.thinking_config?.thinking_level
+            : isResponses() ? params.reasoning?.effort : params.reasoning_effort;
     }
     function syncControls(rebuildExtras = true) {
         const temp = params.temperature;
@@ -56,13 +62,13 @@
         const token = tokenKey();
         $("model-max-tokens-enabled").checked = Object.hasOwn(params, token);
         $("model-max-tokens-enabled").disabled = platform === "claude";
-        $("model-max-tokens-label").textContent = platform === "gemini" ? "Max Output Tokens" : "Max Tokens";
+        $("model-max-tokens-label").textContent = token === "max_output_tokens" ? "Max Output Tokens" : "Max Tokens";
         $("model-max-tokens-input").disabled = !Object.hasOwn(params, token);
         setValue("model-max-tokens-input", params[token]);
         show("model-thinking-container", true);
         const thinking = platform === "claude" ? params.thinking : platform === "gemini" ? params.thinking_config : null;
         const enabled = platform === "claude" ? !!thinking && thinking.type !== "disabled"
-            : platform === "gemini" ? !!thinking : Object.hasOwn(params, "reasoning_effort");
+            : platform === "gemini" ? !!thinking : isResponses() ? (platform === "deepseek" ? params.reasoning?.effort !== "none" : !!params.reasoning) : Object.hasOwn(params, "reasoning_effort");
         $("model-thinking-enabled-input").checked = enabled;
         show("model-thinking-options", enabled);
         show("model-thinking-type-group", platform === "claude");
@@ -77,7 +83,7 @@
         const effort = effortValue();
         const level = $("model-thinking-level-select");
         level.replaceChildren();
-        const choices = ["", "low", "medium", "high", "xhigh", "max"];
+        const choices = isResponses() ? ["", "none", "minimal", "low", "medium", "high", "xhigh", ...(platform === "deepseek" ? ["max"] : [])] : ["", "low", "medium", "high", "xhigh", "max"];
         if (effort && !choices.includes(effort)) choices.push(effort);
         for (const value of choices) { const option = document.createElement("option"); option.value = value; option.textContent = value || "不指定等级"; level.appendChild(option); }
         level.value = effort ?? "";
@@ -92,9 +98,12 @@
     }
     function reset() { setBusy(false); revision++; ready = false; dirty = false; jsonInvalid = false; formInvalid = false; loading = null; }
     function isEditing(id, currentPlatform) { return ready && dirty && model === id && platform === currentPlatform; }
-    async function load(id, currentPlatform, currentConfig) {
+    async function load(id, currentPlatform, currentConfig, options) {
         const token = ++revision;
         model = id; platform = currentPlatform; base = clone(currentConfig || {});
+        protocol = currentPlatform;
+        previewOptions = currentPlatform === "deepseek"
+            ? (options || {deepseek_use_responses: !!$("deepseek-use-responses-input")?.checked}) : {};
         ready = false; dirty = false; jsonInvalid = false; formInvalid = false;
         error();
         $("model-request-json").disabled = true;
@@ -103,9 +112,10 @@
         global.SelectPicker?.refreshAll();
         loading = (async () => {
             try {
-                const result = await apiBridge.preview_model_request({model: id, platform: currentPlatform, model_config: base});
+                const result = await apiBridge.preview_model_request({model: id, platform: currentPlatform, model_config: base, ...previewOptions});
                 if (token !== revision) return;
                 if (!result || result.error || !result.params) throw new Error(result?.error || "无法读取最终参数，请确认程序已重启。");
+                protocol = result.request_protocol || currentPlatform;
                 params = validate(result.params);
                 ready = true;
                 syncControls(); writeJson();
@@ -189,6 +199,14 @@
                         else if (effort) { next.thinking_config.thinking_level = effort; delete next.thinking_config.thinking_budget; }
                         else delete next.thinking_config.thinking_level;
                     }
+                } else if (isResponses()) {
+                    if (!enabled && platform === "deepseek") next.reasoning = {effort: "none"};
+                    else if (!enabled) delete next.reasoning;
+                    else {
+                        next.reasoning = {...(next.reasoning || (platform === "deepseek" ? {} : {summary: "auto"}))};
+                        if (platform === "deepseek" && effort === "none" && id === "model-thinking-enabled-input") delete next.reasoning.effort;
+                        else if (effort) next.reasoning.effort = effort; else delete next.reasoning.effort;
+                    }
                 } else {
                     if (enabled) next.reasoning_effort = effort || "high"; else delete next.reasoning_effort;
                 }
@@ -206,13 +224,16 @@
         const token = revision;
         const expectedEdit = editVersion;
         try {
-            const result = await apiBridge.preview_model_request({model, platform, model_config: {request_params: params}});
+            const result = await apiBridge.preview_model_request({model, platform, model_config: {request_params: params, request_protocol: protocol}, ...previewOptions});
             if (token !== revision || expectedEdit !== editVersion) throw new Error("参数已改变，请重新保存。");
             if (!result || result.error || !result.params) throw new Error(result?.error || "无法校验最终参数。");
             params = result.params;
             syncControls(); writeJson();
             const thinking = platform === "claude" ? params.thinking : params.thinking_config;
-            return {...base, request_platform: platform, request_params: clone(params), custom_params: extras(params),
+            const profiles = platform === "deepseek"
+                ? {request_params_by_protocol: {...(base.request_params_by_protocol || {}), [protocol]: clone(params)}} : {};
+            return {...base, ...profiles, request_platform: platform, request_protocol: protocol,
+                request_params: clone(params), custom_params: extras(params),
                 temperature: params.temperature ?? base.temperature ?? 0.7,
                 max_tokens: params[tokenKey()] ?? base.max_tokens ?? 16384,
                 thinking_enabled: $("model-thinking-enabled-input").checked,
@@ -220,7 +241,14 @@
                 thinking_budget: thinking?.budget_tokens ?? thinking?.thinking_budget ?? 1024};
         } catch (err) { error(err.message); return null; }
     }
-    global.ModelConfigEditor = {load, reset, isEditing, prepareSave, validate};
+    async function switchDeepseekProtocol(enabled) {
+        if (platform !== "deepseek") return true;
+        const draft = await prepareSave();
+        if (!draft) return false;
+        await load(model, platform, draft, {deepseek_use_responses: enabled});
+        return true;
+    }
+    global.ModelConfigEditor = {load, reset, isEditing, prepareSave, validate, switchDeepseekProtocol};
     document.addEventListener("DOMContentLoaded", () => {
         const card = $("model-specific-settings-card"); if (!card) return;
         card.addEventListener("input", formChanged); card.addEventListener("change", formChanged);

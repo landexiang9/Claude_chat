@@ -1,5 +1,20 @@
 PlatformSettings.register("deepseek", {
     bind() {
+        const responses = document.getElementById("deepseek-use-responses-input");
+        if (responses) responses.onchange = async () => {
+            const enabled = responses.checked;
+            const save = document.getElementById("save-settings-btn");
+            responses.disabled = true;
+            if (save) save.disabled = true;
+            try {
+                const success = await window.ModelConfigEditor?.switchDeepseekProtocol(enabled);
+                if (success === false) responses.checked = !enabled;
+            } finally {
+                responses.disabled = false;
+                if (save) save.disabled = false;
+                updateDeepSeekProtocolUI();
+            }
+        };
         const slider = document.getElementById("deepseek-temp-slider");
         const label = document.getElementById("deepseek-temp-label-title");
         if (slider && label) {
@@ -9,7 +24,7 @@ PlatformSettings.register("deepseek", {
         }
         if (deepseekEnableSearchInput) {
             deepseekEnableSearchInput.onchange = () => {
-                deepseekSearchGroup.classList.toggle("hidden", !deepseekEnableSearchInput.checked);
+                updateDeepSeekProtocolUI();
             };
         }
         if (deepseekSearchEngineSelect) deepseekSearchEngineSelect.onchange = toggleDeepSeekSearchKeys;
@@ -17,6 +32,8 @@ PlatformSettings.register("deepseek", {
     },
 
     load(currentConfig) {
+        const responses = document.getElementById("deepseek-use-responses-input");
+        if (responses) responses.checked = !!currentConfig.deepseek_use_responses;
         if (typeof deepseekFileUploadEnabledInput !== "undefined" && deepseekFileUploadEnabledInput) deepseekFileUploadEnabledInput.checked = currentConfig.deepseek_file_upload_enabled !== false;
         if (deepseekApiUrlInput) deepseekApiUrlInput.value = currentConfig.deepseek_api_url || "https://api.deepseek.com";
         if (deepseekEnableSearchInput) {
@@ -28,9 +45,12 @@ PlatformSettings.register("deepseek", {
         if (deepseekWebPageParserSelect) deepseekWebPageParserSelect.value = currentConfig.deepseek_web_page_parser || "local";
         if (deepseekWebFetchLimitInput) deepseekWebFetchLimitInput.value = currentConfig.deepseek_web_fetch_limit || 15000;
         toggleDeepSeekSearchKeys();
+        updateDeepSeekProtocolUI();
     },
 
     save(currentConfig) {
+        const responses = document.getElementById("deepseek-use-responses-input");
+        if (responses) currentConfig.deepseek_use_responses = responses.checked;
         if (typeof deepseekFileUploadEnabledInput !== "undefined" && deepseekFileUploadEnabledInput) currentConfig.deepseek_file_upload_enabled = deepseekFileUploadEnabledInput.checked;
         if (deepseekApiUrlInput) currentConfig.deepseek_api_url = deepseekApiUrlInput.value.trim() || "https://api.deepseek.com";
         if (deepseekEnableSearchInput) currentConfig.deepseek_enable_web_search = deepseekEnableSearchInput.checked;
@@ -40,6 +60,14 @@ PlatformSettings.register("deepseek", {
         if (deepseekWebFetchLimitInput) currentConfig.deepseek_web_fetch_limit = parseInt(deepseekWebFetchLimitInput.value) || 15000;
     }
 });
+
+function updateDeepSeekProtocolUI() {
+    const enabled = !!document.getElementById("deepseek-use-responses-input")?.checked;
+    if (deepseekEnableSearchInput) deepseekEnableSearchInput.disabled = false;
+    const label = document.getElementById("deepseek-search-label");
+    if (label) label.textContent = enabled ? "启用 DeepSeek 官方联网搜索" : "启用网页检索服务";
+    if (deepseekSearchGroup) deepseekSearchGroup.classList.toggle("hidden", enabled || !deepseekEnableSearchInput?.checked);
+}
 
 function toggleDeepSeekSearchKeys() {
     const engine = deepseekSearchEngineSelect ? deepseekSearchEngineSelect.value : "google";

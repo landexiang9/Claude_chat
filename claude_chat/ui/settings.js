@@ -83,52 +83,123 @@ document.addEventListener("keydown", event => {
 const settingsNavItems = Array.from(document.querySelectorAll(".settings-nav-item[data-settings-nav]"));
 const settingsSections = Array.from(document.querySelectorAll("[data-settings-section]"));
 const settingsContent = document.querySelector(".settings-content");
+const settingsSearchInput = document.getElementById("settings-search-input");
+const settingsSearchResults = document.getElementById("settings-search-results");
+const settingsPageTitle = document.getElementById("settings-page-title");
+const settingsPageDescription = document.getElementById("settings-page-description");
+const settingsPageDescriptions = {
+    general: "管理代码执行与客户端运行偏好。",
+    appearance: "让工作区呈现你喜欢的样子。",
+    presets: "为不同任务保存常用的角色与指令。",
+    providers: "连接模型平台，配置 API 密钥与联网工具。",
+    model: "调整当前模型的输出、思考与请求参数。",
+    custom: "连接兼容的云端 API 或本地模型服务。",
+    files: "选择图像识别方式，查看文档解析能力。",
+    server: "管理浏览器访问、局域网连接与安全验证。"
+};
+let activeSettingsSection = "general";
 
-function activateSettingsNav(sectionKey, shouldScroll = true) {
+function activateSettingsNav(sectionKey, resetScroll = true) {
+    const target = settingsSections.find(section => section.dataset.settingsSection === sectionKey);
+    if (!target) return;
+    activeSettingsSection = sectionKey;
+    window.SelectPicker?.closeAll();
+    if (settingsSearchInput) settingsSearchInput.value = "";
+    if (settingsSearchResults) settingsSearchResults.hidden = true;
+    settingsSections.forEach(section => { section.hidden = section !== target; });
     settingsNavItems.forEach(item => {
         const active = item.dataset.settingsNav === sectionKey;
         item.classList.toggle("active", active);
-        item.setAttribute("aria-current", active ? "page" : "false");
+        if (active) item.setAttribute("aria-current", "page");
+        else item.removeAttribute("aria-current");
     });
-    if (shouldScroll) {
-        document.querySelector(`[data-settings-section="${sectionKey}"]`)?.scrollIntoView({
-            behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth",
-            block: "start"
-        });
-    }
+    const navItem = settingsNavItems.find(item => item.dataset.settingsNav === sectionKey);
+    settingsPageTitle.textContent = navItem?.querySelector("strong")?.textContent || "设置";
+    settingsPageDescription.textContent = settingsPageDescriptions[sectionKey] || "";
+    if (resetScroll) settingsContent?.scrollTo({ top: 0, behavior: "instant" });
+    window.SelectPicker?.refreshAll();
 }
 
-settingsNavItems.forEach((item, index) => {
+settingsNavItems.forEach(item => {
     item.addEventListener("click", () => activateSettingsNav(item.dataset.settingsNav));
     item.addEventListener("keydown", event => {
-        if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+        if (!["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
         event.preventDefault();
-        const direction = (event.key === "ArrowDown" || event.key === "ArrowRight") ? 1 : -1;
-        const target = settingsNavItems[(index + direction + settingsNavItems.length) % settingsNavItems.length];
+        const index = settingsNavItems.indexOf(item);
+        const direction = ["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : -1;
+        const targetIndex = event.key === "Home" ? 0 : event.key === "End" ? settingsNavItems.length - 1
+            : (index + direction + settingsNavItems.length) % settingsNavItems.length;
+        const target = settingsNavItems[targetIndex];
         target.focus();
         activateSettingsNav(target.dataset.settingsNav);
+        if (window.matchMedia("(max-width: 767px)").matches) target.scrollIntoView({ block: "nearest", inline: "nearest" });
     });
 });
 
-let settingsScrollFrame = null;
-settingsContent?.addEventListener("scroll", () => {
-    if (settingsScrollFrame !== null) cancelAnimationFrame(settingsScrollFrame);
-    settingsScrollFrame = requestAnimationFrame(() => {
-        const contentTop = settingsContent.getBoundingClientRect().top;
-        const atBottom = settingsContent.scrollHeight - settingsContent.scrollTop - settingsContent.clientHeight <= 4;
-        let activeSection = settingsSections[0];
-        if (atBottom) {
-            activeSection = settingsSections[settingsSections.length - 1];
-        } else {
-            const activationLine = contentTop + 36;
-            settingsSections.forEach(section => {
-                if (section.getBoundingClientRect().top <= activationLine) activeSection = section;
-            });
-        }
-        if (activeSection) activateSettingsNav(activeSection.dataset.settingsSection, false);
-        settingsScrollFrame = null;
+function searchSettings() {
+    const query = settingsSearchInput.value.trim().toLocaleLowerCase();
+    if (!query) {
+        activateSettingsNav(activeSettingsSection);
+        return;
+    }
+    window.SelectPicker?.closeAll();
+    settingsSections.forEach(section => { section.hidden = true; });
+    settingsNavItems.forEach(item => {
+        item.classList.remove("active");
+        item.removeAttribute("aria-current");
     });
-}, { passive: true });
+    settingsSearchResults.replaceChildren();
+    settingsSearchResults.hidden = false;
+    settingsPageTitle.textContent = "搜索结果";
+    const terms = query.split(/\s+/);
+    const matches = text => terms.every(term => text.toLocaleLowerCase().includes(term));
+    let count = 0;
+    for (const item of settingsNavItems) {
+        const key = item.dataset.settingsNav;
+        const section = settingsSections.find(candidate => candidate.dataset.settingsSection === key);
+        const title = item.querySelector("strong").textContent;
+        // Search labels and descriptions only; never read input values or stored credentials.
+        const labels = Array.from(section.querySelectorAll(
+            ".settings-row-copy, .form-group > label, .settings-section-title, .custom-params-heading strong, .model-request-editor > summary, .platform-tabs .tab-btn"
+        )).map(label => label.textContent.replace(/\s+/g, " ").trim());
+        const matchedLabels = [...new Set(labels.filter(matches))];
+        if (!matches(`${title} ${settingsPageDescriptions[key]}`) && !matchedLabels.length) continue;
+        count++;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "settings-search-result";
+        const heading = document.createElement("strong");
+        heading.textContent = title;
+        const description = document.createElement("span");
+        description.textContent = matchedLabels.slice(0, 3).join(" · ") || settingsPageDescriptions[key];
+        const arrow = document.createElement("span");
+        arrow.className = "settings-result-arrow";
+        arrow.textContent = "→";
+        arrow.setAttribute("aria-hidden", "true");
+        button.append(heading, description, arrow);
+        button.addEventListener("click", () => {
+            activateSettingsNav(key);
+            // Keep keyboard users inside the newly opened page.
+            settingsPageTitle.focus({ preventScroll: true });
+        });
+        settingsSearchResults.appendChild(button);
+    }
+    settingsPageDescription.textContent = count ? `找到 ${count} 个相关分类，选择分类查看设置。` : "没有找到相关设置，试试其他关键词。";
+    settingsContent?.scrollTo({ top: 0, behavior: "instant" });
+}
+
+settingsPageTitle?.setAttribute("tabindex", "-1");
+settingsSearchInput?.addEventListener("input", searchSettings);
+settingsSearchInput?.addEventListener("keydown", event => {
+    if (event.key === "Escape" && settingsSearchInput.value) {
+        event.preventDefault();
+        event.stopPropagation();
+        activateSettingsNav(activeSettingsSection);
+    } else if (event.key === "Enter" && settingsSearchInput.value.trim()) {
+        settingsSearchResults.querySelector("button")?.click();
+    }
+});
+activateSettingsNav("general", false);
 
 
 // 配置对话框模块
@@ -170,7 +241,7 @@ function showSettings() {
     }
 
     // 刷新自定义提供商管理列表
-    onSettingsOpenRefreshCustomProviders();
+    const customProvidersRefresh = onSettingsOpenRefreshCustomProviders();
 
     PlatformSettings.loadAll(config);
 
@@ -214,11 +285,11 @@ function showSettings() {
         });
         const customPid = currentPlatform.split(":")[1];
         // 等待供应商列表刷新完成后自动进入编辑
-        onSettingsOpenRefreshCustomProviders().then(() => {
+        customProvidersRefresh.then(() => {
             startEditCustomProvider(customPid);
             // 滚动到自定义提供商管理区
             const cpSection = document.querySelector("#custom-providers-list");
-            if (cpSection && cpSection.scrollIntoView) {
+            if (activeSettingsSection === "custom" && cpSection && cpSection.scrollIntoView) {
                 cpSection.scrollIntoView({ behavior: "smooth", block: "center" });
             }
         });
@@ -294,7 +365,8 @@ function showSettings() {
     }
 
     renderPresetsList();
-    activateSettingsNav(isCustom ? "custom" : "providers", false);
+    document.getElementById("settings-save-status").textContent = "";
+    activateSettingsNav(isCustom ? "custom" : "general", false);
     window.SelectPicker?.refreshAll();
     showModal(settingsModal);
     requestAnimationFrame(() => {
@@ -665,9 +737,17 @@ if (toggleTokenVisibility && serverTokenInput) {
 
 saveSettingsBtn.onclick = async () => {
     const editedModelConfig = window.ModelConfigEditor ? await window.ModelConfigEditor.prepareSave() : null;
-    if (window.ModelConfigEditor && !editedModelConfig) return;
+    if (window.ModelConfigEditor && !editedModelConfig) {
+        activateSettingsNav("model");
+        document.getElementById("model-request-json-error")?.scrollIntoView({ block: "center" });
+        return;
+    }
     const customParams = window.CustomParams?.read() ?? (window.CustomParams ? null : {});
-    if (customParams === null) return;
+    if (customParams === null) {
+        activateSettingsNav("model");
+        document.getElementById("custom-params-error")?.scrollIntoView({ block: "center" });
+        return;
+    }
     // 1. 保存/清除各个 API Key 相关的配置（采用数据驱动的自动化机制）
     for (const [key, item] of Object.entries(keyConfigs)) {
         if (item.getPending()) {
@@ -779,6 +859,7 @@ saveSettingsBtn.onclick = async () => {
     
     const saved = await apiBridge.save_config(config);
     if (!saved) {
+        document.getElementById("settings-save-status").textContent = "设置保存失败，请检查日志或磁盘权限";
         statusLabel.textContent = "设置保存失败，请检查日志或磁盘权限";
         return;
     }
@@ -938,14 +1019,15 @@ if (cpCancelBtn) {
 function updateCustomProviderAdapterUI() {
     if (!cpProviderAdapterInput) return;
     const adapter = cpProviderAdapterInput.value || "local";
-    cpFileUploadOptions.classList.toggle("hidden", !["openai_files", "anthropic"].includes(adapter));
-    const purposeVisible = adapter === "openai_files";
+    cpFileUploadOptions.classList.toggle("hidden", !["openai_files", "responses", "anthropic"].includes(adapter));
+    const purposeVisible = ["openai_files", "responses"].includes(adapter);
     cpFileUploadPurposeInput.previousElementSibling.classList.toggle("hidden", !purposeVisible);
     cpFileUploadPurposeInput.classList.toggle("hidden", !purposeVisible);
     cpFileUploadExpiryInput.max = adapter === "anthropic" ? "7776000" : "2592000";
     const help = {
         local: "图片、PDF 和 Office 文件均在本地提取为文本，不调用远端文件接口。",
         openai_files: "调用 Base URL 下的 /files，随后在 Chat Completions 中引用 file_id。",
+        responses: "使用 Responses 对话接口，支持流式回复和推理摘要；图片/PDF 通过 Files 上传。服务商需支持 Responses 和 Files。",
         openrouter: "图片使用 image_url，PDF 使用 OpenRouter 官方 file_data 内容块；不会调用 /files。",
         inline_images: "图片以内联 data URL 发送；PDF 和 Office 文件仍在本地解析。",
         anthropic: "聊天改走 Anthropic Messages，图片/PDF 通过兼容的 Anthropic Files API 上传。",

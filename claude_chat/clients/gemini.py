@@ -122,6 +122,7 @@ def convert_messages_to_gemini(messages):
     return gemini_msgs
 
 def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_enabled, thinking_budget, thinking_level, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, conv_id=None, conv_manager=None, previous_content_blocks=None, enable_code_sandbox=False, code_sandbox_type="local", **kwargs):
+    client = None
     try:
         import sys
         use_legacy = False
@@ -242,21 +243,11 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
             from google import genai
             from google.genai import types
             
-            http_options_kwargs = {}
-            if api_url and api_url.strip():
-                http_options_kwargs["api_endpoint"] = api_url.strip()
-            if proxy_mode == "custom" and proxy_url.strip():
-                http_options_kwargs["client_args"] = {"transport": httpx.HTTPTransport(proxy=proxy_url.strip())}
-                http_options_kwargs["async_client_args"] = {"transport": httpx.AsyncHTTPTransport(proxy=proxy_url.strip())}
-            elif proxy_mode == "none":
-                http_options_kwargs["client_args"] = {"trust_env": False}
-                http_options_kwargs["async_client_args"] = {"trust_env": False}
-                
-            client_kwargs = {"api_key": api_key}
-            if http_options_kwargs:
-                client_kwargs["http_options"] = types.HttpOptions(**http_options_kwargs)
-                
-            client = genai.Client(**client_kwargs)
+            from .gemini_http import build_gemini_http_options
+
+            client = genai.Client(api_key=api_key, http_options=build_gemini_http_options(
+                proxy_mode, proxy_url, api_url
+            ))
 
             if kwargs.get("file_upload_enabled", True):
                 messages = prepare_gemini_files(
@@ -459,3 +450,10 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
     except Exception as e:
         logger.exception(f"Gemini streaming error: {e}")
         streaming_queue.put(("error", f"Gemini 错误: {sanitize_error_message(e)}"))
+
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                logger.debug("Unable to close Gemini client", exc_info=True)

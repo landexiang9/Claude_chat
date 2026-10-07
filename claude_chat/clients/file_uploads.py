@@ -164,7 +164,7 @@ def prepare_custom_provider_files(
     expires_after_seconds=172800,
 ):
     """Apply the selected custom OpenAI-compatible attachment adapter."""
-    if adapter == "openai_files":
+    if adapter in {"openai_files", "responses"}:
         return prepare_openai_compatible_files(
             client,
             messages,

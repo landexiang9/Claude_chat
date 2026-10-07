@@ -116,6 +116,11 @@ class HttpApiRouter:
             return
 
         # POST /api/save_config -> 保存新配置
+        if path.startswith("/api/memory/"):
+            result = self.server.api.memory_operation(path.rsplit("/", 1)[-1], body)
+            self.send_json_response(result, status=200 if result.get("success") else 400)
+            return
+
         if path == "/api/save_config":
             # 禁止通过网络接口篡改 sync_config_to_web 本身的值，防止安全绕过
             if "sync_config_to_web" in body:

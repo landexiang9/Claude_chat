@@ -13,6 +13,7 @@ from claude_chat.services import (
     ExecutionService,
     FileService,
     ModelService,
+    MemoryService,
 )
 from claude_chat.services.conversation_service import get_mime_type, prepare_attachment_content, read_text_file
 
@@ -23,6 +24,7 @@ class WebAPI(
     FileService,
     ExecutionService,
     ModelService,
+    MemoryService,
 ):
     """Compatibility facade shared by pywebview and the HTTP server."""
 

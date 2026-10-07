@@ -22,10 +22,11 @@ const elements = {
     geminiCodeSandboxTypeSelect: input()
 };
 
+const responsesToggle = input();
 const context = vm.createContext({
     console,
     window: {},
-    document: { getElementById: () => null },
+    document: { getElementById: id => id === "deepseek-use-responses-input" ? responsesToggle : null },
     ...elements
 });
 
@@ -66,5 +67,14 @@ elements.geminiEnableSearchInput.checked = false;
 registry.saveAll(config);
 if (config.deepseek_api_url !== "https://changed.example") throw new Error("DeepSeek settings did not save");
 if (config.gemini_enable_web_search !== false) throw new Error("Gemini settings did not save");
+
+if (config.deepseek_use_responses !== false) throw new Error("Responses must default to off");
+responsesToggle.checked = true;
+registry.saveAll(config);
+if (config.deepseek_use_responses !== true) throw new Error("Responses toggle did not save");
+registry.loadAll(config);
+if (!responsesToggle.checked || elements.deepseekEnableSearchInput.disabled) throw new Error("Responses native search must remain available");
+registry.loadAll({...config, deepseek_use_responses:false});
+if (responsesToggle.checked || elements.deepseekEnableSearchInput.disabled) throw new Error("Chat mode did not restore");
 
 console.log("platform settings component test passed");

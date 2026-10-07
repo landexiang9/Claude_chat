@@ -1,15 +1,17 @@
-# Claude Chat
+# Chatudex
+
+<img src="claude_chat/ui/icons/chatudex.png" alt="Chatudex icon" width="96" height="96">
 
 [简体中文](./README_ZH.md) | **English**
 
-A powerful desktop GUI / headless web client for **Claude (Anthropic)**, **DeepSeek**, and **Google Gemini** APIs, built with **pywebview** and modern web technologies. Features a premium **Catppuccin Mocha** dark theme, real-time streaming, multi-platform AI support with seamless model switching, web search integration, file attachments, collapsible reasoning/thinking steps, offline-first assets, secure credential storage, and SQLite database architecture.
+A powerful desktop GUI / headless web client for **Claude (Anthropic)**, **DeepSeek**, and **Google Gemini** APIs, built with **pywebview** and modern web technologies. Features a **Nebula-inspired** workspace with light, dark and system themes, real-time streaming, multi-platform AI support with seamless model switching, web search integration, file attachments, collapsible reasoning/thinking steps, offline-first assets, secure credential storage, and SQLite database architecture.
 
 ## Key Features
 
 ### 🤖 Multi-Platform AI Support
 - **Claude (Anthropic)** — Full support including Extended Thinking (adaptive/enabled), vision, PDF parsing, and native search grounding.
 - **DeepSeek** — Full chat support including DeepSeek-V3 and DeepSeek-R1 (reasoning). Automatic tool-based web search.
-- **Google Gemini** — Full support including Gemini 2.0 Flash, Gemini 1.5 Pro, and reasoning models. Native Gemini search grounding.
+- **Google Gemini** — Full support including dynamically discovered Gemini and reasoning models. Native Gemini search grounding.
 - **Instant model switching** — Switch platform and model from the top bar. Platform-aware validation prevents cross-platform model errors (e.g. sending a Claude model name to DeepSeek).
 - **Dynamic model list** — Fetches available models from each platform's API in the background; falls back to a built-in list if the network is unavailable.
 
@@ -31,12 +33,22 @@ A powerful desktop GUI / headless web client for **Claude (Anthropic)**, **DeepS
 - Thinking config is saved per-conversation.
 
 ### 🎨 Premium UI
-- **Catppuccin Mocha** dark theme with HSL color system, glassmorphism panels, and micro-animations.
+- **Light / dark / system themes** with persistent selection, mobile navigation drawer, expandable toolbar, responsive dialogs and keyboard-aware composer.
+- **Settings workspace** — A searchable sidebar opens one category at a time: General, Appearance, Prompt presets, Model connections, Model parameters, Custom services, File parsing, and Network & services. Grouped cards and switches adapt to mobile screens. Drafts remain intact when switching categories; Save applies configuration, while theme changes apply immediately. Invalid model parameters open the relevant page when saving.
 - **Artifacts side panel** — Renders SVG, sandboxed HTML iframes, and Mermaid diagrams in an isolated collapsible panel.
-- **System prompts manager** — Save, edit, and switch preset system prompts from the Settings modal.
+- **System prompts manager** — Save and edit prompts in Settings → Prompt presets, or open that page directly from the sidebar's assistant presets shortcut. Switch presets from the chat toolbar.
 - **Stop generation** — Interrupt streaming at any time; partial responses are saved with an `🚫 Aborted` badge.
 - **Retry / Edit / Branch** — Regenerate the last AI response, edit and resend any user message, or fork a new conversation from any point.
 - **Raw packet inspector** — Click `📦` on any message to view the raw DB record and API payload JSON.
+
+### 🧠 Long-term Memory
+- Hybrid SQLite storage: typed profile facts plus local float32 vectors for relevant user-history chunks. Independent Gemini/OpenAI-compatible/local Embedding settings; incremental indexing, pause/resume/rebuild, caching and explicit keyword fallback.
+- Router, Top-K retrieval and prompt budgeting, with similarity/importance/exponential recency/frequency ranking and score explanations. Defaults: 8 combined facts/history items, at most 3 history sources, 6000 prompt characters. Model-assisted routing is optional and off by default.
+- Background extraction is enabled by default: 3 new user messages, a 5-minute interval and at most 5 facts per request. Follow the current provider/model or select a configured provider. Verbatim current user evidence is required; assistant output only helps interpretation. Extraction incurs additional model requests.
+- Conflict resolution supports add/update/merge/delete/ignore, temporal versions, manual-edit protection and pending confirmations. Typed profile, sources, prior versions, decisions and per-chat context are inspectable.
+- Global/project scopes, history exclusions, temporary chats and privacy invalidation of stale background requests. Forgetting removes associated versions and derived data; clearing excludes existing history. Deleting a chat retains independent notes and removes provenance. Branches inherit privacy and scope.
+- JSON v2 export includes versions; v1/v2 imports are atomic and restore validity dates without trusting external source IDs. Optional attributed early-context summaries preserve recent complete messages and skip complex/code history.
+- Local limits: 500 notes, 50 versions per note, 5000 history chunks and 2000 recent versions in the vector window. Structured temporal lookup can query older versions. Credential filtering and real-model quality require user oversight; this does not reproduce commercial internal systems. See [setup, architecture and validation](MEMORY_GUIDE.md).
 
 ### 🛠️ Developer & Power Features
 - **Local code sandbox** — Run Python/JavaScript code blocks directly in the app. A real-time interactive terminal appears below each code block with stdin support (must be manually enabled in settings for security).
@@ -62,6 +74,8 @@ A powerful desktop GUI / headless web client for **Claude (Anthropic)**, **DeepS
 
 ## Quick Start
 
+Chatudex is the new name of Claude Chat. Launch with `chatudex.py`; existing `claude_chat.py` commands still work. Existing configuration, credential storage and `claude_chat.db` remain compatible. The internal Python package remains `claude_chat`.
+
 ### Windows (Automated Setup)
 
 Setup scripts create a `.venv`, install all dependencies, and configure the environment:
@@ -76,7 +90,7 @@ setup_venv.bat
 
 Then run the app:
 ```bash
-.venv\Scripts\python.exe claude_chat.py
+.venv\Scripts\python.exe chatudex.py
 ```
 
 ### Linux / macOS / Android Termux (Headless Server Mode)
@@ -88,7 +102,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # Start server accessible from any device on the LAN
-python claude_chat.py --server --host 0.0.0.0 --port 8000
+python chatudex.py --server --host 0.0.0.0 --port 8000
 ```
 Navigate to `http://<device-ip>:8000` from any browser on the network.
 
@@ -96,7 +110,7 @@ Navigate to `http://<device-ip>:8000` from any browser on the network.
 
 ```bash
 .venv\Scripts\python.exe build_executable.py
-# Output: dist/ClaudeChat.exe
+# Output: dist/Chatudex.exe
 ```
 
 ---
@@ -126,7 +140,7 @@ Optional: `easyocr` for local image OCR on text-only platforms.
 
 ```text
 Claude_chat/
-├── claude_chat.py          # Application launcher entry point
+├── chatudex.py          # Application launcher entry point
 ├── requirements.txt        # Python dependencies
 ├── setup_venv.bat          # Windows CMD setup script
 ├── setup_venv.ps1          # Windows PowerShell setup script
@@ -153,7 +167,8 @@ Claude_chat/
 │   │   └── models.py       # Dynamic model list fetching
 │   └── ui/                 # Web interface
 │       ├── index.html      # Application HTML layout
-│       ├── style.css       # Catppuccin Mocha styles
+│       ├── style.css       # Base components; workspace.css adds themes and mobile layout
+│       ├── settings.css    # Settings sidebar, pages, grouped rows and mobile layout
 │       ├── fonts.css       # Font definitions
 │       ├── api.js          # API communication layer
 │       ├── chat.js         # Chat message management
@@ -225,6 +240,14 @@ Claude_chat/
 | `-p` | `--port <port>` | HTTP server port (default: `8000`) |
 
 
+## OpenAI Responses adapter
+
+DeepSeek settings also include a **Use Responses API** toggle, off by default. It switches between Chat Completions and Responses using the same DeepSeek URL and key; the endpoint must support `/responses`. Each mode retains its own model parameters. Save settings to apply the switch. DeepSeek PDF/Office parsing remains local. In Responses mode, the search switch enables DeepSeek's server-side `web_search` tool with the existing DeepSeek key. Search progress and history are displayed, and native reasoning/search items are retained for stateless continuation. Chat Completions keeps its existing search engine settings. See the [DeepSeek Responses documentation](https://api-docs.deepseek.com/zh-cn/guides/responses_api/).
+
+In Settings, add or edit a custom provider and choose **OpenAI Responses + Files** under the protocol adapter. Set the API Base URL (for example, `https://api.openai.com/v1`), API key and model IDs. The provider must support `/responses`; image/PDF attachments also require `/files` and a model that accepts those inputs.
+
+The custom provider adapter supports streaming text, reasoning summaries, system prompts, image/PDF inputs, token usage and cancellation. Model settings use `max_output_tokens` and `reasoning.effort`; existing Chat Completions token/effort settings are converted in the parameter preview. History remains local, with `store: false` by default. Encrypted reasoning returned by the provider is saved with the reply and reused for the same endpoint, credentials and model. Custom providers do not yet expose built-in search, code execution or MCP tools; the dedicated DeepSeek mode above supports native search and plaintext reasoning context.
+
 ## Custom Model IDs
 
 In Settings, select a provider and click **自定义模型 ID** (Custom model ID) in the model settings area. Enter the exact model ID accepted by that provider and save. The ID is used in API requests and retained when model discovery refreshes or returns no models. IDs are saved separately for each provider in `manual_model_ids`; adding an ID does not grant access to a model. Custom providers appear as a separate group in the provider picker.
@@ -242,7 +265,7 @@ python -m pip check
 Restart the running service through your existing process manager. For a manually launched server, stop the old process and run:
 
 ```bash
-python claude_chat.py --server --host 0.0.0.0 --port 8000
+python chatudex.py --server --host 0.0.0.0 --port 8000
 ```
 
 ### Claude reports `Invalid http_client` / `httpx2.Client`
@@ -268,3 +291,12 @@ node test/test_platform_select.js
 ```
 
 The Claude HTTP regression tests use real SDK client validation with mocked API methods; they require no API key or network connection. They cover model discovery and cloud OCR. Node.js is needed only for the JavaScript checks. See `AGENTS.md` for the remaining checks and standalone integration scripts.
+
+Settings browser regression (Windows with Edge and Playwright installed):
+
+```bash
+node test/test_settings_navigation_browser.js
+node test/test_model_config_editor_browser.js
+```
+
+Set `PLAYWRIGHT_MODULE` to the Playwright module path if it is outside the project, and `PYTHON_EXECUTABLE` to the project environment's Python for model-editor checks. These tests use local assets and mocked APIs. They cover category navigation, search without credential values, drafts across pages, validation, save failures, themes, mobile layout and model parameter editing.

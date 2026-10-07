@@ -1,0 +1,150 @@
+/* Settings workspace: a persistent sidebar and one focused page at a time. */
+#settings-modal { padding: 0; background: var(--mantle); backdrop-filter: none; }
+#settings-modal .settings-modal-card {
+    position: relative; inset: auto; display: grid;
+    grid-template-columns: 244px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto;
+    width: 100%; height: var(--app-height, 100dvh); max-height: none;
+    border: 0; border-radius: 0; box-shadow: none; background: var(--mantle);
+}
+#settings-modal .settings-modal-body { display: contents; }
+.settings-sidebar {
+    grid-column: 1; grid-row: 1 / span 2; display: flex; min-height: 0; flex-direction: column;
+    background: color-mix(in srgb, var(--mantle) 58%, var(--base)); border-right: 1px solid var(--border);
+}
+#settings-modal .settings-sidebar-heading { min-height: 64px; padding: 22px 22px 12px; background: transparent; border: 0; }
+#settings-modal .settings-sidebar-heading h2 { font-family: var(--font-sans); font-size: 20px; font-weight: 650; }
+.settings-search {
+    display: flex; align-items: center; gap: 8px; min-height: 38px; flex-shrink: 0;
+    margin: 4px 14px 18px; padding: 0 12px; border: 1px solid transparent;
+    border-radius: 22px; background: var(--surface0); color: var(--subtext0);
+}
+.settings-search:focus-within { border-color: var(--blue); }
+.settings-search svg { width: 16px; height: 16px; flex: 0 0 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+#settings-search-input { width: 100%; min-width: 0; padding: 8px 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 13px; }
+#settings-search-input::placeholder { color: var(--subtext0); }
+#settings-modal .settings-nav {
+    display: flex; flex: 1; flex-direction: column; gap: 24px; padding: 0 14px 20px;
+    overflow-y: auto; border: 0; background: transparent;
+}
+.settings-nav-group { display: flex; flex-direction: column; gap: 3px; }
+.settings-nav-label { padding: 0 8px; margin-bottom: 6px; color: var(--subtext0); font-size: 12px; }
+#settings-modal .settings-nav-item {
+    display: flex; align-items: center; flex-shrink: 0; gap: 10px; min-height: 36px; width: 100%;
+    padding: 7px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text);
+}
+#settings-modal .settings-nav-item:hover { background: var(--surface0); }
+#settings-modal .settings-nav-item.active { background: var(--surface1); color: var(--text); }
+#settings-modal .settings-nav-item strong { font-size: 13px; font-weight: 450; }
+#settings-modal .settings-nav-icon { display: grid; width: 18px; height: 18px; flex: 0 0 18px; padding: 0; background: none; border-radius: 0; color: inherit; }
+.settings-nav-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.settings-back-button {
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin: 12px 14px 18px; padding: 10px;
+    border: 0; border-radius: 8px; background: transparent; color: var(--subtext0); font-size: 13px; cursor: pointer; text-align: left;
+}
+.settings-back-button:hover { background: var(--surface0); color: var(--text); }
+#settings-modal .settings-close { position: absolute; z-index: 2; top: 14px; right: 18px; }
+#settings-modal .settings-content {
+    grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; padding: 64px max(36px, calc((100% - 768px) / 2)) 40px;
+    background: var(--mantle); scroll-behavior: auto; overscroll-behavior: contain;
+}
+.settings-page-heading { margin-bottom: 36px; }
+.settings-page-heading h1 { width: fit-content; margin: 0 0 10px; color: var(--text); font-size: 28px; font-weight: 650; letter-spacing: -.03em; line-height: 1.3; }
+.settings-page-heading p { color: var(--subtext0); font-size: 13px; line-height: 1.6; }
+#settings-modal .settings-section-card { gap: 18px; margin: 0; padding: 22px; border-radius: 16px; background: var(--mantle); }
+#settings-modal [data-settings-section][hidden], #settings-search-results[hidden] { display: none !important; }
+#settings-modal .settings-section-header { align-items: center; min-height: 0; padding-bottom: 16px; }
+#settings-modal .settings-section-kicker { display: none; }
+#settings-modal .settings-section-title { font-size: 14px; font-weight: 550; }
+#settings-modal .settings-section-badge { font-size: 11px; }
+#settings-modal .settings-section-card.settings-preference-page { padding: 0; gap: 36px; border: 0; border-radius: 0; }
+.settings-group h3 { margin: 0 0 14px; font-size: 14px; font-weight: 550; color: var(--text); }
+.settings-group-card { padding: 0 18px; border: 1px solid var(--border); border-radius: 16px; background: var(--mantle); overflow: hidden; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 78px; padding: 16px 0; color: var(--text); }
+.settings-row + .settings-row { border-top: 1px solid var(--border); }
+label.settings-row { cursor: pointer; }
+.settings-row-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 5px; }
+.settings-row-title { color: var(--text); font-size: 13px; font-weight: 500; line-height: 1.5; }
+.settings-row-description { color: var(--subtext0); font-size: 12px; font-weight: 400; line-height: 1.6; }
+#settings-modal input.settings-switch {
+    position: relative; appearance: none; -webkit-appearance: none; display: block;
+    width: 34px; height: 20px; flex: 0 0 34px; margin: 0; padding: 0; border: 0; border-radius: 20px;
+    background: var(--surface2); cursor: pointer; transition: background 150ms ease;
+}
+#settings-modal input.settings-switch::before {
+    position: absolute; content: ''; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.15); transition: transform 150ms ease;
+}
+#settings-modal input.settings-switch:checked { background: var(--blue); }
+#settings-modal input.settings-switch:checked::before { transform: translateX(14px); }
+#settings-modal input.settings-switch:disabled { opacity: .45; cursor: not-allowed; }
+.settings-inline-control { display: flex; align-items: center; gap: 8px; flex-shrink: 0; color: var(--subtext0); font-size: 12px; }
+#settings-modal .settings-row input[type="number"] { width: 88px; min-height: 34px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--mantle); color: var(--text); font-size: 13px; }
+.settings-row-control { width: min(260px, 45%); flex-shrink: 0; }
+#settings-modal .settings-picker-trigger { border-color: var(--border); background: var(--mantle); font-size: 13px; }
+.settings-row-stacked { flex-direction: column; align-items: stretch; gap: 14px; }
+.settings-row-stacked .input-row { display: flex; gap: 8px; }
+#settings-modal #code-sandbox-status-card { padding: 18px 0 !important; margin: 0 !important; border: 0 !important; background: transparent !important; }
+#settings-modal #code-sandbox-status-text { font-size: 12px !important; line-height: 1.6; }
+#settings-modal #code-sandbox-components { font-size: 12px !important; }
+#settings-modal .presets-list { display: flex; flex-direction: column; gap: 8px; padding: 0 0 16px; max-height: none; }
+#settings-modal .theme-choices { flex-shrink: 0; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--base); }
+#settings-modal .theme-choices button { min-height: 30px; padding: 5px 10px; font-size: 12px; border: 0; border-radius: 7px; background: transparent; color: var(--subtext0); }
+#settings-modal .theme-choices button[aria-pressed="true"] { background: var(--mantle); color: var(--text); box-shadow: var(--shadow-sm); }
+#settings-modal .form-group { margin-bottom: 0; }
+#settings-modal .form-group > label { color: var(--text); font-size: 13px; line-height: 1.6; }
+#settings-modal .form-group p { line-height: 1.6; }
+#settings-modal .platform-tabs { min-height: 40px; padding: 4px; background: var(--base); border-color: var(--border); }
+#settings-modal .platform-tabs .tab-btn { font-size: 13px; }
+#settings-modal .modal-footer { grid-column: 2; grid-row: 2; min-height: 70px; padding: 14px 36px; background: var(--mantle); gap: 10px; }
+#settings-modal .modal-footer .btn { min-height: 36px; font-size: 12px; border-radius: 9px; }
+#settings-save-status { max-width: 320px; color: var(--red); font-size: 12px; }
+.settings-search-results { display: flex; flex-direction: column; gap: 12px; }
+.settings-search-result {
+    position: relative; display: flex; flex-direction: column; gap: 8px; padding: 20px 46px 20px 20px;
+    border: 1px solid var(--border); border-radius: 14px; background: var(--mantle); color: var(--text); text-align: left; cursor: pointer;
+}
+.settings-search-result:hover { border-color: var(--border-strong); background: var(--base); }
+.settings-search-result strong { font-size: 14px; font-weight: 550; }
+.settings-search-result > span { color: var(--subtext0); font-size: 12px; line-height: 1.6; }
+.settings-search-result .settings-result-arrow { position: absolute; top: 20px; right: 20px; font-size: 18px; }
+#settings-modal button:focus-visible, #settings-modal input:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+#settings-page-title:focus { outline: none; }
+
+@media (min-width: 768px) and (max-width: 1050px) {
+    #settings-modal .settings-modal-card { grid-template-columns: 214px minmax(0, 1fr); }
+    #settings-modal .settings-content { padding: 58px 30px 32px; }
+    .settings-row { gap: 16px; }
+    .settings-row-control { width: 45%; }
+}
+@media (max-width: 767px) {
+    #settings-modal .settings-modal-card { display: flex; flex-direction: column; }
+    #settings-modal .settings-modal-body { display: flex; flex: 1; min-height: 0; flex-direction: column; overflow: hidden; }
+    .settings-sidebar { flex: 0 0 auto; border-right: 0; border-bottom: 1px solid var(--border); }
+    #settings-modal .settings-sidebar-heading { min-height: 52px; padding: 16px 18px 10px; }
+    #settings-modal .settings-sidebar-heading h2 { font-size: 18px; }
+    #settings-modal .settings-close { top: 8px; right: 10px; }
+    .settings-search { margin: 0 14px 10px; min-height: 36px; }
+    #settings-modal .settings-nav { flex-direction: row; flex: 0 0 auto; gap: 4px; overflow-x: auto; padding: 0 12px 10px; }
+    .settings-nav-group { display: contents; }
+    .settings-nav-label, .settings-back-button { display: none; }
+    #settings-modal .settings-nav-item { width: auto; min-height: 36px; min-width: max-content; padding: 7px 10px; }
+    #settings-modal .settings-nav-icon { display: none; }
+    #settings-modal .settings-content { flex: 1; width: 100%; padding: 26px 18px 32px; }
+    .settings-page-heading { margin-bottom: 26px; }
+    .settings-page-heading h1 { font-size: 24px; }
+    .settings-page-heading p { font-size: 12px; }
+    #settings-modal .settings-section-card { padding: 16px; border-radius: 12px; }
+    #settings-modal .settings-section-card.settings-preference-page { gap: 26px; }
+    .settings-group-card { padding: 0 14px; border-radius: 12px; }
+    .settings-row { gap: 14px; padding: 16px 0; }
+    .settings-row-control { width: 100%; }
+    [data-settings-section="appearance"] .settings-row { flex-direction: column; align-items: stretch; gap: 14px; }
+    #settings-modal .theme-choices { align-self: flex-start; }
+    #settings-modal .modal-footer { flex-wrap: wrap; min-height: 64px; padding: 12px 14px max(12px, env(safe-area-inset-bottom)); gap: 8px; }
+    #settings-modal .modal-footer-leading { width: auto; margin: 0 auto 0 0; }
+    #settings-save-status:not(:empty) { order: -1; width: 100%; max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #settings-modal, #settings-modal .settings-modal-card { animation: none; }
+    #settings-modal input.settings-switch, #settings-modal input.settings-switch::before { transition: none; }
+}

@@ -35,6 +35,8 @@ scratch/
 test.db
 debug.txt
 *.png
+!assets/branding/chatudex-icon.png
+!claude_chat/ui/icons/chatudex.png
 scratch_history.txt
 scratch_prev_history.txt
 app_js_mods*.txt
@@ -66,3 +68,17 @@ test.pptx
 !test/test_message_formatting.py
 !test/test_message_formatting.js
 !test/test_anthropic_http_client.py
+!test/test_responses.py
+!test/conftest.py
+!test/test_config_key_recovery.py
+!test/test_server_streaming.py
+/config-recovery/
+!test/test_memory.py
+!test/test_gemini_http_client.py
+!test/test_workspace_browser.js
+
+!test/test_workspace_http_browser.js
+!test/test_memory_hybrid.py
+!test/test_memory_benchmark.py
+!test/test_embedding_model_discovery.py
+!test/test_settings_navigation_browser.js

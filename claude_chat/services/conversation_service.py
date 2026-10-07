@@ -257,11 +257,16 @@ class ConversationService(AppService):
 
     def load_conversations(self):
         """
-        侧边栏拉取对话卡片列表并做对话总数的自动清理（默认最多保存 50 个）
+        拉取对话卡片列表，排除临时对话；历史由用户主动管理。
         """
         with self._app.lock:
-            self._app.conv_manager.auto_clean(keep=50)
-            return self._app.conv_manager.refresh()
+            rows = self._app.conv_manager.refresh()
+            if hasattr(self._app.conv_manager, "get_connection"):
+                store = self.memory_store()
+                with store.connect() as conn:
+                    temporary = {r[0] for r in conn.execute("SELECT conv_id FROM conversation_privacy WHERE temporary=1")}
+                rows = [row for row in rows if row["id"] not in temporary]
+            return rows
 
     def load_conversation(self, conv_id):
         """
@@ -311,8 +316,21 @@ class ConversationService(AppService):
         删除指定的对话及名下所有消息
         """
         with self._app.lock:
+            if (getattr(self._app, "is_streaming", False) and self._app.current_conv
+                    and self._app.current_conv.get("id") == conv_id):
+                return False
             logger.info(f"正在删除对话，ID: {conv_id}")
+            attachments = set()
+            if hasattr(self._app.conv_manager, "get_connection"):
+                from claude_chat.memory_store import attachment_ids
+                if self.memory_store().privacy(conv_id)["temporary"]:
+                    conv = self._app.conv_manager.load_conversation(conv_id) or {}
+                    attachments = attachment_ids(conv.get("messages", []))
             self._app.conv_manager.delete_conversation(conv_id)
+            if hasattr(self._app.conv_manager, "get_connection"):
+                self.memory_store().conversation_deleted(conv_id)
+                for preview_id in attachments:
+                    self.discard_pending_attachment(preview_id)
             if self._app.current_conv and self._app.current_conv.get("id") == conv_id:
                 self._app.current_conv = None
             return True
@@ -466,6 +484,34 @@ class ConversationService(AppService):
             def on_stream_created(stream):
                 task.bind_stream(stream)
 
+            def generate_with_memory(*args, **kwargs):
+                # Remote query embeddings run in this worker, outside the GUI/app lock.
+                original_args, original_system = args, kwargs.get("system")
+                if hasattr(self._app.conv_manager, "get_connection") and not task.abort_event.is_set():
+                    try:
+                        from claude_chat.memory_store import user_text
+
+                        store = self.memory_store()
+                        epoch = store.options().get("epoch", 0)
+                        query = next((user_text(m) for m in reversed(args[3]) if user_text(m)), "")
+                        memory_prompt, _ = store.engine.retrieve(conv_id, query, abort=task.abort_event)
+                        shortened, summary = store.engine.summarize_recent(conv_id, args[3])
+                        prepared = list(args)
+                        prepared[3] = shortened
+                        args = tuple(prepared)
+                        additions = [text for text in (original_system, memory_prompt, summary) if text]
+                        kwargs["system"] = "\n\n".join(additions) or None
+                        if store.options().get("epoch", 0) != epoch:
+                            args, kwargs["system"] = original_args, original_system
+                        self._schedule_memory_index(store)
+                    except Exception:
+                        logger.warning("Memory preparation failed; using original conversation context")
+                        args, kwargs["system"] = original_args, original_system
+                if task.abort_event.is_set():
+                    active_queue.put(("aborted", {}))
+                    return
+                stream_claude_response(*args, **kwargs)
+
             # 解析特定于平台的思维信息传入
             thinking_enabled = False
             thinking_budget = 16000
@@ -483,7 +529,7 @@ class ConversationService(AppService):
 
             # 后台线程异步发起 API 通信，防止阻塞主 GUI 事件循环导致卡死
             thread = threading.Thread(
-                target=stream_claude_response,
+                target=generate_with_memory,
                 args=(
                     mapped["api_key"],
                     self._app.config.get("proxy_mode", "system"),
@@ -727,6 +773,12 @@ class ConversationService(AppService):
                 }
 
                 self._app.conv_manager.save_conversation(new_conv)
+                if hasattr(self._app.conv_manager, "get_connection"):
+                    private = self.memory_store().privacy(conv_id)
+                    self.memory_store().set_privacy(new_conv_id, {
+                        **{key: bool(private[key]) for key in ("temporary", "memory_off", "exclude_history")},
+                        "scope": private.get("scope", "global"),
+                    })
                 logger.info(f"对话成功分叉至新会话，新 ID: {new_conv_id}")
                 return conversation_for_frontend(self._app.conv_manager.load_conversation(new_conv_id))
             except Exception as e:

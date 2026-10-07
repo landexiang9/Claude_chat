@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from copy import deepcopy
-from claude_chat.request_params import preview_generation_params, validate_request_params
+from claude_chat.request_params import preview_generation_params, request_protocol, validate_request_params
 
 from claude_chat.config import DEFAULT_MAX_TOKENS, get_sensitive_api_keys
 from claude_chat.custom_params import validate_custom_params
@@ -61,13 +61,18 @@ class ConfigService(AppService):
                 raise ValueError("平台无效")
             with self._app.lock:
                 draft = deepcopy(self._app.config.data)
+            if platform == "deepseek" and "deepseek_use_responses" in data:
+                if type(data["deepseek_use_responses"]) is not bool:
+                    raise ValueError("DeepSeek Responses 开关必须是布尔值")
+                draft["deepseek_use_responses"] = data["deepseek_use_responses"]
             if "model_config" in data:
                 if not isinstance(data["model_config"], dict):
                     raise ValueError("模型配置必须是对象")
                 draft.setdefault("model_configs", {})[model] = deepcopy(data["model_config"])
             params = preview_generation_params(platform, model, draft)
-            params = validate_request_params(params, platform)
-            return {"params": params, "platform": platform, "model": model}
+            protocol = request_protocol(platform, draft)
+            params = validate_request_params(params, protocol)
+            return {"params": params, "platform": platform, "model": model, "request_protocol": protocol}
         except (ValueError, TypeError, AttributeError) as exc:
             return {"error": str(exc)}
 
@@ -95,8 +100,16 @@ class ConfigService(AppService):
             try:
                 for model_config in new_config.get("model_configs", {}).values():
                     validate_custom_params(model_config.get("custom_params", {}))
+                    profiles = model_config.get("request_params_by_protocol", {})
+                    if not isinstance(profiles, dict):
+                        raise ValueError("协议参数配置必须是对象")
+                    for profile_protocol, profile in profiles.items():
+                        if profile_protocol not in {"deepseek", "responses"}:
+                            raise ValueError("未知的参数协议")
+                        validate_request_params(profile, profile_protocol)
                     if "request_params" in model_config:
-                        validate_request_params(model_config["request_params"], model_config.get("request_platform", "generic"))
+                        protocol = request_protocol(model_config.get("request_platform", "generic"), self._app.config.data)
+                        validate_request_params(model_config["request_params"], protocol)
             except (ValueError, TypeError, AttributeError):
                 logger.warning("拒绝保存无效的模型自定义参数")
                 return False

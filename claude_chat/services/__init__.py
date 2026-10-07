@@ -6,6 +6,7 @@ from claude_chat.services.conversation_service import ConversationService
 from claude_chat.services.execution_service import ExecutionService
 from claude_chat.services.file_service import FileService
 from claude_chat.services.model_service import ModelService
+from claude_chat.services.memory_service import MemoryService
 
 __all__ = [
     "AppService",
@@ -14,4 +15,5 @@ __all__ = [
     "ExecutionService",
     "FileService",
     "ModelService",
+    "MemoryService",
 ]

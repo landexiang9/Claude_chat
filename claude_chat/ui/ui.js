@@ -45,7 +45,7 @@ function applyFontMode() {
 function getActiveSearchPreference() {
     const platform = config.active_platform || "claude";
     if (platform === "claude") return { enabledKey: "enable_web_search", engineKey: "web_search_engine", label: "Claude" };
-    if (platform === "deepseek") return { enabledKey: "deepseek_enable_web_search", engineKey: "deepseek_web_search_engine", label: "DeepSeek" };
+    if (platform === "deepseek") return { enabledKey: "deepseek_enable_web_search", engineKey: config.deepseek_use_responses ? null : "deepseek_web_search_engine", engineLabel: "DeepSeek 官方搜索", label: "DeepSeek" };
     if (platform === "gemini") return { enabledKey: "gemini_enable_web_search", engineKey: null, label: "Gemini" };
     return null;
 }
@@ -89,7 +89,7 @@ function updateSearchBtnUI() {
     const enabled = !!config[preference.enabledKey];
     if (enabled) {
         webSearchBtn.classList.add("active");
-        const engine = preference.engineKey ? (config[preference.engineKey] || "google") : "Google Search";
+        const engine = preference.engineKey ? (config[preference.engineKey] || "google") : (preference.engineLabel || "Google Search");
         webSearchBtn.title = `${preference.label} 联网搜索：开启 (${engine})`;
         webSearchBtn.setAttribute("aria-pressed", "true");
     } else {
@@ -510,8 +510,8 @@ function renderConversations() {
         currentConversationTitle.textContent = activeConversation?.title || currentConv?.title || "新对话";
     }
     document.title = activeConversation?.title
-        ? `${activeConversation.title} · Claude Chat`
-        : "Claude Chat · AI 工作台";
+        ? `${activeConversation.title} · Chatudex`
+        : "Chatudex · AI 工作台";
 }
 
 conversationSearchInput?.addEventListener("input", renderConversations);
@@ -620,6 +620,11 @@ function appendMessage(
             meta.appendChild(branch);
             
             if (role === "user") {
+                const remember = document.createElement("button");
+                remember.className = "copy-btn"; remember.type = "button";
+                remember.textContent = "♡"; remember.title = "保存为长期记忆"; remember.setAttribute("aria-label", remember.title);
+                remember.onclick = () => window.ChatMemory?.open(displayContent.text);
+                meta.appendChild(remember);
                 const edit = document.createElement("button");
                 edit.className = "copy-btn";
                 edit.style.marginLeft = "6px";
@@ -719,7 +724,7 @@ function appendMessage(
                     <div class="search-card-header">
                         <div class="search-status-wrapper">
                             <span class="search-radar-done">🌐</span>
-                            <span>已找到 ${results.length} 个关于“${escapeHtml(tc.query)}”的搜索结果</span>
+                            <span>${tc.engine === "deepseek_native" ? `DeepSeek 已完成联网检索：${escapeHtml(tc.query)}` : `已找到 ${results.length} 个关于“${escapeHtml(tc.query)}”的搜索结果`}</span>
                         </div>
                         <span class="search-card-toggle-icon">▶</span>
                     </div>
@@ -736,7 +741,9 @@ function appendMessage(
                 };
                 makeDisclosureHeaderAccessible(sHeader, searchCard);
                 
-                if (results.length === 0) {
+                if (results.length === 0 && tc.engine === "deepseek_native") {
+                    sBody.textContent = "搜索由 DeepSeek 服务端完成。";
+                } else if (results.length === 0) {
                     sBody.innerHTML = `<div style="font-size: 11.5px; color: var(--subtext0); padding: 4px;">未找到相关搜索结果。</div>`;
                 } else {
                     results.forEach(res => {
@@ -766,6 +773,7 @@ function appendMessage(
                         else if (tc.engine === "duckduckgo") engineDisplayName = "DuckDuckGo";
                         else if (tc.engine === "tavily") engineDisplayName = "Tavily Search API";
                         else if (tc.engine === "jina") engineDisplayName = "Jina Search API";
+                        else if (tc.engine === "deepseek_native") engineDisplayName = "DeepSeek 官方搜索";
                         
                         let usageStr = "";
                         if (tc.usage) {
@@ -948,6 +956,11 @@ const artifactsCodeView = document.getElementById("artifacts-code-view");
 let currentArtifactContent = "";
 let currentArtifactType = "";
 let artifactRenderVersion = 0;
+document.addEventListener('themechange', () => {
+    if (currentArtifactType === 'mermaid' && !artifactsPanel.classList.contains('collapsed')) {
+        renderArtifactPreview(currentArtifactContent, currentArtifactType);
+    }
+});
 
 if (closeArtifactsBtn) {
     closeArtifactsBtn.onclick = () => {
@@ -1112,7 +1125,7 @@ function renderArtifactPreview(content, type) {
             try {
                 mermaid.initialize({
                     startOnLoad: false,
-                    theme: 'dark',
+                    theme: document.documentElement.dataset.theme === 'light' ? 'default' : 'dark',
                     securityLevel: 'strict'
                 });
                 const renderResult = mermaid.init(undefined, `#${uniqueId}`);

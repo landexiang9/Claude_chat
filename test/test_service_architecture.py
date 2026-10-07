@@ -25,7 +25,7 @@ class ServiceArchitectureTests(unittest.TestCase):
         cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "WebAPI")
         self.assertEqual(
             [base.id for base in cls.bases],
-            ["ConfigService", "ConversationService", "FileService", "ExecutionService", "ModelService"],
+            ["ConfigService", "ConversationService", "FileService", "ExecutionService", "ModelService", "MemoryService"],
         )
         self.assertLess(path.stat().st_size, 5_000)
 
