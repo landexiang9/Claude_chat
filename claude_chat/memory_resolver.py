@@ -102,9 +102,18 @@ def pending(conn, previous, data, kind, stamp):
 
 
 def save_version(conn, previous, stamp):
+    evidence = [
+        dict(row)
+        for row in conn.execute(
+            "SELECT s.*,e.content,e.quote,e.value_json FROM memory_sources s "
+            "JOIN memory_fact_evidence e ON e.memory_id=s.entity_id AND e.source_id=s.source_id "
+            "WHERE s.entity_kind='fact' AND s.entity_id=?",
+            (previous["id"],),
+        )
+    ]
     conn.execute(
         "INSERT INTO memory_versions (memory_id,version,subject,value_json,content,scope,valid_from,"
-        "valid_until,source_conv_id,source_quote) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "valid_until,source_conv_id,source_quote,origin,evidence_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             previous["id"],
             previous["version"],
@@ -116,6 +125,10 @@ def save_version(conn, previous, stamp):
             stamp,
             previous["source_conv_id"],
             previous["source_quote"],
+            "external"
+            if conn.execute("SELECT 1 FROM memory_imports WHERE memory_id=?", (previous["id"],)).fetchone()
+            else previous["origin"],
+            json.dumps(evidence, ensure_ascii=False),
         ),
     )
     conn.execute(

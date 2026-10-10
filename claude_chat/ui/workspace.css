@@ -7,7 +7,8 @@
     --peach:#b45309; --yellow:#a16207; --user-bubble:#eef0ff; --user-border:#dddff5;
     --thinking-bg:#f0edff; --thinking-border:#ddd6fe; --thinking-box-bg:#f7f5ff;
     --shadow-sm:0 2px 12px rgba(15,23,42,.05); --shadow-lg:0 20px 70px rgba(15,23,42,.15);
-    --sidebar-bg:#f0f1f5; --code-bg:#0d1117; --code-text:#e6edf3;
+    --sidebar-bg:#f0f1f5; --code-bg:#f6f8fa; --code-text:#1f2328;
+    --selection-bg:#dddffb; --selection-text:#0f172a;
 }
 :root[data-theme="dark"] {
     --base:#0c0f16; --mantle:#141822; --crust:#0f131c; --text:#e6e8ee;
@@ -17,6 +18,8 @@
     --peach:#f4ae79; --yellow:#fbbf24; --user-bubble:#23264a; --user-border:#323763;
     --thinking-bg:#1b1c31; --thinking-border:#323354; --thinking-box-bg:#111522;
     --shadow-sm:0 2px 12px rgba(0,0,0,.12); --shadow-lg:0 20px 70px rgba(0,0,0,.4); --sidebar-bg:#0f131c;
+    --selection-bg:#3a3d70; --selection-text:#f8fafc;
+    --code-bg:#0d1117; --code-text:#e6edf3;
 }
 body { background:var(--base); height:var(--app-height,100dvh); }
 .sidebar { flex-basis:272px; width:272px; background:var(--sidebar-bg); }
@@ -167,3 +170,10 @@ body { background:var(--base); height:var(--app-height,100dvh); }
 #memory-profile-list,#memory-conflicts-list,#memory-audit-list { margin-top:12px;max-height:320px;overflow:auto; }
 .memory-versions { border-top:1px solid var(--border);margin-top:10px;padding-top:10px; }
 @media(max-width:767px) { .memory-grid { grid-template-columns:minmax(0,1fr); } .memory-grid input,.memory-grid select { font-size:16px; } .memory-card-actions button { min-height:40px; } }
+.memory-discussions { border: 1px solid var(--surface1); border-radius: 10px; padding: 12px; }
+.memory-discussions summary { cursor: pointer; font-weight: 600; }
+.memory-discussions .memory-card p { white-space: pre-wrap; overflow-wrap: anywhere; }
+#memory-backfill-content { max-height: 320px; overflow: auto; }
+#memory-episode-json { width: 100%; box-sizing: border-box; }
+#memory-episode-editor > label { display: block; margin: 10px 0; }
+#memory-episode-editor textarea, #memory-episode-editor input:not([type=checkbox]) { width: 100%; box-sizing: border-box; }

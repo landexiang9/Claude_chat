@@ -28,6 +28,12 @@ DEFAULT_OPTIONS = {
     "summary_enabled": True,
     "recent_messages": 12,
     "router_model_enabled": False,
+    "episodes_enabled": True,
+    "episode_auto_extract": True,
+    "discussion_paused": False,
+    "memory_tools_enabled": True,
+    "merge_platform": "",
+    "merge_model": "",
 }
 CATEGORIES = {"preference", "profile", "project", "instruction", "other"}
 
@@ -51,23 +57,36 @@ def terms(text):
     return set(words[:300])
 
 
-def user_text(message):
+def attachment_text(value):
+    """Recognize both managed blocks and legacy inline attachment bodies."""
+    if isinstance(value, dict):
+        return "_attachment" in value or attachment_text(value.get("text", value.get("content", "")))
+    return isinstance(value, str) and value.lstrip().startswith("--- 附件文件:")
+
+
+def user_text(message, limit=6000):
     if message.get("role") != "user":
         return ""
     content = message.get("content", "")
     if isinstance(content, str):
-        return content[:6000]
+        return "" if attachment_text(content) else content[:limit]
     if isinstance(content, list):
         # Attachments, tool results, fetched pages and model output are not evidence.
         return "\n".join(
             str(b.get("text", ""))
             for b in content
-            if isinstance(b, dict)
-            and b.get("type") == "text"
-            and "_attachment" not in b
-            and not str(b.get("text", "")).lstrip().startswith("--- 附件文件:")
-        )[:6000]
+            if isinstance(b, dict) and b.get("type") == "text" and not attachment_text(b)
+        )[:limit]
     return ""
+
+
+def learning_statements(messages):
+    return [
+        text[offset : offset + 6000]
+        for message in messages
+        if (text := user_text(message, limit=None))
+        for offset in range(0, len(text), 6000)
+    ]
 
 
 def attachment_ids(content):
@@ -118,6 +137,19 @@ class MemoryStore:
         from claude_chat.memory_hybrid import HybridMemory
 
         self.engine = HybridMemory(self)
+        from claude_chat.memory_episodes import EpisodeStore
+
+        self.episodes = EpisodeStore(self)
+        from claude_chat.memory_overviews import OverviewStore
+
+        self.overviews = OverviewStore(self)
+        from claude_chat.memory_fact_sources import FactSources
+
+        self.fact_sources = FactSources(self)
+        self.fact_sources.seed()
+        from claude_chat.memory_usage import MemoryUsage
+
+        self.usage = MemoryUsage(self)
 
     def connect(self):
         return self.database.get_connection()
@@ -141,6 +173,8 @@ class MemoryStore:
                 "embedding_platform",
                 "embedding_model",
                 "embedding_local_path",
+                "merge_platform",
+                "merge_model",
             }:
                 if not isinstance(value, str) or len(value) > 200:
                     raise ValueError("供应商和模型应为不超过 200 字符的文本")
@@ -171,7 +205,12 @@ class MemoryStore:
                 conn.execute("INSERT OR REPLACE INTO memory_settings VALUES (?,?)", (key, json.dumps(value)))
             conn.execute("DELETE FROM memory_context")
             purge = any(k.startswith("embedding_") or k in {"enabled", "history_enabled"} for k in effective)
-            self.bump_epoch(conn, purge=purge)
+            # Pausing is a worker control action, not a change of source authorization.
+            # Workers also check abort and persisted job status before committing.
+            if set(effective) != {"discussion_paused"}:
+                self.bump_epoch(conn, purge=purge)
+        if changes.get("enabled") and hasattr(self, "fact_sources"):
+            self.fact_sources.seed()
         return self.options()
 
     def bump_epoch(self, conn, purge=True):
@@ -229,9 +268,18 @@ class MemoryStore:
     def list(self, query=""):
         with self.connect() as conn:
             rows = conn.execute("SELECT * FROM memories ORDER BY pinned DESC, updated_at DESC").fetchall()
-        return [dict(r) for r in rows if not query or query.casefold() in r["content"].casefold()]
+            imported = {r[0] for r in conn.execute("SELECT memory_id FROM memory_imports")}
+            return [
+                {
+                    **dict(r),
+                    "source_valid": self.fact_sources.valid(r, conn),
+                    "provenance": "external_unverified" if r["id"] in imported else r["origin"],
+                }
+                for r in rows
+                if not query or query.casefold() in r["content"].casefold()
+            ]
 
-    def put(self, data, automatic=False, epoch=None, _conn=None):
+    def put(self, data, automatic=False, epoch=None, _conn=None, _independent=False):
         from claude_chat.memory_resolver import find_previous, pending, persist_fields, relation, typed_fields
 
         if not isinstance(data, dict):
@@ -251,6 +299,8 @@ class MemoryStore:
             raise ValueError("记忆作用域无效")
         fact_key = str(data.get("key") or hashlib.sha256(normalized(content).encode()).hexdigest())[:120]
         raw_fact_key = fact_key
+        if _independent:
+            fact_key = raw_fact_key = uuid.uuid4().hex
         if requested_scope != "global":
             fact_key = hashlib.sha256((fact_key + "@" + requested_scope).encode()).hexdigest()
         source = str(data.get("source_conv_id") or "")
@@ -278,13 +328,13 @@ class MemoryStore:
                 ).fetchone():
                     return None
             previous = conn.execute("SELECT * FROM memories WHERE id=?", (data.get("id", ""),)).fetchone()
-            if not previous:
+            if not previous and not _independent:
                 previous = conn.execute(
                     "SELECT * FROM memories WHERE scope=? AND (fact_key IN (?,?) OR content=?)",
                     (requested_scope, raw_fact_key, fact_key, content),
                 ).fetchone()
             fields = typed_fields(data, previous)
-            if not previous:
+            if not previous and not _independent:
                 previous = find_previous(conn, fields)
                 fields = typed_fields(data, previous)
             if (
@@ -381,6 +431,13 @@ class MemoryStore:
                     ),
                 )
             persist_fields(conn, memory_id, fields, previous, kind, now(), automatic)
+            if automatic:
+                from claude_chat.memory_resolver import typed_fields
+
+                evidence_fields = typed_fields(data)
+                self.fact_sources.record(
+                    conn, memory_id, source, quote, data["content"], evidence_fields["value_json"], kind
+                )
             if not automatic:
                 conn.execute("DELETE FROM memory_context")
                 self.bump_epoch(conn, purge=False)
@@ -399,7 +456,7 @@ class MemoryStore:
                     "SELECT content FROM memory_revisions WHERE memory_id=?", (row["id"],)
                 ).fetchall()
                 versions = conn.execute(
-                    "SELECT content,source_conv_id FROM memory_versions WHERE memory_id=?", (row["id"],)
+                    "SELECT content,source_conv_id,source_quote FROM memory_versions WHERE memory_id=?", (row["id"],)
                 ).fetchall()
                 for value in (
                     row["fact_key"],
@@ -409,28 +466,57 @@ class MemoryStore:
                     *(r[0] for r in versions),
                 ):
                     conn.execute("INSERT OR IGNORE INTO memory_blocks VALUES (?)", (fingerprint(value),))
-                if row["source_conv_id"]:
-                    conn.execute(
-                        "INSERT INTO conversation_privacy (conv_id,exclude_history) VALUES (?,1) ON "
-                        "CONFLICT(conv_id) DO UPDATE SET exclude_history=1",
-                        (row["source_conv_id"],),
-                    )
-                for version in versions:
-                    if version["source_conv_id"]:
+                conn.execute(
+                    "INSERT OR IGNORE INTO memory_source_blocks SELECT conv_id,source_id,? FROM memory_sources "
+                    "WHERE entity_kind='fact' AND entity_id=?",
+                    (now(), row["id"]),
+                )
+                for archived in conn.execute(
+                    "SELECT evidence_json FROM memory_versions WHERE memory_id=?", (row["id"],)
+                ):
+                    for ref in json.loads(archived["evidence_json"]):
                         conn.execute(
-                            "INSERT INTO conversation_privacy (conv_id,exclude_history) VALUES (?,1) "
-                            "ON CONFLICT(conv_id) DO UPDATE SET exclude_history=1",
-                            (version["source_conv_id"],),
+                            "INSERT OR IGNORE INTO memory_source_blocks VALUES (?,?,?)",
+                            (ref["conv_id"], ref["source_id"], now()),
                         )
+                # Old fact versions may predate the source table. Block their live supporting messages too.
+                from claude_chat.memory_episodes import source_rows
+
+                for version in [row, *versions]:
+                    cid, quote = version["source_conv_id"], version["source_quote"]
+                    conv = self.episodes.conversation(cid, conn) if cid and quote else None
+                    if conv:
+                        for source in source_rows(conv):
+                            if source["evidence_role"] == "user" and quote in source["text"]:
+                                conn.execute(
+                                    "INSERT OR IGNORE INTO memory_source_blocks VALUES (?,?,?)",
+                                    (cid, source["source_id"], now()),
+                                )
             if memory_id:
+                conn.execute("DELETE FROM memory_sources WHERE entity_kind='fact' AND entity_id=?", (memory_id,))
+                conn.execute("DELETE FROM memory_fact_evidence WHERE memory_id=?", (memory_id,))
+                conn.execute("DELETE FROM memory_imports WHERE memory_id=?", (memory_id,))
                 conn.execute("DELETE FROM memory_revisions WHERE memory_id=?", (memory_id,))
                 conn.execute("DELETE FROM memories WHERE id=?", (memory_id,))
                 for table in ("memory_facts", "memory_versions", "memory_conflicts", "memory_audit"):
                     conn.execute(f"DELETE FROM {table} WHERE memory_id=?", (memory_id,))
             else:
                 conn.execute("DELETE FROM memories")
+                for table in (
+                    "memory_episodes",
+                    "memory_sources",
+                    "memory_overviews",
+                    "memory_jobs",
+                    "memory_episode_blocks",
+                    "memory_episode_versions",
+                    "memory_source_blocks",
+                ):
+                    conn.execute(f"DELETE FROM {table}")
+                conn.execute("DELETE FROM memory_fact_evidence")
+                conn.execute("DELETE FROM memory_imports")
                 conn.execute("DELETE FROM memory_revisions")
                 conn.execute("DELETE FROM memory_runs")
+                conn.execute("DELETE FROM memory_run_inputs")
                 for table in ("memory_facts", "memory_versions", "memory_conflicts", "memory_audit"):
                     conn.execute(f"DELETE FROM {table}")
                 conn.execute(
@@ -454,6 +540,7 @@ class MemoryStore:
                 conn.execute("DELETE FROM conversations WHERE id=?", (cid,))
                 conn.execute("DELETE FROM memory_context WHERE conv_id=?", (cid,))
                 conn.execute("DELETE FROM memory_runs WHERE conv_id=?", (cid,))
+                conn.execute("DELETE FROM memory_run_inputs WHERE conv_id=?", (cid,))
                 conn.execute("DELETE FROM conversation_privacy WHERE conv_id=?", (cid,))
                 conn.execute("DELETE FROM memory_conflicts WHERE json_extract(candidate,'$.source_conv_id')=?", (cid,))
             if ids:
@@ -463,7 +550,22 @@ class MemoryStore:
     def conversation_deleted(self, conv_id):
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            for table in ("memory_context", "memory_runs", "conversation_privacy"):
+            self.fact_sources.source_deleted(conn, conv_id)
+            conn.execute("DELETE FROM memory_sources WHERE conv_id=?", (conv_id,))
+            conn.execute(
+                "DELETE FROM memory_episode_versions WHERE episode_id IN "
+                "(SELECT id FROM memory_episodes WHERE conv_id=?)",
+                (conv_id,),
+            )
+            conn.execute("DELETE FROM memory_episodes WHERE conv_id=?", (conv_id,))
+            conn.execute("DELETE FROM memory_jobs WHERE conv_id=?", (conv_id,))
+            for table in (
+                "memory_context",
+                "memory_runs",
+                "memory_run_inputs",
+                "memory_source_blocks",
+                "conversation_privacy",
+            ):
                 conn.execute(f"DELETE FROM {table} WHERE conv_id=?", (conv_id,))
             # Keep explicitly saved notes, but remove the deleted source/quote.
             conn.execute(
@@ -492,11 +594,17 @@ class MemoryStore:
     @staticmethod
     def quote_is_current(conn, source, quote):
         from claude_chat.db import deserialize_content
+        from claude_chat.memory_episodes import source_rows
 
-        rows = conn.execute(
-            "SELECT content FROM messages WHERE conversation_id=? AND role='user' ORDER BY id DESC LIMIT 200", (source,)
+        messages = [
+            {**dict(row), "content": deserialize_content(row["content"])}
+            for row in conn.execute("SELECT * FROM messages WHERE conversation_id=? ORDER BY id", (source,))
+        ]
+        blocked = {r[0] for r in conn.execute("SELECT source_id FROM memory_source_blocks WHERE conv_id=?", (source,))}
+        return bool(quote) and any(
+            r["evidence_role"] == "user" and r["source_id"] not in blocked and quote in r["text"]
+            for r in source_rows({"id": source, "messages": messages})
         )
-        return any(quote in user_text({"role": "user", "content": deserialize_content(row[0])}) for row in rows)
 
     def resolve_conflict(self, conflict_id, accept):
         if type(accept) is not bool:
@@ -556,18 +664,73 @@ class MemoryStore:
             )
         return True
 
+    def import_preview(self, data, _conn=None):
+        from claude_chat.memory_resolver import find_previous, typed_fields
+
+        rows = data.get("memories")
+        if (
+            type(data.get("version")) is not int
+            or data["version"] not in {1, 2, 3}
+            or not isinstance(rows, list)
+            or len(rows) > 500
+        ):
+            raise ValueError("请导入版本 1、2 或 3 的记忆 JSON，最多 500 条")
+        conflicts = []
+        with self.connect() if _conn is None else nullcontext(_conn) as conn:
+            for index, item in enumerate(rows):
+                if (
+                    not isinstance(item, dict)
+                    or not isinstance(item.get("content"), str)
+                    or not 1 <= len(item["content"].strip()) <= 1000
+                ):
+                    raise ValueError("导入记忆内容应为 1–1000 字符")
+                fields = typed_fields(
+                    {**item, "value": json.loads(item.get("value_json", "null"))}
+                    if "value_json" in item and "value" not in item
+                    else item
+                )
+                # Match exactly the key that put(clean) will generate, including normalized whitespace.
+                raw_key = hashlib.sha256(normalized(item["content"].strip()).encode()).hexdigest()
+                scoped_key = (
+                    raw_key
+                    if fields["scope"] == "global"
+                    else hashlib.sha256((raw_key + "@" + fields["scope"]).encode()).hexdigest()
+                )
+                previous = conn.execute(
+                    "SELECT * FROM memories WHERE scope=? AND (fact_key IN (?,?) OR content=?)",
+                    (fields["scope"], raw_key, scoped_key, item["content"].strip()),
+                ).fetchone()
+                if not previous:
+                    previous = find_previous(conn, fields)
+                if previous:
+                    conflicts.append(
+                        {
+                            "index": index,
+                            "memory_id": previous["id"],
+                            "expected_version": previous["version"],
+                            "existing_content": previous["content"],
+                            "incoming_content": item["content"],
+                            "origin": previous["origin"],
+                        }
+                    )
+        return {"total": len(rows), "conflicts": conflicts, "default_action": "skip"}
+
     def import_data(self, data):
         rows = data.get("memories")
         if (
             type(data.get("version")) is not int
-            or data["version"] not in {1, 2}
+            or data["version"] not in {1, 2, 3}
             or not isinstance(rows, list)
             or len(rows) > 500
         ):
-            raise ValueError("请导入版本 1 或 2 的记忆 JSON，最多 500 条")
+            raise ValueError("请导入版本 1、2 或 3 的记忆 JSON，最多 500 条")
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            for item in rows:
+            decisions = data.get("_import_decisions", {})
+            if not isinstance(decisions, dict):
+                raise ValueError("导入冲突选择应为对象")
+            count = 0
+            for index, item in enumerate(rows):
                 if not isinstance(item, dict):
                     raise ValueError("记忆条目必须是对象")
                 # Imports are explicit manual notes; external source IDs cannot grant provenance.
@@ -591,8 +754,31 @@ class MemoryStore:
                 for flag in ("pinned", "enabled"):
                     if flag in clean and clean[flag] in (0, 1):
                         clean[flag] = bool(clean[flag])
-                saved = self.put(clean, _conn=conn)
-                versions = item.get("history_versions", []) if data["version"] == 2 else []
+                preview = self.import_preview({"version": data["version"], "memories": [item]}, _conn=conn)
+                conflict = next(iter(preview["conflicts"]), None)
+                decision = decisions.get(str(index), {"action": "skip"})
+                if not isinstance(decision, dict) or decision.get("action") not in {"skip", "replace", "independent"}:
+                    raise ValueError("请选择跳过、替换或独立保存")
+                independent = False
+                if conflict:
+                    if decision["action"] == "skip":
+                        continue
+                    independent = decision["action"] == "independent"
+                    if not independent:
+                        if (
+                            decision.get("memory_id") != conflict["memory_id"]
+                            or type(decision.get("expected_version")) is not int
+                            or decision["expected_version"] != conflict["expected_version"]
+                        ):
+                            raise ValueError("导入版本冲突，请重新预览并选择")
+                        clean["id"] = conflict["memory_id"]
+                saved = self.put(clean, _conn=conn, _independent=independent)
+                conn.execute("UPDATE memories SET source_conv_id=NULL,source_quote='' WHERE id=?", (saved["id"],))
+                conn.execute("DELETE FROM memory_sources WHERE entity_kind='fact' AND entity_id=?", (saved["id"],))
+                conn.execute("DELETE FROM memory_fact_evidence WHERE memory_id=?", (saved["id"],))
+                conn.execute("INSERT OR REPLACE INTO memory_imports VALUES (?,?)", (saved["id"], now()))
+                count += 1
+                versions = item.get("history_versions", []) if data["version"] >= 2 else []
                 if not isinstance(versions, list) or len(versions) > 50:
                     raise ValueError("每条记忆最多导入 50 个历史版本")
                 from claude_chat.memory_resolver import typed_fields
@@ -623,8 +809,8 @@ class MemoryStore:
                         continue
                     conn.execute(
                         "INSERT INTO memory_versions (memory_id,version,subject,value_json,content,scope,"
-                        "valid_from,valid_until,source_quote) "
-                        "VALUES (?,?,?,?,?,?,?,?,?)",
+                        "valid_from,valid_until,source_quote,origin) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?)",
                         (
                             saved["id"],
                             version["version"],
@@ -635,12 +821,13 @@ class MemoryStore:
                             start.isoformat(),
                             end.isoformat(),
                             "",
+                            "external",
                         ),
                     )
                 if versions:
                     next_version = max(v["version"] for v in versions) + 1
                     conn.execute("UPDATE memories SET version=max(version,?) WHERE id=?", (next_version, saved["id"]))
-                if data["version"] == 2 and item.get("valid_from"):
+                if data["version"] >= 2 and item.get("valid_from"):
                     try:
                         start = datetime.fromisoformat(item["valid_from"])
                         if not start.tzinfo:
@@ -656,17 +843,41 @@ class MemoryStore:
                     "WHERE memory_id=? ORDER BY valid_until DESC LIMIT 50)",
                     (saved["id"], saved["id"]),
                 )
-        return len(rows)
+            if data["version"] == 3:
+                self.episodes.import_external(data.get("episodes", []), conn)
+                conn.execute("DELETE FROM memory_overviews")
+                self.bump_epoch(conn)
+        return count
 
     def export_data(self):
         with self.connect() as conn:
             rows = [dict(row) for row in conn.execute("SELECT * FROM memories ORDER BY pinned DESC,updated_at DESC")]
+            rows = [row for row in rows if self.fact_sources.valid(row, conn)]
+            imported = {r[0] for r in conn.execute("SELECT memory_id FROM memory_imports")}
             for row in rows:
+                row["provenance"] = "external_unverified" if row["id"] in imported else row["origin"]
                 row["history_versions"] = [
                     dict(v)
                     for v in conn.execute(
                         "SELECT * FROM memory_versions WHERE memory_id=? ORDER BY version DESC",
                         (row["id"],),
                     )
+                    if self.fact_sources.version_valid(v, row, conn)
                 ]
-        return {"version": 2, "memories": rows, "exported_at": now()}
+            scopes = [r[0] for r in conn.execute("SELECT DISTINCT scope FROM memory_episodes")]
+            episodes = {e["id"]: e for scope in scopes for e in self.episodes.list(scope, conn)}
+            for episode in episodes.values():
+                episode["history_versions"] = self.episodes.versions(episode["id"], episode["scope"])
+            sources = [
+                dict(r)
+                for r in conn.execute("SELECT * FROM memory_sources")
+                if (r["entity_kind"] == "episode" and r["entity_id"] in episodes)
+                or (r["entity_kind"] == "fact" and r["entity_id"] in {m["id"] for m in rows})
+            ]
+        return {
+            "version": 3,
+            "memories": rows,
+            "episodes": list(episodes.values()),
+            "sources": sources,
+            "exported_at": now(),
+        }

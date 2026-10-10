@@ -1,0 +1,25 @@
+.conversation-title-trigger { padding:0; border:0; background:transparent; color:var(--text); font:inherit; cursor:pointer; text-align:left; }
+.conversation-title-trigger:hover { color:var(--lavender); }
+.conversation-title-menu-btn { display:grid; width:30px; height:30px; flex:0 0 30px; place-items:center; border:0; border-radius:8px; background:transparent; color:var(--subtext0); cursor:pointer; font-size:20px; }
+.conversation-title-menu-btn:hover,.conversation-title-menu-btn:focus-visible { background:var(--surface0); color:var(--text); }
+.conversation-title-menu-btn.title-generating { color:var(--lavender); background:var(--surface0); }
+.conversation-title-dialog { width:min(500px,calc(100vw - 24px)); max-height:calc(100dvh - 24px); padding:0; margin:auto; border:1px solid var(--border); border-radius:18px; background:var(--mantle); color:var(--text); box-shadow:var(--shadow-lg); overflow:auto; }
+.conversation-title-dialog::backdrop { background:rgba(3,6,11,.65); backdrop-filter:blur(8px); }
+.conversation-title-dialog h2 { margin:0; }
+.conversation-title-dialog .modal-body { gap:10px; }
+#conversation-title-input { box-sizing:border-box; width:100%; min-width:0; padding:12px; border:1px solid var(--border); border-radius:9px; background:var(--base); color:var(--text); font:inherit; }
+.conversation-title-help { margin:0; color:var(--subtext0); font-size:12px; overflow-wrap:anywhere; }
+#conversation-title-notice { min-height:20px; margin:0; font-size:13px; overflow-wrap:anywhere; }
+.title-error { color:var(--red); }
+.conversation-title-dialog button:disabled { opacity:.55; cursor:wait; }
+#conversation-title-toolbar-btn { display:none; }
+@media(max-width:1000px) {
+    #conversation-title-toolbar-btn { display:grid; }
+}
+@media(max-width:767px) {
+    #conversation-title-toolbar-btn { display:none; }
+    .mobile-tools-open #conversation-title-toolbar-btn { display:grid; }
+    .conversation-title-menu-btn { min-width:34px; min-height:34px; }
+    #conversation-title-input { font-size:16px; }
+    .conversation-title-dialog .modal-footer { flex-wrap:wrap; }
+}

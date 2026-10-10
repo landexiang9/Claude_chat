@@ -89,7 +89,9 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
             content = msg.get("content")
             if isinstance(content, list) and not uses_responses:
                 content = [
-                    {key: value for key, value in block.items() if key != "_responses"}
+                    {key: value for key, value in block.items() if key != "_responses" and
+                     (key != "_gemini_signature" or active_platform == "gemini"
+                      or kwargs.get("provider_adapter") == "gemini")}
                     if isinstance(block, dict) else block for block in content
                 ]
             if active_platform == "claude":
@@ -106,6 +108,7 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
         
         if active_platform == "claude":
             return stream_claude_response_native(
+                memory_session=kwargs.get("memory_session"),
                 api_key=api_key,
                 request_params=kwargs.get("request_params"),
                 custom_params=kwargs.get("custom_params", {}),
@@ -139,8 +142,12 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
             deepseek_api_url = kwargs.get("deepseek_api_url", "https://api.deepseek.com")
             if uses_responses:
                 return stream_responses_response(
+                memory_session=kwargs.get("memory_session"),
                     api_key=deepseek_api_key, api_url=deepseek_api_url,
                     deepseek_native=True, enable_search=enable_search,
+                    search_engine=search_engine, enable_web_fetch=enable_web_fetch,
+                    tavily_api_key=tavily_api_key, jina_api_key=jina_api_key,
+                    web_page_parser=web_page_parser, web_fetch_limit=web_fetch_limit,
                     proxy_mode=proxy_mode, proxy_url=proxy_url,
                     messages=messages, model=model, max_tokens=max_tokens, temperature=temperature,
                     streaming_queue=streaming_queue, abort_event=abort_event,
@@ -151,8 +158,10 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                     file_upload_expires_in_seconds=kwargs.get("file_upload_expires_in_seconds", 172800),
                 )
             return stream_deepseek_response(
+                memory_session=kwargs.get("memory_session"),
                 api_key=deepseek_api_key,
                 api_url=deepseek_api_url,
+                enable_web_fetch=enable_web_fetch,
                 request_params=kwargs.get("request_params"),
                 custom_params=kwargs.get("custom_params", {}),
                 proxy_mode=proxy_mode,
@@ -190,6 +199,7 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
             enable_code_sandbox = kwargs.get("gemini_enable_code_sandbox", False)
             code_sandbox_type = kwargs.get("gemini_code_sandbox_type", "local")
             return stream_gemini_response(
+                memory_session=kwargs.get("memory_session"),
                 api_key=gemini_api_key,
                 api_url=gemini_api_url,
                 request_params=kwargs.get("request_params"),
@@ -221,6 +231,7 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
             provider_adapter = kwargs.get("provider_adapter", "local")
             if provider_adapter == "responses":
                 return stream_responses_response(
+                memory_session=kwargs.get("memory_session"),
                     api_key=custom_api_key,
                     api_url=custom_api_url,
                     proxy_mode=proxy_mode,
@@ -241,6 +252,7 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 )
             if provider_adapter == "anthropic":
                 return stream_claude_response_native(
+                memory_session=kwargs.get("memory_session"),
                     api_key=custom_api_key,
                     api_url=custom_api_url,
                     request_params=kwargs.get("request_params"),
@@ -265,6 +277,7 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 )
             if provider_adapter == "gemini":
                 return stream_gemini_response(
+                memory_session=kwargs.get("memory_session"),
                     api_key=custom_api_key,
                     api_url=custom_api_url,
                     request_params=kwargs.get("request_params"),
@@ -290,6 +303,7 @@ def stream_claude_response(api_key, proxy_mode, proxy_url, messages, model, max_
                 )
             # OpenAI Chat, OpenAI Files, OpenRouter and inline-image adapters.
             return stream_deepseek_response(
+                memory_session=kwargs.get("memory_session"),
                 api_key=custom_api_key,
                 api_url=custom_api_url,
                 request_params=kwargs.get("request_params"),

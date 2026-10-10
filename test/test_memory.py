@@ -98,8 +98,9 @@ def test_import_is_atomic_and_roundtrips_exported_flags(memory):
     with pytest.raises(ValueError):
         store.import_data({"version": 1, "memories": [{"content": "新记忆"}, {"content": ""}]})
     assert store.list() == before
-    assert store.import_data({"version": 1, "memories": before}) == 1
+    assert store.import_data({"version": 1, "memories": before}) == 0  # Conflicts default to preserving existing notes.
     assert len(store.list()) == 1
+    assert store.list()[0]["pinned"] and store.list()[0]["origin"] == "manual"
 
 
 def test_forget_all_prevents_old_history_reappearing(memory):

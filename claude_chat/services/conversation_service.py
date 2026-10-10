@@ -255,6 +255,29 @@ def migrate_and_persist_legacy_attachments(conv_manager, conversation):
 class ConversationService(AppService):
     """Conversation persistence, message mutation, and streaming generation."""
 
+    def _conversation_titles(self):
+        from claude_chat.services.conversation_titles import ConversationTitles
+
+        with self._app.lock:
+            if not hasattr(self._app, "_conversation_title_manager"):
+                self._app._conversation_title_manager = ConversationTitles(self._app)
+            return self._app._conversation_title_manager
+
+    def conversation_title_operation(self, conv_id, action="status", title=None):
+        if not isinstance(conv_id, str) or not conv_id.strip() or len(conv_id) > 128:
+            return {"success": False, "error": "对话 ID 无效"}
+        manager = self._conversation_titles()
+        if action == "edit":
+            return manager.edit(conv_id, title)
+        if action == "generate":
+            return manager.generate(conv_id)
+        if action == "status":
+            return manager.status(conv_id)
+        return {"success": False, "error": "标题操作无效"}
+
+    def schedule_conversation_title(self, conv_id, target=None):
+        return self._conversation_titles().generate(conv_id, automatic=True, target=target)
+
     def load_conversations(self):
         """
         拉取对话卡片列表，排除临时对话；历史由用户主动管理。
@@ -266,18 +289,20 @@ class ConversationService(AppService):
                 with store.connect() as conn:
                     temporary = {r[0] for r in conn.execute("SELECT conv_id FROM conversation_privacy WHERE temporary=1")}
                 rows = [row for row in rows if row["id"] not in temporary]
+            manager = getattr(self._app, "_conversation_title_manager", None)
+            if manager:
+                for row in rows:
+                    job = manager.jobs.get(row["id"])
+                    if job:
+                        row.update(title_status=job.status, title_error=job.error)
             return rows
 
     def load_conversation(self, conv_id):
         """
         根据 ID 从 SQLite 数据库读取指定对话的详情记录并缓存至内存中
-        M-fix#5/#6:流式生成进行中时拒绝切换 current_conv,否则 reader 线程会把
-        响应写进被切换到的新对话,导致原始对话丢失回复、新对话混入错误消息。
+        流任务独立持有 conversation_id，切换浏览的对话不会改变响应的保存目标。
         """
         with self._app.lock:
-            if self._app.is_streaming:
-                logger.warning(f"流式生成进行中,拒绝切换对话,返回当前对话。请求 ID: {conv_id}")
-                return conversation_for_frontend(self._app.current_conv)
             logger.info(f"正在加载对话记录，ID: {conv_id}")
             conv = self._app.conv_manager.load_conversation(conv_id)
             conv = migrate_and_persist_legacy_attachments(self._app.conv_manager, conv)
@@ -316,7 +341,10 @@ class ConversationService(AppService):
         删除指定的对话及名下所有消息
         """
         with self._app.lock:
-            if (getattr(self._app, "is_streaming", False) and self._app.current_conv
+            task = getattr(self._app, "stream_task", None)
+            if task and task.is_active and task.conversation_id == conv_id:
+                return False
+            if (task is None and getattr(self._app, "is_streaming", False) and self._app.current_conv
                     and self._app.current_conv.get("id") == conv_id):
                 return False
             logger.info(f"正在删除对话，ID: {conv_id}")
@@ -327,6 +355,11 @@ class ConversationService(AppService):
                     conv = self._app.conv_manager.load_conversation(conv_id) or {}
                     attachments = attachment_ids(conv.get("messages", []))
             self._app.conv_manager.delete_conversation(conv_id)
+            manager = getattr(self._app, "_conversation_title_manager", None)
+            if manager:
+                job = manager.jobs.pop(conv_id, None)
+                if job:
+                    job.abort.set()
             if hasattr(self._app.conv_manager, "get_connection"):
                 self.memory_store().conversation_deleted(conv_id)
                 for preview_id in attachments:
@@ -466,6 +499,7 @@ class ConversationService(AppService):
             # 获取活跃平台与投影映射后的扁平配置
             active_platform = self._app.current_conv.get("platform") or self._app.config.get("active_platform", "claude")
             current_model = self._app.current_conv.get("model") or self._app.config.get("model", FALLBACK_MODELS[0])
+            task.title_target = (active_platform, current_model)
             mapped = PlatformParamMapper.map_params(active_platform, self._app.config.data, model_id=current_model)
 
             # 挂载流通道队列
@@ -494,8 +528,32 @@ class ConversationService(AppService):
                         store = self.memory_store()
                         epoch = store.options().get("epoch", 0)
                         query = next((user_text(m) for m in reversed(args[3]) if user_text(m)), "")
-                        memory_prompt, _ = store.engine.retrieve(conv_id, query, abort=task.abort_event)
-                        shortened, summary = store.engine.summarize_recent(conv_id, args[3])
+                        budget = store.options()["budget_chars"]
+                        shortened, summary = store.engine.summarize_recent(conv_id, args[3], budget_chars=min(1500, budget // 4))
+                        from claude_chat.memory_hybrid import context_memory_budget
+
+                        capability = next((m for m in getattr(self._app, "available_models", [])
+                                           if isinstance(m, dict) and m.get("id") == args[4]), {})
+                        budget, context_limit = context_memory_budget(
+                            shortened, original_system, capability, args[5], budget)
+                        if len(summary) + 4 > budget:
+                            shortened, summary = args[3], ""
+                            budget, context_limit = context_memory_budget(
+                                shortened, original_system, capability, args[5], store.options()["budget_chars"])
+                        memory_prompt, memory_context = store.engine.retrieve(
+                            conv_id, query, abort=task.abort_event, recent=args[3], reserve_tools=True,
+                            budget_chars=budget * 2 // 3 - len(summary) - 4)
+                        memory_context["context_limit"] = context_limit
+                        with store.connect() as conn:
+                            conn.execute("BEGIN IMMEDIATE")
+                            if store.options(conn).get("epoch", 0) == epoch and not task.abort_event.is_set():
+                                conn.execute("INSERT OR REPLACE INTO memory_context VALUES (?,?)",
+                                             (conv_id, json.dumps(memory_context, ensure_ascii=False)))
+                        from claude_chat.memory_tools import MemoryToolSession
+
+                        kwargs["memory_session"] = MemoryToolSession(
+                            store, conv_id, task.abort_event,
+                            used_chars=memory_context.get("chars", 0) + len(summary) + 4, budget_chars=budget)
                         prepared = list(args)
                         prepared[3] = shortened
                         args = tuple(prepared)
@@ -503,14 +561,31 @@ class ConversationService(AppService):
                         kwargs["system"] = "\n\n".join(additions) or None
                         if store.options().get("epoch", 0) != epoch:
                             args, kwargs["system"] = original_args, original_system
+                            kwargs.pop("memory_session", None)
                         self._schedule_memory_index(store)
                     except Exception:
                         logger.warning("Memory preparation failed; using original conversation context")
                         args, kwargs["system"] = original_args, original_system
+                        kwargs.pop("memory_session", None)
                 if task.abort_event.is_set():
                     active_queue.put(("aborted", {}))
                     return
-                stream_claude_response(*args, **kwargs)
+                session = kwargs.get("memory_session")
+                if session:
+                    from claude_chat.memory_tools import MemoryFallbackQueue
+
+                    fallback_queue = MemoryFallbackQueue(args[8], session)
+                    prepared = list(args)
+                    prepared[8] = fallback_queue
+                    stream_claude_response(*prepared, **kwargs)
+                    if fallback_queue.fallback and not task.abort_event.is_set():
+                        extra_memory = session.plan(self._app, query, original_args[3])
+                        if extra_memory:
+                            kwargs["system"] = "\n\n".join(p for p in (kwargs.get("system"), extra_memory) if p)
+                        kwargs.pop("memory_session", None)
+                        stream_claude_response(*prepared, **kwargs)
+                else:
+                    stream_claude_response(*args, **kwargs)
 
             # 解析特定于平台的思维信息传入
             thinking_enabled = False

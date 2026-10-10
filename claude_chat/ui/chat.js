@@ -9,6 +9,9 @@ function extractToolCallsFromMsg(msg, nextMsg) {
             if (Array.isArray(item?._responses?.searches)) {
                 toolCalls.push(...item._responses.searches.map(search => ({...search, type: "search"})));
             }
+            if (Array.isArray(item?._responses?.fetches)) {
+                toolCalls.push(...item._responses.fetches.map(fetch => ({...fetch, type: "fetch"})));
+            }
             if (item && (item.type === "server_tool_use" || item.type === "tool_use") && item.name === "web_search") {
                 const toolId = item.id;
                 const query = item.input ? item.input.query : "";
@@ -62,13 +65,16 @@ function extractToolCallsFromMsg(msg, nextMsg) {
     return toolCalls;
 }
 // 选中并加载指定的对话
+let conversationSelectionVersion = 0;
 async function selectConversation(id) {
+    const selectionVersion = ++conversationSelectionVersion;
     if (!isStreaming && currentConvId && currentConvId !== id && window.ChatMemory) {
         // Server checks persisted privacy; stale frontend state can never delete a normal chat.
         await apiBridge.memory_operation('discard_temporary', {conv_id: currentConvId});
     }
-    if (isStreaming) return;
+    if (selectionVersion !== conversationSelectionVersion) return;
     currentConvId = id;
+    currentConv = null;
     
     // 在移动端选中对话后，自动收起侧边栏
     const appContainer = document.querySelector(".app-container");
@@ -93,8 +99,9 @@ async function selectConversation(id) {
     messageList.innerHTML = "";
     
     const conv = await apiBridge.load_conversation(id);
-    if (!conv || currentConvId !== id) return;
+    if (!conv || currentConvId !== id || selectionVersion !== conversationSelectionVersion) return;
     currentConv = conv;
+    window.ChatTitles?.track(id);
     if (currentConversationTitle) {
         currentConversationTitle.textContent = conv.title || summary?.title || "新对话";
     }
@@ -110,7 +117,11 @@ async function selectConversation(id) {
     // Render persisted messages immediately. Model discovery is network-bound and
     // must never sit on the critical path of switching conversations.
     const messages = conv.messages || [];
-    renderConversationMessages(messages);
+    if (isStreaming && String(currentStreamTask.conversationId) === String(id) && currentStreamTask.row) {
+        messageList.replaceChildren(...currentStreamTask.viewNodes);
+    } else {
+        renderConversationMessages(messages);
+    }
     scrollChatBottom(true);
 
     if (conv.model) {
@@ -172,7 +183,6 @@ async function selectConversation(id) {
 }
 // 开启全新对话会话
 async function startNewChat() {
-    if (isStreaming) return;
     const newConv = await apiBridge.new_conversation();
     await loadConversations();
     await selectConversation(newConv.id);
@@ -185,7 +195,12 @@ async function sendMessage() {
     if (isStreaming) {
         statusLabel.textContent = "正在停止生成...";
         requestUiStreamCancellation();
-        await apiBridge.abort_generation();
+        try {
+            const result = await apiBridge.abort_generation();
+            if (!result || result.success === false) throw new Error("终止请求失败，请重试");
+        } catch (error) {
+            statusLabel.textContent = error.message || "终止请求失败，请重试";
+        }
         return;
     }
     if (isSending) return;
@@ -254,24 +269,24 @@ async function sendMessage() {
 
     // 4. 调用 API 发起生成请求
     isSending = true;
+    const sendingTask = currentStreamTask;
     try {
-        await apiBridge.send_message(currentConvId, text, oldAttachments, renderMarkdown);
+        await apiBridge.send_message(sendingTask.conversationId, text, oldAttachments, renderMarkdown);
     } catch (e) {
+        if (currentStreamTask !== sendingTask || e.streamEventDispatched) return;
         console.error("send_message 调用失败:", e);
         statusLabel.textContent = "发送失败: " + (e.message || String(e));
-        inputBox.value = text;
-        inputBox.style.height = "auto";
-        inputBox.style.height = `${inputBox.scrollHeight}px`;
-        attachments = [...oldAttachments, ...attachments];
-        renderAttachments();
+        if (currentConvId === sendingTask.conversationId) {
+            inputBox.value = text;
+            inputBox.style.height = "auto";
+            inputBox.style.height = `${inputBox.scrollHeight}px`;
+            attachments = [...oldAttachments, ...attachments];
+            renderAttachments();
+        }
         optimisticUserRow?.remove();
         optimisticAssistantRow?.remove();
         finishUiStreamTask("failed");
         setSendButtonState(false);
-        const body = document.getElementById("streaming-message-body");
-        if (body) {
-            body.innerHTML = `<span style="color: var(--red);">❌ 发送失败: ${escapeHtml(e.message || String(e))}</span>`;
-        }
     } finally {
         isSending = false;
     }
@@ -285,10 +300,25 @@ inputBox.addEventListener("keydown", (e) => {
         sendMessage();
     }
 });
+function failUiStreamStartup(task, message) {
+    const row = task.row;
+    const body = row?.querySelector("#streaming-message-body");
+    row?.removeAttribute("id");
+    body?.removeAttribute("id");
+    row?.querySelector("#streaming-thinking-container")?.removeAttribute("id");
+    if (body) body.innerHTML = `<span style="color: var(--red);">❌ ${escapeHtml(message)}</span>`;
+    finishUiStreamTask("failed");
+    setSendButtonState(false);
+}
 // 由后台 Python 线程实时评估调用的流式输出回调函数
 window.onStreamMessage = async (type, data) => {
-    const body = document.getElementById("streaming-message-body");
-    const thinkContainer = document.getElementById("streaming-thinking-container");
+    const task = currentStreamTask;
+    const row = task.row || document.getElementById("streaming-msg-row");
+    const body = row?.querySelector("#streaming-message-body");
+    const thinkContainer = row?.querySelector("#streaming-thinking-container");
+    const scrollStream = () => {
+        if (currentConvId === task.conversationId && row?.isConnected) scrollChatBottom();
+    };
     
     if (type === "text") {
         streamingText += data;
@@ -299,12 +329,12 @@ window.onStreamMessage = async (type, data) => {
             body.innerHTML = parseMarkdown(streamingText);
             highlightCodeBlocks(body.parentNode);
         }
-        scrollChatBottom();
+        scrollStream();
         
     } else if (type === "search_start") {
-        const card = document.querySelector("#streaming-msg-row .message-card");
+        const card = row?.querySelector(".message-card");
         if (card) {
-            const oldSearchCard = document.querySelector(".search-card[id^='streaming-search-card-']");
+            const oldSearchCard = row?.querySelector(".search-card[id^='streaming-search-card-']");
             if (oldSearchCard && !data.id) oldSearchCard.remove();
             
             const searchCard = document.createElement("div");
@@ -322,19 +352,19 @@ window.onStreamMessage = async (type, data) => {
                 <div class="search-card-body"></div>
             `;
             
-            const bodyElement = document.getElementById("streaming-message-body");
+            const bodyElement = body;
             if (bodyElement) {
                 card.insertBefore(searchCard, bodyElement);
             } else {
                 card.appendChild(searchCard);
             }
-            scrollChatBottom();
+            scrollStream();
         }
         
     } else if (type === "search_done") {
         const searchCard = data.id
-            ? Array.from(document.querySelectorAll("#streaming-msg-row .search-card")).find(card => card.dataset.searchId === data.id)
-            : document.querySelector(".search-card[id^='streaming-search-card-']");
+            ? Array.from(row?.querySelectorAll(".search-card") || []).find(card => card.dataset.searchId === data.id)
+            : row?.querySelector(".search-card[id^='streaming-search-card-']");
         if (searchCard) {
             searchCard.removeAttribute("id");
             
@@ -405,7 +435,9 @@ window.onStreamMessage = async (type, data) => {
                     let usageStr = "";
                     if (data.usage) {
                         const usage = data.usage;
-                        if (usage.remaining_requests !== undefined) {
+                        if (engine === "deepseek_native" && usage.input_tokens !== undefined) {
+                            usageStr = ` | 搜索 Token: ${Number(usage.input_tokens) || 0} in / ${Number(usage.output_tokens) || 0} out`;
+                        } else if (usage.remaining_requests !== undefined) {
                             usageStr = ` | 剩余额度: ${usage.remaining_requests} 请求`;
                             if (usage.remaining_tokens !== undefined) {
                                 usageStr += ` / ${usage.remaining_tokens} Token`;
@@ -423,13 +455,13 @@ window.onStreamMessage = async (type, data) => {
                     sBody.appendChild(engineInfo);
                 }
             }
-            scrollChatBottom();
+            scrollStream();
         }
         
     } else if (type === "fetch_start") {
-        const card = document.querySelector("#streaming-msg-row .message-card");
+        const card = row?.querySelector(".message-card");
         if (card) {
-            const oldFetchCard = document.getElementById("streaming-fetch-card");
+            const oldFetchCard = row?.querySelector("#streaming-fetch-card");
             if (oldFetchCard) oldFetchCard.remove();
             
             const fetchCard = document.createElement("div");
@@ -445,17 +477,17 @@ window.onStreamMessage = async (type, data) => {
                 <div class="search-card-body"></div>
             `;
             
-            const bodyElement = document.getElementById("streaming-message-body");
+            const bodyElement = body;
             if (bodyElement) {
                 card.insertBefore(fetchCard, bodyElement);
             } else {
                 card.appendChild(fetchCard);
             }
-            scrollChatBottom();
+            scrollStream();
         }
         
     } else if (type === "fetch_done") {
-        const fetchCard = document.getElementById("streaming-fetch-card");
+        const fetchCard = row?.querySelector("#streaming-fetch-card");
         if (fetchCard) {
             fetchCard.removeAttribute("id");
             
@@ -502,7 +534,7 @@ window.onStreamMessage = async (type, data) => {
                     </div>
                 `;
             }
-            scrollChatBottom();
+            scrollStream();
         }
         
     } else if (type === "thinking") {
@@ -515,71 +547,43 @@ window.onStreamMessage = async (type, data) => {
             const toggle = thinkContainer.querySelector(".thinking-toggle");
             toggle.textContent = `▶ 思考过程 (~${Math.floor(streamingThinking.length / 2)} tokens)`;
         }
-        scrollChatBottom();
+        scrollStream();
         
-    } else if (type === "done") {
-        // 结束流式输出，还原发送按钮状态
-        
-        // 还原发送图标为原本的箭头样式
-        setSendButtonState(false);
-        
-        statusLabel.textContent = "就绪";
-        
-        // 移除临时流式 ID 标识以固定内容
-        const row = document.getElementById("streaming-msg-row");
-        if (row) row.removeAttribute("id");
-        if (body) body.removeAttribute("id");
-        if (thinkContainer) thinkContainer.removeAttribute("id");
-        
-        // 更新显示的 Token 消耗量统计
-        tokenLabel.textContent = `Token: ${data.input_tokens} in / ${data.output_tokens} out`;
-        
-        // 重新加载列表以刷新会话卡片标题
-        await loadConversations();
-        await reloadCurrentConversation();
-        
-    } else if (type === "aborted") {
-        
-        // Restore send button state
-        setSendButtonState(false);
-        
-        statusLabel.textContent = "已中止生成";
-        setTimeout(() => { if (statusLabel.textContent === "已中止生成") statusLabel.textContent = "就绪"; }, 2000);
-        
-        const row = document.getElementById("streaming-msg-row");
-        if (row) row.removeAttribute("id");
-        
-        if (body) {
-            body.removeAttribute("id");
-            body.innerHTML += `<div class="aborted-badge" style="color: var(--peach); font-size: 11px; margin-top: 8px; font-style: italic; display: flex; align-items: center; gap: 4px;">🚫 已中止</div>`;
+    } else if (["done", "aborted", "error"].includes(type)) {
+        const terminalState = { done: "completed", aborted: "aborted", error: "failed" }[type];
+        task.terminalReceived = true;
+        row?.removeAttribute("id");
+        body?.removeAttribute("id");
+        thinkContainer?.removeAttribute("id");
+        if (type === "aborted" && body) {
+            body.innerHTML += `<div class="aborted-badge">🚫 已中止</div>`;
         }
-        
-        const thinkContainer = document.getElementById("streaming-thinking-container");
-        if (thinkContainer) thinkContainer.removeAttribute("id");
-        
-        await loadConversations();
-        await reloadCurrentConversation();
-        
-    } else if (type === "error") {
-        // Restore send button state
-        setSendButtonState(false);
-
-        const errText = typeof data === 'object' && data !== null ? (data.text || JSON.stringify(data)) : data;
-        statusLabel.textContent = `错误: ${errText}`;
-
-        // M-fix#12: 与 done/aborted 一致,移除三个流式临时 ID,否则下一次 appendMessage 会
-        // 因 getElementById 命中陈旧的错误元素而使新占位卡死、流更新目标错位。
-        const row = document.getElementById("streaming-msg-row");
-        if (row) row.removeAttribute("id");
-        if (body) {
-            body.removeAttribute("id");
-            body.innerHTML = `<span style="color: var(--red);">❌ 发生错误: ${escapeHtml(errText)}</span>`;
+        const errText = typeof data === "object" && data !== null ? (data.text || JSON.stringify(data)) : data;
+        if (type === "error" && body) {
+            body.innerHTML += `<div style="color: var(--red);">❌ 发生错误: ${escapeHtml(errText)}</div>`;
         }
-        const tc = document.getElementById("streaming-thinking-container");
-        if (tc) tc.removeAttribute("id");
-
-        await loadConversations();
-        await reloadCurrentConversation();
+        try {
+            // A background reply must never reload or scroll another conversation.
+            await loadConversations();
+            if (currentStreamTask === task && currentConvId === task.conversationId) {
+                await reloadCurrentConversation(task.conversationId);
+                if (currentConvId === task.conversationId) {
+                    if (type === "done") tokenLabel.textContent = `Token: ${data.input_tokens} in / ${data.output_tokens} out`;
+                    statusLabel.textContent = type === "error" ? `错误: ${errText}` : type === "aborted" ? "已中止生成" : "就绪";
+                }
+            } else if (currentStreamTask === task) {
+                statusLabel.textContent = "就绪";
+            }
+            // Temporary chats that were left during generation can now be discarded safely.
+            if (window.ChatMemory && currentConvId !== task.conversationId) {
+                await apiBridge.memory_operation("discard_temporary", {conv_id: task.conversationId});
+            }
+        } finally {
+            if (currentStreamTask === task) {
+                finishUiStreamTask(terminalState);
+                setSendButtonState(false);
+            }
+        }
     }
 };
 // 用户消息历史内嵌快捷二次修改并重新生成
@@ -663,17 +667,14 @@ async function editUserMessage(msgIndex) {
         statusLabel.textContent = "Claude 思考中...";
         
         isSending = true;
+        const sendingTask = currentStreamTask;
         try {
-            await apiBridge.edit_and_resend(currentConvId, msgIndex, newText, editedRenderMarkdown);
+            await apiBridge.edit_and_resend(sendingTask.conversationId, msgIndex, newText, editedRenderMarkdown);
         } catch (e) {
+            if (currentStreamTask !== sendingTask || e.streamEventDispatched) return;
             console.error("edit_and_resend 调用失败:", e);
             statusLabel.textContent = "编辑重发失败: " + (e.message || String(e));
-            finishUiStreamTask("failed");
-            setSendButtonState(false);
-            const body = document.getElementById("streaming-message-body");
-            if (body) {
-                body.innerHTML = `<span style="color: var(--red);">❌ 编辑重发失败: ${escapeHtml(e.message || String(e))}</span>`;
-            }
+            failUiStreamStartup(sendingTask, statusLabel.textContent);
         } finally {
             isSending = false;
         }
@@ -697,7 +698,7 @@ async function branchConversation(msgIndex) {
 
 // 重新生成模型答复
 async function retryAssistantMessage(msgIndex) {
-    if (isStreaming) return;
+    if (isStreaming || isSending) return;
     
     messageList.removeChild(messageList.lastChild);
     scrollChatBottom(true);
@@ -711,16 +712,16 @@ async function retryAssistantMessage(msgIndex) {
     setSendButtonState(true);
     statusLabel.textContent = "Claude 思考中...";
     
+    isSending = true;
+    const sendingTask = currentStreamTask;
     try {
-        await apiBridge.retry_message(currentConvId, msgIndex);
+        await apiBridge.retry_message(sendingTask.conversationId, msgIndex);
     } catch (e) {
+        if (currentStreamTask !== sendingTask || e.streamEventDispatched) return;
         console.error("retry_message 调用失败:", e);
         statusLabel.textContent = "重试失败: " + (e.message || String(e));
-        finishUiStreamTask("failed");
-        setSendButtonState(false);
-        const body = document.getElementById("streaming-message-body");
-        if (body) {
-            body.innerHTML = `<span style="color: var(--red);">❌ 重试失败: ${escapeHtml(e.message || String(e))}</span>`;
-        }
+        failUiStreamStartup(sendingTask, statusLabel.textContent);
+    } finally {
+        isSending = false;
     }
 }

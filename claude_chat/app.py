@@ -134,13 +134,18 @@ class ClaudeChatApp:
             target.clear_stream()
             if state == StreamTaskState.COMPLETED and hasattr(self.conv_manager, "get_connection"):
                 try:
+                    WebAPI(self).schedule_conversation_title(target.conversation_id, target.title_target)
+                except Exception:
+                    logger.exception("Unable to schedule conversation title")
+                try:
                     WebAPI(self).schedule_memory_learning(target.conversation_id)
+                    WebAPI(self).schedule_discussion_memory(target.conversation_id)
                 except Exception:
                     logger.exception("Unable to schedule memory learning")
 
     def abort_generation(self):
         """
-        强行中止当前的模型输出生成流：设置事件，关闭底层连接，标记状态为非流式。
+        中止当前流：唤醒消费者保存部分输出，异步关闭连接，由消费者完成任务状态。
         M9: 加锁保护 is_streaming/active_stream 的读写，防止与 reader 线程并发竞态。
         """
         with self.lock:
@@ -285,6 +290,7 @@ class ClaudeChatApp:
         5. 在 GUI 退出时，自动清理并杀死所有仍然残留的控制台代码子进程。
         """
         api = WebAPI(self)
+        api.discussion_jobs().recover()
         
         # 读取服务器配置
         enable_server = self.config.get("enable_server", True)
@@ -491,9 +497,8 @@ class ClaudeChatApp:
                             if self.current_conv and self.current_conv.get("id") == conv_id:
                                 self.current_conv = self.conv_manager.load_conversation(conv_id)
                     
-                    self._push_stream_event(event)
-                    
                     self.set_streaming_done(StreamTaskState.COMPLETED, task)
+                    self._push_stream_event(event)
                     break
                     
                 elif msg_type == "aborted":
@@ -510,9 +515,8 @@ class ClaudeChatApp:
                             if self.current_conv and self.current_conv.get("id") == conv_id:
                                 self.current_conv = self.conv_manager.load_conversation(conv_id)
                     
-                    self._push_stream_event(event)
-                    
                     self.set_streaming_done(StreamTaskState.ABORTED, task)
+                    self._push_stream_event(event)
                     break
  
                 elif msg_type == "error":
@@ -525,9 +529,8 @@ class ClaudeChatApp:
                         streaming_thinking_text,
                     )
                         
-                    self._push_stream_event(event)
-                    
                     self.set_streaming_done(StreamTaskState.FAILED, task)
+                    self._push_stream_event(event)
                     break
             except Exception as e:
                 cleaned_err = sanitize_error_message(e)

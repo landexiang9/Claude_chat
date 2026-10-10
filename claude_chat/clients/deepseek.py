@@ -1,15 +1,16 @@
 import json
 import logging
 from claude_chat.request_params import generation_params
+from .search_tools import execute_search_tool, search_tools
 from claude_chat.clients.file_uploads import (
     prepare_custom_provider_files,
     prepare_openai_compatible_files,
     upload_cache_namespace,
 )
+from .base import build_http_client, record_stream_truncation, record_stream_usage, sanitize_error_message
 
 logger = logging.getLogger("claude_chat.clients")
 
-from .base import build_http_client, sanitize_error_message
 
 def convert_messages_to_openai(messages):
     import json
@@ -115,7 +116,8 @@ def convert_messages_to_openai(messages):
             
     return openai_msgs
 
-def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", web_fetch_limit=15000, conv_id=None, conv_manager=None, previous_content_blocks=None, depth=0, thinking_config=None, accumulated_input_tokens=0, accumulated_output_tokens=0, custom_params=None, request_params=None, file_upload_enabled=True, file_upload_purpose="user_data", file_upload_image_only=True, file_upload_expires_in_seconds=172800, file_upload_adapter=None):
+def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", web_fetch_limit=15000, conv_id=None, conv_manager=None, previous_content_blocks=None, depth=0, thinking_config=None, accumulated_input_tokens=0, accumulated_output_tokens=0, custom_params=None, request_params=None, file_upload_enabled=True, file_upload_purpose="user_data", file_upload_image_only=True, file_upload_expires_in_seconds=172800, file_upload_adapter=None, enable_web_fetch=True, memory_session=None):
+    client = http_client = None
     response_stream = None  # M-fix#10: 保证 finally 中一定可关闭,避免 abort/异常路径泄漏 HTTP 连接
     try:
         if depth >= 5:
@@ -155,39 +157,14 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
         if effective:
             kwargs["extra_body"] = effective
 
-        tools = None
-        if enable_search and "reasoner" not in model.lower():
-            tools = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "search_web",
-                        "description": "Search the web using Google/Bing/Tavily/Jina to get real-time information.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "query": {"type": "string", "description": "The search query to look up."}
-                            },
-                            "required": ["query"]
-                        }
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "fetch_webpage",
-                        "description": "Fetch and read the full textual content of a specific webpage URL.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "url": {"type": "string", "description": "The URL of the webpage to fetch."}
-                            },
-                            "required": ["url"]
-                        }
-                    }
-                }
-            ]
-            kwargs["tools"] = tools
+        if enable_search:
+            kwargs["tools"] = search_tools(enable_web_fetch=enable_web_fetch)
+
+        from claude_chat.memory_tools import TOOL_NAMES
+        if memory_session and depth < 5:
+            memory_definitions = memory_session.tools("openai")
+            if memory_definitions:
+                kwargs["tools"] = [*kwargs.get("tools", []), *memory_definitions]
 
         response_stream = client.chat.completions.create(**kwargs)
         if on_stream_created:
@@ -198,6 +175,7 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
         tool_calls_dict = {}
         input_tokens = 0
         output_tokens = 0
+        reported_usage = {}
 
         # 流式思考标签解析器:部分 OpenAI 兼容聚合服务(如 opencode go)不在协议层分离思考,
         # 而是把 <thought>...</thought> 写在正文 content 里。这里在 content 通道上兜底解析,
@@ -207,19 +185,27 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
         tag_parser = ThinkingTagStreamParser()
 
         for chunk in response_stream:
-            if abort_event and abort_event.is_set():
-                streaming_queue.put(("aborted", {}))
-                return
-
             if hasattr(chunk, "usage") and chunk.usage is not None:
                 usage = chunk.usage
                 if hasattr(usage, "prompt_tokens") and usage.prompt_tokens is not None:
                     input_tokens = usage.prompt_tokens
                 if hasattr(usage, "completion_tokens") and usage.completion_tokens is not None:
                     output_tokens = usage.completion_tokens
+                reported_usage.update({
+                    key: value for key, value in (
+                        ("input_tokens", getattr(usage, "prompt_tokens", None)),
+                        ("output_tokens", getattr(usage, "completion_tokens", None)),
+                    ) if value is not None
+                })
+                record_stream_usage(streaming_queue, reported_usage)
+
+            if abort_event and abort_event.is_set():
+                streaming_queue.put(("aborted", {}))
+                return
 
             if not chunk.choices:
                 continue
+            record_stream_truncation(streaming_queue, getattr(chunk.choices[0], "finish_reason", None))
             delta = chunk.choices[0].delta
 
             reasoning = getattr(delta, "reasoning_content", None)
@@ -267,7 +253,9 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
         if output_tokens == 0:
             output_tokens = len(full_text) // 4
 
-        if tool_calls_dict and enable_search:
+        if tool_calls_dict and (enable_search or memory_session):
+            if memory_session and any(tc["name"] in TOOL_NAMES for tc in tool_calls_dict.values()):
+                memory_session.begin_round()
             assistant_content = [{"type": "text", "text": full_text}]
             if full_reasoning:
                 assistant_content.insert(0, {
@@ -290,13 +278,15 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                 except Exception:
                     args = {}
                     
-                if tc["name"] == "search_web":
+                if memory_session and tc["name"] in TOOL_NAMES:
+                    tool_uses.append({"type": tc["name"], "id": tc["id"], "arguments": tc["arguments"]})
+                elif tc["name"] == "search_web" and enable_search:
                     tool_uses.append({
                         "type": "search_web",
                         "id": tc["id"],
                         "query": args.get("query", "")
                     })
-                elif tc["name"] == "fetch_webpage":
+                elif tc["name"] == "fetch_webpage" and enable_search:
                     tool_uses.append({
                         "type": "fetch_webpage",
                         "id": tc["id"],
@@ -304,7 +294,6 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                     })
             
             if tool_uses:
-                from claude_chat.search import search_web, fetch_webpage_content
                 tool_result_content = []
                 
                 db_assistant_content = []
@@ -316,66 +305,34 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                     tu_type = tu["type"]
                     tool_use_id = tu["id"]
                     
-                    if tu_type == "search_web":
-                        tool_query = tu["query"]
-                        streaming_queue.put(("search_start", {"query": tool_query}))
-                        
-                        search_results, engine_used, usage_info = search_web(
-                            tool_query,
-                            engine=search_engine,
-                            proxy_mode=proxy_mode,
-                            proxy_url=proxy_url,
-                            tavily_api_key=tavily_api_key,
-                            jina_api_key=jina_api_key
+                    if tu_type == "fetch_webpage" and not enable_web_fetch:
+                        raise RuntimeError("网页读取已关闭")
+                    if tu_type in TOOL_NAMES:
+                        try:
+                            arguments = json.loads(tu["arguments"])
+                        except ValueError:
+                            arguments = {}
+                        result_text = memory_session.execute(tu_type, tu["arguments"], tool_use_id)
+                        record = {}
+                    else:
+                        arguments = {"query": tu["query"]} if tu_type == "search_web" else {"url": tu["url"]}
+                        result_text, record = execute_search_tool(
+                            tu_type, arguments, tool_use_id, streaming_queue,
+                            api_key=api_key, api_url=api_url, proxy_mode=proxy_mode, proxy_url=proxy_url,
+                            search_engine=search_engine, tavily_api_key=tavily_api_key, jina_api_key=jina_api_key,
+                            web_page_parser=web_page_parser, web_fetch_limit=web_fetch_limit,
+                            abort_event=abort_event, on_stream_created=on_stream_created,
                         )
-                        
-                        streaming_queue.put(("search_done", {
-                            "query": tool_query,
-                            "results": search_results,
-                            "engine": engine_used,
-                            "usage": usage_info
-                        }))
-                        
-                        result_text = ""
-                        if search_results:
-                            for idx, r in enumerate(search_results):
-                                result_text += f"[{idx+1}] Title: {r['title']}\nURL: {r['url']}\nSnippet: {r['snippet']}\n\n"
-                        else:
-                            result_text = "No results found on the web."
-                        result_text += f"\n[Search Engine: {engine_used}]"
-                        if usage_info:
-                            result_text += f"\n[Usage: {json.dumps(usage_info)}]"
-                            
-                    elif tu_type == "fetch_webpage":
-                        tool_url = tu["url"]
-                        streaming_queue.put(("fetch_start", {"url": tool_url}))
-                        
-                        webpage_text, usage_info = fetch_webpage_content(
-                            tool_url,
-                            parser_type=web_page_parser,
-                            jina_api_key=jina_api_key,
-                            proxy_mode=proxy_mode,
-                            proxy_url=proxy_url,
-                            max_web_fetch_length=web_fetch_limit  # M-fix#23: 接通 deepseek_web_fetch_limit 配置
-                        )
-                        
-                        streaming_queue.put(("fetch_done", {
-                            "url": tool_url,
-                            "content_len": len(webpage_text),
-                            "parser": web_page_parser,
-                            "usage": usage_info
-                        }))
-                        
-                        result_text = webpage_text
-                        result_text += f"\n[Web Reader: {web_page_parser}]"
-                        if usage_info:
-                            result_text += f"\n[Usage: {json.dumps(usage_info)}]"
-                            
+                    if record.get("engine") == "deepseek_native":
+                        search_usage = record.get("usage") or {}
+                        input_tokens += search_usage.get("input_tokens") or 0
+                        output_tokens += search_usage.get("output_tokens") or 0
+
                     db_assistant_content.append({
                         "type": "tool_use",
                         "id": tool_use_id,
                         "name": tu_type,
-                        "input": {"query": tu["query"]} if tu_type == "search_web" else {"url": tu["url"]}
+                        "input": arguments
                     })
                     
                     tool_result_content.append({
@@ -413,6 +370,7 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                     on_stream_created=on_stream_created,
                     system=system,
                     enable_search=enable_search,
+                    enable_web_fetch=enable_web_fetch,
                     search_engine=search_engine,
                     tavily_api_key=tavily_api_key,
                     jina_api_key=jina_api_key,
@@ -430,6 +388,7 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
                     file_upload_image_only=file_upload_image_only,
                     file_upload_expires_in_seconds=file_upload_expires_in_seconds,
                     file_upload_adapter=file_upload_adapter,
+                    memory_session=memory_session,
                 )
                 return
 
@@ -442,6 +401,7 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
             })
             
         streaming_queue.put(("done", {
+            "usage_source": "reported" if len(reported_usage) == 2 else "estimated",
             "input_tokens": accumulated_input_tokens + input_tokens,
             "output_tokens": accumulated_output_tokens + output_tokens,
             "content_blocks": content_blocks,
@@ -449,14 +409,16 @@ def stream_deepseek_response(api_key, api_url, proxy_mode, proxy_url, messages, 
         }))
         
     except Exception as e:
-        logger.exception(f"DeepSeek streaming error: {e}")
-        streaming_queue.put(("error", f"DeepSeek 错误: {sanitize_error_message(e)}"))
+        if abort_event is not None and abort_event.is_set():
+            streaming_queue.put(("aborted", {}))
+        else:
+            message = sanitize_error_message(str(e).replace(api_key, "***") if api_key else str(e))
+            logger.error("DeepSeek streaming error: %s", message)
+            streaming_queue.put(("error", f"DeepSeek 错误: {message}"))
     finally:
-        # M-fix#10: 无论正常结束、abort 裸 return、递归 return 还是异常,都显式关闭底层流,
-        # 防止 HTTP 连接泄漏。close() 幂等,与 abort_generation() 的外部关闭互不冲突。
-        if response_stream is not None:
-            try:
-                response_stream.close()
-            except Exception:
-                pass
-
+        for resource in (response_stream, client, http_client):
+            if resource is not None:
+                try:
+                    resource.close()
+                except Exception:
+                    pass

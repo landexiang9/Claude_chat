@@ -3,10 +3,15 @@ from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestErro
 
 from claude_chat.request_params import generation_params, supports_temperature
 from claude_chat.clients.file_uploads import prepare_anthropic_files, upload_cache_namespace
+from .base import (
+    build_anthropic_http_client,
+    record_stream_truncation,
+    record_stream_usage,
+    sanitize_error_message,
+)
 
 logger = logging.getLogger("claude_chat.clients")
 
-from .base import build_anthropic_http_client, sanitize_error_message
 
 
 _supports_temperature = supports_temperature
@@ -18,13 +23,14 @@ def _anthropic_base_url(api_url):
     return value[:-3] if value.endswith("/v1") else value
 
 
-def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None, enable_search=False, enable_web_fetch=True, web_fetch_limit=15000, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, depth=0, accumulated_input_tokens=0, accumulated_output_tokens=0, custom_params=None, request_params=None, file_upload_enabled=True, file_upload_expires_in_seconds=172800, api_url=""):
+def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_config, streaming_queue, abort_event=None, on_stream_created=None, system=None, output_config=None, enable_search=False, enable_web_fetch=True, web_fetch_limit=15000, search_engine="google", tavily_api_key="", jina_api_key="", web_page_parser="local", conv_id=None, conv_manager=None, depth=0, accumulated_input_tokens=0, accumulated_output_tokens=0, custom_params=None, request_params=None, file_upload_enabled=True, file_upload_expires_in_seconds=172800, api_url="", memory_session=None):
     """
     启动 Anthropic API 消息流式接收。
     通常运行在后台线程中，实时抓取流中的文本块（text_delta）和思考推理块（thinking_delta），
     并将其放入线程安全的队列 `streaming_queue` 中供前端渲染。
     支持通过设置 `abort_event` 中止事件随时强行中断请求。
     """
+    client, http_client = None, None
     try:
         if depth >= 5:
             logger.warning(f"联网搜索已达最大深度限制 ({depth})，强制关闭此轮搜索。")
@@ -98,17 +104,27 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
         # 发起流式请求
         current_tool_use_id = None
         current_tool_query = ""
+        from claude_chat.memory_tools import TOOL_NAMES
+        if memory_session and depth < 5:
+            memory_definitions = memory_session.tools("claude")
+            if memory_definitions:
+                kwargs["tools"] = [*kwargs.get("tools", []), *memory_definitions]
+
         with client.messages.stream(**kwargs) as stream:
             if on_stream_created:
                 on_stream_created(stream)
                 
             for event in stream:
-                # 检查用户是否触发了“停止生成”按钮
+                etype = event.type if hasattr(event, 'type') else ''
+                partial = getattr(getattr(event, "message", None), "usage", None) or getattr(event, "usage", None)
+                if partial:
+                    record_stream_usage(streaming_queue, {
+                        "input_tokens": getattr(partial, "input_tokens", None),
+                        "output_tokens": getattr(partial, "output_tokens", None),
+                    })
                 if abort_event and abort_event.is_set():
                     streaming_queue.put(("aborted", {}))
                     return
-                
-                etype = event.type if hasattr(event, 'type') else ''
                 if etype == 'thinking':
                     t = getattr(event, 'thinking', '')
                     if t:
@@ -160,9 +176,17 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
         final = stream.get_final_message()
         current_input_tokens = final.usage.input_tokens if hasattr(final, 'usage') and final.usage else 0
         current_output_tokens = final.usage.output_tokens if hasattr(final, 'usage') and final.usage else 0
+        record_stream_truncation(streaming_queue, getattr(final, "stop_reason", None))
+        record_stream_usage(streaming_queue, {
+            "input_tokens": getattr(getattr(final, "usage", None), "input_tokens", None),
+            "output_tokens": getattr(getattr(final, "usage", None), "output_tokens", None),
+        })
         
         # 如果模型决定使用工具
-        if final.stop_reason == "tool_use" and enable_search:
+        if final.stop_reason == "tool_use" and (enable_search or memory_session):
+            if memory_session and any(block.type == "tool_use" and block.name in TOOL_NAMES
+                                      for block in final.content):
+                memory_session.begin_round()
             assistant_content = []
             thinking_text = ""
             tool_uses = []
@@ -184,13 +208,15 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
                         "name": block.name,
                         "input": block.input
                     })
-                    if block.name == "search_web":
+                    if memory_session and block.name in TOOL_NAMES:
+                        tool_uses.append({"type": block.name, "id": block.id, "arguments": block.input})
+                    elif block.name == "search_web" and enable_search:
                         tool_uses.append({
                             "type": "search_web",
                             "id": block.id,
                             "query": block.input.get("query", "")
                         })
-                    elif block.name == "fetch_webpage":
+                    elif block.name == "fetch_webpage" and enable_search:
                         tool_uses.append({
                             "type": "fetch_webpage",
                             "id": block.id,
@@ -206,7 +232,9 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
                     tu_type = tu["type"]
                     tool_use_id = tu["id"]
                     
-                    if tu_type == "search_web":
+                    if tu_type in TOOL_NAMES:
+                        result_text = memory_session.execute(tu_type, tu["arguments"], tool_use_id)
+                    elif tu_type == "search_web":
                         tool_query = tu["query"]
                         # 推送搜索开始事件
                         streaming_queue.put(("search_start", {"query": tool_query}))
@@ -325,6 +353,7 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
                     file_upload_enabled=file_upload_enabled,
                     file_upload_expires_in_seconds=file_upload_expires_in_seconds,
                     api_url=api_url,
+                    memory_session=memory_session,
                 )
                 return
 
@@ -349,6 +378,7 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
                     thinking_text += block.get("thinking", "")
 
         streaming_queue.put(("done", {
+            "usage_source": "reported" if getattr(final, "usage", None) else "unknown",
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "content_blocks": content_blocks_dump,
@@ -379,4 +409,11 @@ def stream_claude_response_native(api_key, proxy_mode, proxy_url, messages, mode
         else:
             logger.error("Claude 流式请求异常: %s", sanitize_error_message(e, max_length=None))
             streaming_queue.put(("error", f"未知错误: {sanitize_error_message(e)}"))
+    finally:
+        for resource in (client, http_client):
+            if resource is not None:
+                try:
+                    resource.close()
+                except Exception:
+                    pass
 

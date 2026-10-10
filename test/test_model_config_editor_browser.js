@@ -156,9 +156,11 @@ const fs = require('fs/promises'); const path = require('path'); const assert = 
   assert.equal(await page.locator('#model-max-tokens-label').innerText(),'Max Output Tokens');
   assert(!('frequency_penalty' in JSON.parse(await editor.inputValue())));
   assert(await page.locator('#deepseek-enable-search-input').isEnabled());
-  assert.match(await page.locator('#deepseek-search-label').innerText(), /官方/);
+  assert.match(await page.locator('#deepseek-search-label').innerText(), /联网搜索/);
   await page.evaluate(()=>{const input=document.getElementById('deepseek-enable-search-input'); input.checked=true; input.dispatchEvent(new Event('change'));});
-  assert(await page.locator('#deepseek-search-group').evaluate(el=>el.classList.contains('hidden')));
+  assert(!(await page.locator('#deepseek-search-group').evaluate(el=>el.classList.contains('hidden'))));
+  await page.locator('#deepseek-search-engine-select').selectOption('deepseek_native',{force:true});
+  assert(!(await page.locator('#deepseek-native-search-help').evaluate(el=>el.classList.contains('hidden'))));
   await page.locator('#model-thinking-enabled-input').uncheck();
   assert.equal(JSON.parse(await editor.inputValue()).reasoning.effort, 'none');
   await page.locator('#model-thinking-enabled-input').check();
@@ -216,7 +218,7 @@ const fs = require('fs/promises'); const path = require('path'); const assert = 
   assert.equal(JSON.parse(await editor.inputValue()).temperature,0.456);
   // Native search cards match call IDs even when calls overlap, and survive history reload.
   const nativeUI = await page.evaluate(async()=>{
-   config.active_platform='deepseek'; config.deepseek_use_responses=true; config.deepseek_enable_web_search=true;
+   config.active_platform='deepseek'; config.deepseek_use_responses=true; config.deepseek_enable_web_search=true; config.deepseek_web_search_engine='deepseek_native';
    updateSearchBtnUI();
    messageList.innerHTML=''; appendMessage('assistant','', '',true);
    await window.onStreamMessage('search_start',{id:'ws_1',query:'first'});

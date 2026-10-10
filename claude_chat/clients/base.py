@@ -5,6 +5,19 @@ import httpx
 logger = logging.getLogger("claude_chat.clients")
 
 
+def record_stream_usage(target, usage):
+    """Capture provider reports before cancellation/errors; ordinary chat queues remain unchanged."""
+    record = getattr(target, "record_usage", None)
+    if callable(record):
+        record(usage)
+
+
+def record_stream_truncation(target, reason):
+    record = getattr(target, "record_truncation", None)
+    if callable(record) and str(reason).lower().split(".")[-1] in {"length", "max_tokens", "max_output_tokens"}:
+        record()
+
+
 def extract_final_response_text(done_data, fallback=""):
     """Extract only the terminal assistant text from a streaming ``done`` event."""
     blocks = done_data.get("content_blocks") if isinstance(done_data, dict) else None

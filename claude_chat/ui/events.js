@@ -214,10 +214,12 @@ copyPacketBtn.onclick = () => {
     copyText(packetContent.textContent);
     statusLabel.textContent = "📋 数据包 JSON 已成功复制到剪贴板";
 };
-async function reloadCurrentConversation() {
+async function reloadCurrentConversation(expectedId = currentConvId) {
     if (!currentConvId) return;
-    const conv = await apiBridge.load_conversation(currentConvId);
-    if (!conv) return;
+    const selectionVersion = conversationSelectionVersion;
+    const conv = await apiBridge.load_conversation(expectedId);
+    if (!conv || currentConvId !== expectedId || conv.id !== expectedId
+            || selectionVersion !== conversationSelectionVersion) return;
     const preserveReadingPosition = typeof chatShouldFollowLatest !== "undefined" && !chatShouldFollowLatest;
     const previousScrollTop = chatViewport.scrollTop;
     let readingAnchor = null;
@@ -233,6 +235,7 @@ async function reloadCurrentConversation() {
         }
     }
     currentConv = conv;
+    window.ChatTitles?.track(conv.id);
     messageList.innerHTML = "";
 
     const messages = conv.messages || [];

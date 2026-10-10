@@ -6,10 +6,16 @@ from claude_chat.clients.file_uploads import prepare_gemini_files, upload_cache_
 from pathlib import Path
 import httpx
 from anthropic import Anthropic, APIStatusError, APITimeoutError, BadRequestError
+from .base import (
+    build_http_client,
+    extract_api_message,
+    record_stream_truncation,
+    record_stream_usage,
+    sanitize_error_message,
+)
 
 logger = logging.getLogger("claude_chat.clients")
 
-from .base import extract_api_message, build_http_client, sanitize_error_message
 
 def convert_messages_to_gemini(messages):
     import json
@@ -85,12 +91,15 @@ def convert_messages_to_gemini(messages):
                         # Skip thinking blocks in multi-turn history to avoid Gemini API thought_signature verification errors
                         pass
                     elif btype in ("tool_use", "server_tool_use"):
-                        parts.append({
+                        call_part = {
                             "function_call": {
                                 "name": block.get("name", ""),
                                 "args": block.get("input", {})
                             }
-                        })
+                        }
+                        if block.get("_gemini_signature"):
+                            call_part["thought_signature"] = base64.b64decode(block["_gemini_signature"])
+                        parts.append(call_part)
                     elif btype in ("tool_result", "web_search_tool_result"):
                         func_name = find_function_name(block.get("tool_use_id", ""))
                         content_val = block.get("content", "")
@@ -116,13 +125,19 @@ def convert_messages_to_gemini(messages):
         if gemini_role == "model":
             for part in parts:
                 if isinstance(part, dict):
-                    part["thought_signature"] = "skip_thought_signature_validator"
+                    part.setdefault("thought_signature", "skip_thought_signature_validator")
             
         gemini_msgs.append({"role": gemini_role, "parts": parts})
     return gemini_msgs
 
 def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature, thinking_enabled, thinking_budget, thinking_level, streaming_queue, abort_event=None, on_stream_created=None, system=None, enable_search=False, conv_id=None, conv_manager=None, previous_content_blocks=None, enable_code_sandbox=False, code_sandbox_type="local", **kwargs):
     client = None
+    memory_session = kwargs.get("memory_session")
+    from claude_chat.memory_tools import TOOL_NAMES
+    calls = []
+    if kwargs.get("memory_depth", 0) > 2:
+        streaming_queue.put(("error", "记忆追加查询已达到本轮上限，请重试或缩小查询范围"))
+        return
     try:
         import sys
         use_legacy = False
@@ -138,7 +153,21 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
         full_reasoning = ""
         input_tokens = 0
         output_tokens = 0
+        reported_usage = {}
         content_blocks = []
+
+        def capture_usage(chunk):
+            for candidate in getattr(chunk, "candidates", None) or []:
+                record_stream_truncation(streaming_queue, getattr(candidate, "finish_reason", None))
+            metadata = getattr(chunk, "usage_metadata", None)
+            if metadata:
+                reported_usage.update({
+                    key: value for key, value in (
+                        ("input_tokens", getattr(metadata, "prompt_token_count", None)),
+                        ("output_tokens", getattr(metadata, "candidates_token_count", None)),
+                    ) if value is not None
+                })
+                record_stream_usage(streaming_queue, reported_usage)
 
         # 流式思考标签解析器:gemini-3.5-flash 等 preview 模型不在协议层分离思考,
         # 而是把 <thought>...</thought> 写在正文 text part 里(thought=False)。此处在
@@ -197,6 +226,7 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
                 on_stream_created(response_stream)
                 
             for chunk in response_stream:
+                capture_usage(chunk)
                 if abort_event and abort_event.is_set():
                     streaming_queue.put(("aborted", {}))
                     return
@@ -235,8 +265,8 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
                                         full_text += text_part
                                         streaming_queue.put(("text", text_part))
                                     
-            input_tokens = len(str(legacy_msgs)) // 4
-            output_tokens = len(full_text) // 4
+            input_tokens = reported_usage.get("input_tokens", len(str(legacy_msgs)) // 4)
+            output_tokens = reported_usage.get("output_tokens", len(full_text) // 4)
             
         else:
             # Modern google-genai path
@@ -270,6 +300,11 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
                 tools.append(types.Tool(google_search=types.GoogleSearch()))
             if enable_code_sandbox and code_sandbox_type == "cloud":
                 tools.append(types.Tool(code_execution=types.CodeExecution()))
+
+            if memory_session:
+                memory_definitions = memory_session.tools("gemini")
+                if memory_definitions:
+                    tools.append(types.Tool(function_declarations=memory_definitions))
                 
             if tools:
                 config_args["tools"] = tools
@@ -293,6 +328,7 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
             last_result = ""
             
             for chunk in response_stream:
+                capture_usage(chunk)
                 if abort_event and abort_event.is_set():
                     streaming_queue.put(("aborted", {}))
                     return
@@ -301,6 +337,16 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
                     parts = chunk.candidates[0].content.parts
                     if parts:
                         for part in parts:
+                            function_call = getattr(part, "function_call", None)
+                            if function_call and function_call.name in TOOL_NAMES and memory_session:
+                                call = {"type": "tool_use", "id": getattr(function_call, "id", None)
+                                        or f"memory-{memory_session.rounds}-{len(calls)}",
+                                        "name": function_call.name, "input": dict(function_call.args or {})}
+                                signature = getattr(part, "thought_signature", None)
+                                if signature:
+                                    call["_gemini_signature"] = base64.b64encode(signature).decode("ascii")
+                                calls.append(call)
+                                continue
                             executable_code = getattr(part, "executable_code", None)
                             code_execution_result = getattr(part, "code_execution_result", None)
                             text = getattr(part, "text", "")
@@ -432,6 +478,30 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
             full_text += text_part
             streaming_queue.put(("text", text_part))
 
+        if calls and memory_session:
+            memory_session.begin_round()
+            assistant = [{"type": "text", "text": full_text}, *calls]
+            results = [{"type": "tool_result", "tool_use_id": call["id"],
+                        "content": memory_session.execute(call["name"], call["input"], call["id"])} for call in calls]
+            if abort_event and abort_event.is_set():
+                streaming_queue.put(("aborted", {}))
+                return
+            if conv_id and conv_manager:
+                conv_manager.add_message(conv_id, "assistant", assistant)
+                conv_manager.add_message(conv_id, "user", results)
+            messages.extend([{"role": "assistant", "content": assistant}, {"role": "user", "content": results}])
+            client.close()
+            client = None
+            next_kwargs = {**kwargs, "memory_depth": kwargs.get("memory_depth", 0) + 1,
+                           "accumulated_input_tokens": input_tokens + kwargs.get("accumulated_input_tokens", 0),
+                           "accumulated_output_tokens": output_tokens + kwargs.get("accumulated_output_tokens", 0)}
+            stream_gemini_response(
+                api_key, api_url, proxy_mode, proxy_url, messages, model, max_tokens, temperature,
+                thinking_enabled, thinking_budget, thinking_level, streaming_queue, abort_event,
+                on_stream_created, system, enable_search, conv_id, conv_manager,
+                previous_content_blocks, enable_code_sandbox, code_sandbox_type, **next_kwargs)
+            return
+
         content_blocks = [{"type": "text", "text": full_text}]
         if full_reasoning:
             content_blocks.insert(0, {
@@ -441,8 +511,9 @@ def stream_gemini_response(api_key, api_url, proxy_mode, proxy_url, messages, mo
             })
             
         streaming_queue.put(("done", {
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
+            "usage_source": "reported" if len(reported_usage) == 2 else "estimated",
+            "input_tokens": input_tokens + kwargs.get("accumulated_input_tokens", 0),
+            "output_tokens": output_tokens + kwargs.get("accumulated_output_tokens", 0),
             "content_blocks": content_blocks,
             "thinking": full_reasoning
         }))

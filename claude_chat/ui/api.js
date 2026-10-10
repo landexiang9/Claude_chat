@@ -59,18 +59,18 @@ function readFileAsBase64(file) {
 }
 
 
-async function readHttpStream(response, callback) {
+async function readHttpStream(response, callback, task = currentStreamTask) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let sawTerminal = false;
-    const dispatchLine = (line) => {
+    const dispatchLine = async (line) => {
         try {
             const parsed = JSON.parse(line);
             if (parsed && (parsed.type === 'done' || parsed.type === 'aborted' || parsed.type === 'error')) {
                 sawTerminal = true;
             }
-            dispatchStreamEvent(parsed, callback);
+            await dispatchStreamEvent(parsed, callback);
         } catch (e) {
             console.error("Failed to parse stream line:", line, e);
         }
@@ -81,16 +81,18 @@ async function readHttpStream(response, callback) {
             if (done) {
                 // 处理遗留在 buffer 中没有以换行符分割的最后一条数据，防止断流或末行数据被截断丢弃
                 if (buffer.trim()) {
-                    dispatchLine(buffer);
+                    await dispatchLine(buffer);
                 }
                 // 服务端静默断流(超时/异常/进程退出)时不会下发 done/aborted/error 终止事件,
                 // 此时必须合成一个 error 事件复位 UI 的 isStreaming,否则"思考中..."占位永久卡死。
                 if (!sawTerminal) {
                     console.warn("Stream ended without a terminal event; synthesizing error.");
-                    dispatchStreamEvent({
+                    await dispatchStreamEvent({
                         version: 1,
                         type: "error",
                         data: "生成流意外中断，请重试。",
+                        task_id: task.taskId,
+                        conversation_id: task.conversationId,
                         sequence: 0
                     }, callback);
                 }
@@ -101,7 +103,7 @@ async function readHttpStream(response, callback) {
             buffer = lines.pop();
             for (const line of lines) {
                 if (line.trim()) {
-                    dispatchLine(line);
+                    await dispatchLine(line);
                 }
             }
         }
@@ -109,10 +111,12 @@ async function readHttpStream(response, callback) {
         // M-fix#11: 中途 reader.read() 失败时显式通知前端出错,避免助手占位"思考中..."永久卡死
         console.error("readHttpStream 读取流失败:", e);
         if (!sawTerminal) {
-            dispatchStreamEvent({
+            await dispatchStreamEvent({
                 version: 1,
                 type: "error",
                 data: e?.message || String(e),
+                task_id: task.taskId,
+                conversation_id: task.conversationId,
                 sequence: 0
             }, callback);
         }
@@ -124,7 +128,7 @@ async function readHttpStream(response, callback) {
         // UI 重载后再复位,提前复位会让用户在重载期间触发的 sendMessage/selectConversation
         // 覆盖刚写入的 messageList DOM。复位动作移至调用方 catch / done 处理器统一处理。
         try { reader.releaseLock(); } catch (_) {}
-        if (sendBtn) {
+        if (sendBtn && currentStreamTask === task && !isStreaming) {
             if (typeof setSendButtonState === "function") {
                 setSendButtonState(false);
             } else {
@@ -139,9 +143,9 @@ async function readHttpStream(response, callback) {
 
 function dispatchStreamEvent(event, legacyCallback) {
     if (typeof window.onStreamEvent === "function") {
-        window.onStreamEvent(event);
+        return window.onStreamEvent(event);
     } else if (legacyCallback) {
-        legacyCallback(event.type, event.data);
+        return legacyCallback(event.type, event.data);
     }
 }
 
@@ -165,6 +169,16 @@ function serializeSaveConfig(cfg) {
 }
 
 const apiBridge = {
+    conversation_title_operation: async (id, action = "status", title = null) => {
+        if (checkIsNative()) return window.pywebview.api.conversation_title_operation(id, action, title);
+        const response = await fetch('/api/conversation_title', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({conv_id: id, action, title})
+        });
+        const result = await response.json();
+        if (!response.ok && !result.error) result.error = `HTTP ${response.status}`;
+        return result;
+    },
     memory_operation: async (action, data = {}) => {
         if (checkIsNative()) return window.pywebview.api.memory_operation(action, data);
         const response = await fetch(`/api/memory/${encodeURIComponent(action)}`, {
@@ -340,9 +354,11 @@ const apiBridge = {
         }
     },
     send_message: async (convId, text, attachments, renderMarkdown = true) => {
+        const task = currentStreamTask;
         if (checkIsNative()) {
             const started = await window.pywebview.api.send_message(convId, text, attachments, renderMarkdown);
             if (!started) throw new Error("后端未能启动消息生成");
+            await confirmUiStreamStarted(task);
             return true;
         } else {
             try {
@@ -359,20 +375,22 @@ const apiBridge = {
                     } catch (_) {}
                     throw new Error(detail || `HTTP ${response.status}`);
                 }
-                await readHttpStream(response, window.onStreamMessage);
+                await confirmUiStreamStarted(task);
+                await readHttpStream(response, window.onStreamMessage, task);
                 return true;
             } catch (e) {
                 console.error("send_message HTTP 请求失败:", e);
-                if (!e.streamEventDispatched) {
-                    dispatchStreamEvent({ version: 1, type: "error", data: e.message || String(e), sequence: 0 });
-                }
                 throw e;
             }
         }
     },
     edit_and_resend: async (convId, msgIdx, newContent, renderMarkdown = true) => {
+        const task = currentStreamTask;
         if (checkIsNative()) {
-            return window.pywebview.api.edit_and_resend(convId, msgIdx, newContent, renderMarkdown);
+            const started = await window.pywebview.api.edit_and_resend(convId, msgIdx, newContent, renderMarkdown);
+            if (!started) throw new Error("后端未能启动消息生成");
+            await confirmUiStreamStarted(task);
+            return true;
         } else {
             try {
                 const response = await fetch('/api/edit_and_resend', {
@@ -381,20 +399,22 @@ const apiBridge = {
                     body: JSON.stringify({ conv_id: convId, msg_index: msgIdx, new_content: newContent, render_markdown: renderMarkdown })
                 });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                await readHttpStream(response, window.onStreamMessage);
+                await confirmUiStreamStarted(task);
+                await readHttpStream(response, window.onStreamMessage, task);
                 return true;
             } catch (e) {
                 console.error("edit_and_resend HTTP 请求失败:", e);
-                if (!e.streamEventDispatched) {
-                    dispatchStreamEvent({ version: 1, type: "error", data: e.message || String(e), sequence: 0 });
-                }
                 throw e;
             }
         }
     },
     retry_message: async (convId, msgIdx) => {
+        const task = currentStreamTask;
         if (checkIsNative()) {
-            return window.pywebview.api.retry_message(convId, msgIdx);
+            const started = await window.pywebview.api.retry_message(convId, msgIdx);
+            if (!started) throw new Error("后端未能启动消息生成");
+            await confirmUiStreamStarted(task);
+            return true;
         } else {
             try {
                 const response = await fetch('/api/retry_message', {
@@ -403,13 +423,11 @@ const apiBridge = {
                     body: JSON.stringify({ conv_id: convId, msg_index: msgIdx })
                 });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                await readHttpStream(response, window.onStreamMessage);
+                await confirmUiStreamStarted(task);
+                await readHttpStream(response, window.onStreamMessage, task);
                 return true;
             } catch (e) {
                 console.error("retry_message HTTP 请求失败:", e);
-                if (!e.streamEventDispatched) {
-                    dispatchStreamEvent({ version: 1, type: "error", data: e.message || String(e), sequence: 0 });
-                }
                 throw e;
             }
         }

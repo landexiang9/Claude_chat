@@ -1,5 +1,6 @@
 """Standalone tests for the typed streaming protocol and task lifecycle."""
 
+import queue
 import sys
 import threading
 import unittest
@@ -20,9 +21,11 @@ from claude_chat.stream_protocol import (
 class CloseTracker:
     def __init__(self):
         self.closed = False
+        self.close_called = threading.Event()
 
     def close(self):
         self.closed = True
+        self.close_called.set()
 
 
 class StreamProtocolTests(unittest.TestCase):
@@ -82,12 +85,51 @@ class StreamProtocolTests(unittest.TestCase):
         task.request_abort()
         self.assertEqual(task.state, StreamTaskState.CANCELLING)
         self.assertTrue(task.abort_event.is_set())
+        self.assertTrue(stream.close_called.wait(1))
         self.assertTrue(stream.closed)
         task.transition(StreamTaskState.ABORTED)
         self.assertFalse(task.is_active)
         late_stream = CloseTracker()
         task.bind_stream(late_stream)
         self.assertTrue(late_stream.closed)
+
+    def test_abort_wakes_reader_before_a_blocked_close_and_drops_late_output(self):
+        events = StreamEventQueue(conversation_id="conv-1")
+        task = StreamTask("conv-1", events)
+        release = threading.Event()
+        entered = threading.Event()
+
+        class BlockedStream:
+            def close(self):
+                entered.set()
+                release.wait(2)
+
+        task.bind_stream(BlockedStream())
+        events.put(("text", "partial"))
+        try:
+            task.request_abort()
+            self.assertTrue(entered.wait(1))
+            self.assertFalse(release.is_set())
+            self.assertEqual(events.get(), ("text", "partial"))
+            self.assertEqual(events.get(), ("aborted", {}))
+            task.request_abort()
+            events.put(("text", "late"))
+            events.put(("error", "closed transport"))
+            events.put(("done", {}))
+            with self.assertRaises(queue.Empty):
+                events.get_event(block=False)
+        finally:
+            release.set()
+
+    def test_completion_winning_abort_race_remains_completed(self):
+        events = StreamEventQueue(conversation_id="conv-1")
+        task = StreamTask("conv-1", events)
+        task.transition(StreamTaskState.RUNNING)
+        events.put(("done", {}))
+        task.request_abort()
+        self.assertFalse(task.abort_event.is_set())
+        task.finish_for_event(events.get_event().type)
+        self.assertEqual(task.state, StreamTaskState.COMPLETED)
 
     def test_illegal_terminal_transition_is_rejected(self):
         task = StreamTask("conv-1", StreamEventQueue(conversation_id="conv-1"))

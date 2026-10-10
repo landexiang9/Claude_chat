@@ -45,7 +45,7 @@ function applyFontMode() {
 function getActiveSearchPreference() {
     const platform = config.active_platform || "claude";
     if (platform === "claude") return { enabledKey: "enable_web_search", engineKey: "web_search_engine", label: "Claude" };
-    if (platform === "deepseek") return { enabledKey: "deepseek_enable_web_search", engineKey: config.deepseek_use_responses ? null : "deepseek_web_search_engine", engineLabel: "DeepSeek 官方搜索", label: "DeepSeek" };
+    if (platform === "deepseek") return { enabledKey: "deepseek_enable_web_search", engineKey: "deepseek_web_search_engine", label: "DeepSeek" };
     if (platform === "gemini") return { enabledKey: "gemini_enable_web_search", engineKey: null, label: "Gemini" };
     return null;
 }
@@ -89,7 +89,8 @@ function updateSearchBtnUI() {
     const enabled = !!config[preference.enabledKey];
     if (enabled) {
         webSearchBtn.classList.add("active");
-        const engine = preference.engineKey ? (config[preference.engineKey] || "google") : (preference.engineLabel || "Google Search");
+        const engineId = preference.engineKey ? (config[preference.engineKey] || "google") : "Google Search";
+        const engine = engineId === "deepseek_native" ? "DeepSeek 官方搜索" : engineId;
         webSearchBtn.title = `${preference.label} 联网搜索：开启 (${engine})`;
         webSearchBtn.setAttribute("aria-pressed", "true");
     } else {
@@ -456,6 +457,7 @@ async function loadConversations() {
 
 // 渲染侧边栏中的对话卡片列表
 function renderConversations() {
+    window.ChatTitles?.observe(conversations);
     convList.innerHTML = "";
     const normalizedQuery = (conversationSearchInput?.value || "").trim().toLocaleLowerCase();
     const visibleConversations = conversations.filter(c => {
@@ -489,6 +491,17 @@ function renderConversations() {
         title.textContent = c.title || "新对话";
         selectBtn.appendChild(title);
         item.appendChild(selectBtn);
+
+        const titleMenuBtn = document.createElement("button");
+        titleMenuBtn.className = "conversation-title-menu-btn";
+        titleMenuBtn.type = "button";
+        titleMenuBtn.textContent = "⋯";
+        titleMenuBtn.title = c.title_status === "generating" ? "AI 正在生成标题，仍可手动编辑" : "编辑或重新生成标题";
+        titleMenuBtn.classList.toggle("title-generating", c.title_status === "generating");
+        titleMenuBtn.setAttribute("aria-label", `标题操作：${c.title || "新对话"}`);
+        titleMenuBtn.setAttribute("aria-haspopup", "dialog");
+        titleMenuBtn.onclick = () => window.ChatTitles?.open(c.id, titleMenuBtn);
+        item.appendChild(titleMenuBtn);
         
         const delBtn = document.createElement("button");
         delBtn.className = "delete-conv-btn";
@@ -778,7 +791,9 @@ function appendMessage(
                         let usageStr = "";
                         if (tc.usage) {
                             const usage = tc.usage;
-                            if (usage.remaining_requests !== undefined) {
+                            if (tc.engine === "deepseek_native" && usage.input_tokens !== undefined) {
+                                usageStr = ` | 搜索 Token: ${Number(usage.input_tokens) || 0} in / ${Number(usage.output_tokens) || 0} out`;
+                            } else if (usage.remaining_requests !== undefined) {
                                 usageStr = ` | 剩余额度: ${usage.remaining_requests} 请求`;
                                 if (usage.remaining_tokens !== undefined) {
                                     usageStr += ` / ${usage.remaining_tokens} Token`;

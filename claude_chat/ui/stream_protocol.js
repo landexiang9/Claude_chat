@@ -11,18 +11,26 @@ let currentStreamTask = {
     status: "idle",
     lastSequence: 0
 };
+const retiredStreamTaskIds = new Set();
 
 function setUiStreamTaskState(status, patch = {}) {
-    currentStreamTask = { ...currentStreamTask, ...patch, status };
+    Object.assign(currentStreamTask, patch, { status });
     isStreaming = ACTIVE_STREAM_TASK_STATES.has(status);
 }
 
 function startUiStreamTask(conversationId) {
+    if (currentStreamTask.taskId) {
+        retiredStreamTaskIds.add(currentStreamTask.taskId);
+        if (retiredStreamTaskIds.size > 100) retiredStreamTaskIds.delete(retiredStreamTaskIds.values().next().value);
+    }
     currentStreamTask = {
         taskId: null,
         conversationId: conversationId || null,
         status: "starting",
-        lastSequence: 0
+        lastSequence: 0,
+        row: typeof document !== "undefined" ? document.getElementById("streaming-msg-row") : null,
+        viewNodes: typeof messageList !== "undefined" ? Array.from(messageList.childNodes) : [],
+        terminalReceived: false
     };
     isStreaming = true;
 }
@@ -33,6 +41,21 @@ function requestUiStreamCancellation() {
 
 function finishUiStreamTask(status) {
     setUiStreamTaskState(status);
+    currentStreamTask.row = null;
+    currentStreamTask.viewNodes = [];
+}
+
+async function confirmUiStreamStarted(task) {
+    // Stop can arrive before send_message has created the backend task.
+    if (currentStreamTask === task && task.status === "cancelling" && !task.terminalReceived) {
+        try {
+            const result = await apiBridge.abort_generation();
+            if (!result || result.success === false) throw new Error("终止请求失败，请重试");
+        } catch (error) {
+            console.error("Unable to cancel the started stream:", error);
+            if (currentStreamTask === task) statusLabel.textContent = "终止请求失败，请重试";
+        }
+    }
 }
 
 function normalizeStreamEvent(rawEvent) {
@@ -58,6 +81,10 @@ function normalizeStreamEvent(rawEvent) {
 window.onStreamEvent = (rawEvent) => {
     const event = normalizeStreamEvent(rawEvent);
     if (!event) return;
+    if (!isStreaming || currentStreamTask.terminalReceived) return;
+    if (event.task_id && retiredStreamTaskIds.has(event.task_id)) return;
+    if (event.conversation_id && currentStreamTask.conversationId
+            && event.conversation_id !== String(currentStreamTask.conversationId)) return;
 
     if (event.task_id) {
         if (currentStreamTask.taskId && currentStreamTask.taskId !== event.task_id) {
@@ -79,10 +106,19 @@ window.onStreamEvent = (rawEvent) => {
             error: "failed"
         }[event.type];
         if (terminalState) {
-            return Promise.resolve(result).finally(() => finishUiStreamTask(terminalState));
+            const task = currentStreamTask;
+            task.terminalReceived = true;
+            return Promise.resolve(result).finally(() => {
+                if (currentStreamTask === task) finishUiStreamTask(terminalState);
+            });
         }
         return result;
     }
 };
 
-window.getStreamTaskState = () => ({ ...currentStreamTask });
+window.getStreamTaskState = () => ({
+    taskId: currentStreamTask.taskId,
+    conversationId: currentStreamTask.conversationId,
+    status: currentStreamTask.status,
+    lastSequence: currentStreamTask.lastSequence
+});

@@ -198,6 +198,21 @@ No `.github/` directory, no CI workflows, no pre-commit hooks.
 
 Anthropic SDK 1.x uses `httpx2`. Every `Anthropic(http_client=...)` call must use `build_anthropic_http_client`, including model discovery and cloud OCR. Keep the generic `build_http_client` for other integrations. Declare `httpx2` directly in both `requirements.txt` and `pyproject.toml`; the Windows spec also includes it. When changing these entry points, run `python -m pytest test/test_anthropic_http_client.py -q`.
 
+## Conversation titles
+
+`services/conversation_titles.py` owns independent AI title jobs. `ConversationService.conversation_title_operation`
+provides edit/generate/status operations through WebAPI and authenticated `POST /api/conversation_title`.
+New chats generate once after their first successful reply, using the chat task's provider/model snapshot;
+manual regeneration uses the conversation's current provider/model. Requests use bounded text, no memory/search/code tools,
+explicitly disable thinking with the provider's off parameter, and ignore chat thinking/JSON settings. Models known to
+require thinking retain the old title and return an error; never silently switch models or enable minimal thinking.
+Title requests never append chat messages or change chat token totals. Existing titles are preserved on migration.
+Keep `title_source`, `title_version`, and `title_auto_attempted` metadata; version-checked writes must not overwrite manual
+edits, newer jobs, or deleted conversations. Generic metadata/full-message saves must preserve the canonical title.
+`ui/conversation_titles.js` updates title state without reloading messages or changing selection, including temporary chats.
+Run `python -m pytest test/test_conversation_titles.py -q` and `node test/test_conversation_titles_browser.js`
+(Playwright/Edge, `PLAYWRIGHT_MODULE` and `PYTHON_EXECUTABLE` as needed). Both use isolated SQLite and mocked models.
+
 ## Manual model IDs
 
 The settings dialog saves `manual_model_ids` as a provider-to-ID-list mapping. `updateModelList` merges only the active provider's IDs into discovery results without duplicates. Preserve this behavior for empty discovery results and provider switches; `test/test_model_picker.js` covers these cases.
@@ -219,6 +234,26 @@ Search must never index input values or credentials. Navigation supports arrow k
 
 `memory_schema.py` performs additive migrations; `memory_resolver.py` owns typed fields/conflicts/versions; `memory_embeddings.py` handles independent embedding transports; `memory_vectors.py` indexes local float32 vectors; `memory_hybrid.py` merges retrieval and builds bounded context. The UI extension is `ui/memory_advanced.js`. Cloud/keyword modes use existing dependencies; local Sentence Transformers is optional. Do not download models or invoke paid embeddings during automated checks.
 
-Run `python -m pytest test/test_memory.py test/test_memory_hybrid.py -q` for real isolated SQLite regressions. `python test/test_memory_benchmark.py` produces a controlled offline benchmark in `scratch/memory-validation.json`; its recall results verify the pipeline, not real-model quality. Preserve epoch/content/version checks before async write-back, scope inheritance, verbatim live user evidence, atomic import/delete, unchanged-setting index retention and automatic retry backoff. JSON export v2 includes historical versions; imports keep external provenance untrusted.
+Run `python -m pytest test/test_memory.py test/test_memory_hybrid.py test/test_memory_discussions.py test/test_memory_lifecycle.py test/test_memory_protocols.py -q` for isolated SQLite and mocked-protocol regressions. `python test/test_memory_benchmark.py` produces a controlled offline benchmark in `scratch/memory-validation.json`; results verify the pipeline, not real-model quality. Preserve epoch/content/version checks, scope inheritance, verbatim live evidence, atomic import/delete, index retention and retry backoff. JSON v3 includes fact/topic versions and sources; v1/v2 remain importable and external provenance stays untrusted.
+
+`memory_episodes.py`, `memory_fact_sources.py`, `memory_overviews.py`, `memory_jobs.py` and `memory_tools.py` implement four-layer memory. Discussion jobs persist hashed input units and successful cursors, reuse append-only prefixes, invalidate edits and never overwrite manual summaries. Backfill requires explicit UI preview/selection/start; recovery must never scan unauthorized historical chats. Pause persists. Assistant proposals cannot become confirmed outcomes without live user/tool evidence. Forgetting blocks supporting messages, preserving independently sourced material; deleting one source prunes unsupported automatic facts. The four read-only tools use software-selected scope, two rounds/eight seconds/shared memory budget, and isolated text-plan fallback on explicit unsupported tool errors before output. Background requests never receive memory/search/code tools. `ui/memory_discussions.js` supplies topic/project/overview/jobs and source/version editors; the HTTP browser regression mocks every model request.
 
 Embedding model discovery uses `memory_operation("embedding_models", {"platform": ...})`, separate from chat-model discovery. `memory_embeddings.fetch_embedding_models` filters Gemini embedding actions, uses OpenRouter's dedicated catalog, and filters compatible catalogs by capabilities/name. Reuse configured keys/proxies/models URL, keep network I/O outside the app lock, never generate paid vectors to discover models, and retain manual IDs on errors/empty lists. `test/test_embedding_model_discovery.py` and the HTTP browser regression cover discovery, selection, retry and stale-provider responses.
+
+Fact versions keep immutable origin/evidence_json snapshots; never validate an old version using only the current fact's sources. Legacy versions without complete proof remain stored but are excluded from retrieval. Embedding batches validate live sources immediately before transport and again on writeback. Source caches are operation-local to a SQLite read snapshot and must not span message/permission mutations. Memory-read tool results are excluded from new extraction evidence; tool verification requires a paired execution name and affirmative result. Standard and Responses records share classification. Legacy attachment text is filtered by attachment_text. New episode editors submit expected_version; conflicts retain drafts. Import preview is read-only, conflicts default to skip, replacement requires the previewed ID/version and clears current old source lineage; independent copies remain external/unverified. Run test/test_memory_remediation.py plus the full isolated suite and enhanced HTTP browser regression after changes.
+
+`memory_usage.py` records request-level reported tokens for facts/episode/merge (background) and router/plan (chat), shared by GUI and authenticated memory usage HTTP API. Keep unknown counts NULL, distinguish adapter estimates, and capture usage before cancellation and parsing errors. Partial/failed/truncated requests retain reports; complete JSON at an actual output cap must not advance progress. A queue hook observes caps only for memory requests, without changing ordinary chat termination. Request rows must contain no raw payload/errors/credentials. Job counts are only task summaries; the ledger excludes embedding/main-chat/title calls and overlaps some chat planning totals, so never present it as a complete invoice or add both totals. `test/test_memory_usage.py` covers all stages, real SDK/mock HTTP cancellation and output caps; the HTTP browser check covers the usage view and mobile bounds. Confirmation checks preserve the enclosing user sentence and full execution output; negative tool proof remains valid for RETRACT.
+
+Memory background requests use stage-specific authoritative output limits, independent of title/chat parameters.
+Episode source handles are short on the wire and restored to canonical IDs before validation. Output truncation reduces
+the persistent batch limit without advancing the cursor; deterministic format/auth errors require explicit resume.
+Preserve reported usage for incomplete Responses requests. `test/test_memory_request_failures.py` exercises these paths
+through real SDK parsing and mocked HTTP, with isolated SQLite; no real backfill or paid calls in automated checks.
+
+Episode claims derive ordinary provenance from actual source roles; mixed sources remain unverified. Automatic
+unproven outcomes may be downgraded only with valid sources; manual confirmation stays strict. KEEP/REPLACE/RETRACT
+events retain live evidence and message order so old batches cannot revive a later retraction. Manual edits update
+payload/source links/periods/versions atomically; archival and forgetting repair legacy source links from the payload.
+Contiguous chunks reconstruct by offset, without inventing quotes across gaps. Discussion pause/resume must not bump
+the privacy epoch. Optional job_resume id retries one persisted task; global resume stays compatible.
+Run test/test_memory_edge_regressions.py plus the authenticated HTTP browser check for these regressions.

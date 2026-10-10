@@ -60,6 +60,10 @@ class HttpApiRouter:
         elif path == "/api/conversations":
             self.send_json_response(self.server.api.load_conversations())
 
+        elif path.startswith("/api/conversation_title/"):
+            result = self.server.api.conversation_title_operation(path.rsplit("/", 1)[-1])
+            self.send_json_response(result, status=200 if result.get("success") else 400)
+
         # GET /api/conversation/<id> -> 加载指定的某个对话及消息详情
         elif path.startswith("/api/conversation/"):
             conv_id = path.split("/")[-1]
@@ -136,6 +140,12 @@ class HttpApiRouter:
                     body.pop(f"clear_{key}", None)
             success = self.server.api.save_config(body)
             self.send_json_response({"success": success})
+
+        elif path == "/api/conversation_title":
+            result = self.server.api.conversation_title_operation(
+                body.get("conv_id"), body.get("action", "status"), body.get("title")
+            )
+            self.send_json_response(result, status=200 if result.get("success") else 400)
 
         elif path == "/api/preview_model_request":
             self.send_json_response(self.server.api.preview_model_request(body))

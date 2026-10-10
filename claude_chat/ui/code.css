@@ -1,0 +1,53 @@
+/* Theme-aware code surfaces and syntax colors. No re-highlighting is needed on theme changes. */
+:root {
+    --code-header-bg:#eef1f5; --code-muted:#57606a;
+    --syntax-keyword:#cf222e; --syntax-title:#8250df; --syntax-value:#0550ae;
+    --syntax-string:#0a3069; --syntax-builtin:#953800; --syntax-name:#116329;
+    --syntax-addition:#116329; --syntax-addition-bg:#dafbe1;
+    --syntax-deletion:#82071e; --syntax-deletion-bg:#ffebe9;
+}
+:root[data-theme="dark"] {
+    --code-header-bg:#161b22; --code-muted:#9da7b3;
+    --syntax-keyword:#ff7b72; --syntax-title:#d2a8ff; --syntax-value:#79c0ff;
+    --syntax-string:#a5d6ff; --syntax-builtin:#ffa657; --syntax-name:#7ee787;
+    --syntax-addition:#aff5b4; --syntax-addition-bg:#033a16;
+    --syntax-deletion:#ffdcd7; --syntax-deletion-bg:#67060c;
+}
+.hljs { background:var(--code-bg); color:var(--code-text); }
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_ { color:var(--syntax-keyword); }
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_ { color:var(--syntax-title); }
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable { color:var(--syntax-value); }
+.hljs-meta .hljs-string,.hljs-regexp,.hljs-string { color:var(--syntax-string); }
+.hljs-built_in,.hljs-symbol,.hljs-bullet { color:var(--syntax-builtin); }
+.hljs-code,.hljs-comment,.hljs-formula { color:var(--code-muted); }
+.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag { color:var(--syntax-name); }
+.hljs-subst,.hljs-emphasis,.hljs-strong { color:var(--code-text); }
+.hljs-section { color:var(--syntax-title); }
+.hljs-addition { color:var(--syntax-addition); background:var(--syntax-addition-bg); }
+.hljs-deletion { color:var(--syntax-deletion); background:var(--syntax-deletion-bg); }
+
+/* Only the code scrolls horizontally, leaving copy/save/run controls in view. */
+.message-body pre {
+    display:grid; grid-template-columns:minmax(0,1fr); padding:0; overflow:hidden;
+    background:var(--code-bg); color:var(--code-text); box-shadow:none;
+}
+.message-body pre code {
+    width:100%; min-width:0; max-width:100%; overflow-x:auto; padding:15px;
+    white-space:pre; overflow-wrap:normal; word-break:normal; tab-size:4;
+}
+.code-header {
+    position:static; inset:auto; height:auto; min-height:38px; min-width:0;
+    padding:4px 10px; gap:8px; flex-wrap:wrap; white-space:normal;
+    background:var(--code-header-bg); color:var(--code-muted);
+}
+.code-header > span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.code-header-actions { flex-shrink:0; max-width:100%; align-items:center; flex-wrap:wrap; gap:6px; }
+.code-header .code-copy-btn,.code-header .code-save-btn { min-height:28px; padding:4px 6px; border-radius:5px; color:var(--code-muted); }
+.code-header .code-copy-btn:hover,.code-header .code-save-btn:hover { background:var(--surface1); color:var(--code-text); }
+.attachment-preview-text.is-code { background:var(--code-bg); color:var(--code-text); }
+#artifacts-code-tab { background:var(--code-bg); color:var(--code-text); }
+#artifacts-code-view { background:var(--code-bg); color:var(--code-text); overflow-wrap:anywhere; tab-size:4; }
+@media(max-width:767px) {
+    .code-header { min-height:44px; }
+    .code-header button { min-height:36px; }
+}

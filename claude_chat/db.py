@@ -111,6 +111,14 @@ class DatabaseManager:
                 conn.execute("ALTER TABLE conversations ADD COLUMN platform TEXT")
             except sqlite3.OperationalError:
                 pass
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(conversations)")}
+            for name, declaration in (
+                ("title_source", "TEXT NOT NULL DEFAULT 'legacy'"),
+                ("title_version", "INTEGER NOT NULL DEFAULT 0"),
+                ("title_auto_attempted", "INTEGER NOT NULL DEFAULT 0"),
+            ):
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE conversations ADD COLUMN {name} {declaration}")
             # 创建消息表，并建立对外键约束
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
@@ -212,7 +220,7 @@ class DatabaseManager:
         result = []
         with self.get_connection() as conn:
             cursor = conn.execute("""
-                SELECT id, title, model, platform, updated_at, input_tokens, output_tokens 
+                SELECT id, title, title_source, title_version, model, platform, updated_at, input_tokens, output_tokens
                 FROM conversations 
                 ORDER BY datetime(updated_at) DESC
             """)
@@ -220,6 +228,8 @@ class DatabaseManager:
                 result.append({
                     "id": row["id"],
                     "title": row["title"],
+                    "title_source": row["title_source"],
+                    "title_version": row["title_version"],
                     "model": row["model"],
                     "platform": row["platform"],
                     "updated_at": row["updated_at"],
@@ -240,6 +250,9 @@ class DatabaseManager:
             conv_data = {
                 "id": row["id"],
                 "title": row["title"],
+                "title_source": row["title_source"],
+                "title_version": row["title_version"],
+                "title_auto_attempted": bool(row["title_auto_attempted"]),
                 "model": row["model"],
                 "platform": row["platform"],
                 "temperature": row["temperature"],
@@ -261,6 +274,7 @@ class DatabaseManager:
                     "thinking": m_row["thinking"],
                     "aborted": bool(m_row["aborted"]),
                     "render_markdown": bool(m_row["render_markdown"]),
+                    "created_at": m_row["created_at"],
                 })
             
             return conv_data
@@ -286,12 +300,24 @@ class DatabaseManager:
         with self.get_connection() as conn:
             # 写入对话表
             conn.execute("""
-                INSERT OR REPLACE INTO conversations 
+                INSERT INTO conversations
                 (id, title, model, platform, temperature, max_tokens, thinking, created_at, updated_at, input_tokens, output_tokens)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    model=excluded.model, platform=excluded.platform, temperature=excluded.temperature,
+                    max_tokens=excluded.max_tokens, thinking=excluded.thinking, updated_at=excluded.updated_at,
+                    input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens
             """, (conv_id, title, model, platform, temperature, max_tokens, thinking, created_at, updated_at, input_tokens, output_tokens))
             
             # 重建消息表中的内容：先删除该对话历史消息，然后一次性全部写入最新消息
+            from collections import defaultdict, deque
+
+            previous_dates = defaultdict(deque)
+            previous_units = []
+            for existing_message in conn.execute("SELECT role,content,created_at,aborted FROM messages "
+                                                 "WHERE conversation_id=? ORDER BY id", (conv_id,)):
+                previous_dates[(existing_message["role"], existing_message["content"])].append(existing_message["created_at"])
+                previous_units.append((existing_message["role"], existing_message["content"], existing_message["aborted"]))
             conn.execute("DELETE FROM messages WHERE conversation_id = ?", (conv_id,))
             
             messages = conv_data.get("messages", [])
@@ -301,7 +327,9 @@ class DatabaseManager:
                 m_thinking = msg.get("thinking", None)
                 m_aborted = 1 if msg.get("aborted", False) else 0
                 m_render_markdown = 1 if msg.get("render_markdown", True) else 0
-                m_created = updated_at
+                dates = previous_dates[(m_role, m_content)]
+                previous_date = dates.popleft() if dates else None
+                m_created = msg.get("created_at") or previous_date or updated_at
                 
                 conn.execute("""
                     INSERT INTO messages (
@@ -313,6 +341,27 @@ class DatabaseManager:
                     m_aborted, m_render_markdown, m_created,
                 ))
             
+            current_units = [
+                (m.get("role", "user"), serialize_content(m.get("content", "")), int(bool(m.get("aborted"))))
+                for m in messages
+            ]
+            if previous_units != current_units[:len(previous_units)] and conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_documents'"
+            ).fetchone():
+                # Edits/removals invalidate pending source documents in the same transaction as the messages.
+                documents = [r[0] for r in conn.execute(
+                    "SELECT id FROM memory_documents WHERE conv_id=? OR ref_id IN "
+                    "(SELECT entity_id FROM memory_sources WHERE entity_kind='fact' AND conv_id=?) "
+                    "OR ref_id IN (SELECT memory_id FROM memory_versions v WHERE source_conv_id=? OR EXISTS "
+                    "(SELECT 1 FROM json_each(v.evidence_json) e WHERE json_extract(e.value,'$.conv_id')=?))",
+                    (conv_id, conv_id, conv_id, conv_id),
+                )]
+                for identity in documents:
+                    conn.execute("DELETE FROM memory_vectors WHERE document_id=?", (identity,))
+                    conn.execute("DELETE FROM memory_documents WHERE id=?", (identity,))
+                conn.execute("DELETE FROM memory_embedding_cache")
+                conn.execute("DELETE FROM memory_overviews")
+                conn.execute("DELETE FROM memory_context")
             conn.commit()
 
     def delete_conversation(self, conv_id):
@@ -324,6 +373,36 @@ class DatabaseManager:
             conn.execute("DELETE FROM messages WHERE conversation_id = ?", (conv_id,))
             conn.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
             conn.commit()
+
+    def get_conversation_title(self, conv_id):
+        with self.get_connection() as conn:
+            row = conn.execute(
+                "SELECT id,title,title_source,title_version,model,platform FROM conversations WHERE id=?", (conv_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def reserve_title_generation(self, conv_id, automatic=False):
+        """Claim a version atomically; old workers can never write over a later edit/request."""
+        with self.get_connection() as conn:
+            condition = " AND title_source='default' AND title_auto_attempted=0" if automatic else ""
+            changed = conn.execute(
+                "UPDATE conversations SET title_version=title_version+1,title_auto_attempted=1 WHERE id=?" + condition,
+                (conv_id,),
+            ).rowcount
+            if not changed:
+                return None
+            return conn.execute("SELECT title_version FROM conversations WHERE id=?", (conv_id,)).fetchone()[0]
+
+    def update_conversation_title(self, conv_id, title, source, expected_version=None):
+        with self.get_connection() as conn:
+            condition = " AND title_version=?" if expected_version is not None else ""
+            params = (title, source, conv_id)
+            if expected_version is not None:
+                params += (expected_version,)
+            return bool(conn.execute(
+                "UPDATE conversations SET title=?,title_source=?,title_version=title_version+1 WHERE id=?" + condition,
+                params,
+            ).rowcount)
 
     def new_conversation(self):
         """
@@ -344,6 +423,9 @@ class DatabaseManager:
             "messages": [],
         }
         self.save_conversation(data)
+        with self.get_connection() as conn:
+            conn.execute("UPDATE conversations SET title_source='default' WHERE id=?", (conv_id,))
+        data.update(title_source="default", title_version=0, title_auto_attempted=False)
         return data
 
     def auto_clean(self, keep=50, active_conv_id=None):
@@ -458,27 +540,35 @@ class DatabaseManager:
                         # 2. 查询当前对话状态以判断是否触发自动标题生成
                         cursor = conn.execute("SELECT COUNT(*) FROM messages WHERE conversation_id = ?", (conv_id,))
                         msg_count = cursor.fetchone()[0]
-                        cursor2 = conn.execute("SELECT title FROM conversations WHERE id = ?", (conv_id,))
+                        cursor2 = conn.execute("SELECT title, title_source FROM conversations WHERE id = ?", (conv_id,))
                         row = cursor2.fetchone()
                         current_title = row["title"] if row else ""
-                        # M2: 仅当对话尚无自定义标题（仍为默认"新对话"或为空）且这是第一条 assistant 回复时生成标题
-                        # 修复：带联网搜索的首轮对话因中间消息使 msg_count>2，旧条件 msg_count==2 会导致永不生成标题
+                        # Provide a local fallback while the independent AI title job runs.
+                        # Explicitly edited titles, including "新对话", must remain untouched.
                         should_generate_title = (
                             msg_count >= 2
+                            and row
+                            and row["title_source"] == "default"
                             and (not current_title or current_title.strip() == "新对话")
                         )
 
                         if should_generate_title:
                             # 自动截取前 30 个字符作为对话标题
+                            first_user = conn.execute(
+                                "SELECT content FROM messages WHERE conversation_id=? AND role='user' "
+                                "ORDER BY id LIMIT 1",
+                                (conv_id,),
+                            ).fetchone()
+                            title_content = deserialize_content(first_user[0]) if first_user else content
                             title_source = ""
-                            if isinstance(content, list):
-                                for block in content:
+                            if isinstance(title_content, list):
+                                for block in title_content:
                                     if isinstance(block, dict) and block.get("type") == "text":
                                         title_source = block.get("text", "")
                                         if title_source:
                                             break
                             else:
-                                title_source = str(content)
+                                title_source = str(title_content)
 
                             title = title_source[:30].replace("\n", " ")
                             if not title.strip():
@@ -486,7 +576,8 @@ class DatabaseManager:
                             # M1: Token 累加（input_tokens + ?）而非覆盖
                             conn.execute("""
                                 UPDATE conversations 
-                                SET title = ?, input_tokens = input_tokens + ?, output_tokens = output_tokens + ?, updated_at = ? 
+                                SET title = ?, title_version = title_version + 1,
+                                    input_tokens = input_tokens + ?, output_tokens = output_tokens + ?, updated_at = ?
                                 WHERE id = ?
                             """, (title, input_tokens, output_tokens, now, conv_id))
                         else:
@@ -515,7 +606,6 @@ class DatabaseManager:
         H4 修复：使用 UPDATE 而非 INSERT OR REPLACE，避免触发 ON DELETE CASCADE 级联删除消息。
         """
         conv_id = conv_data["id"]
-        title = conv_data.get("title", "新对话")
         model = conv_data.get("model", "")
         platform = conv_data.get("platform")
         temperature = conv_data.get("temperature", 0.7)
@@ -530,8 +620,8 @@ class DatabaseManager:
         with self.get_connection() as conn:
             conn.execute("""
                 UPDATE conversations 
-                SET title=?, model=?, platform=?, temperature=?, max_tokens=?, 
+                SET model=?, platform=?, temperature=?, max_tokens=?,
                     thinking=?, updated_at=?, input_tokens=?, output_tokens=?
                 WHERE id=?
-            """, (title, model, platform, temperature, max_tokens, thinking, updated_at, input_tokens, output_tokens, conv_id))
+            """, (model, platform, temperature, max_tokens, thinking, updated_at, input_tokens, output_tokens, conv_id))
             conn.commit()

@@ -48,10 +48,12 @@
     async function run(fn) {
         if (operationBusy) return;
         operationBusy = true;
+        overlay.setAttribute('aria-busy','true');
         try { await fn(); } catch (error) { notice(error.message,true); }
-        finally { operationBusy = false; }
+        finally { operationBusy = false; overlay.setAttribute('aria-busy','false'); }
     }
     const advanced=window.MemoryAdvanced?.({overlay,call,run,notice,refresh});
+    const discussions=window.MemoryDiscussions?.({call,run,notice,refresh});
     function reset() { editing=null; manualSource={}; el('memory-form').reset(); advanced?.fillEditor(); el('memory-editor-title').textContent='新增记忆'; el('memory-edit-cancel').classList.add('hidden'); }
     function render() {
         el('memory-list').replaceChildren();
@@ -62,10 +64,16 @@
             const text=document.createElement('p'); text.textContent=row.content; card.append(text);
             const meta=document.createElement('div'); meta.className='memory-card-meta';
             meta.textContent=`${{preference:'偏好',profile:'个人背景',project:'长期项目',instruction:'回答要求',other:'其他'}[row.category] || '其他'} · ${row.origin==='automatic'?'自动整理':'手动保存'} · 已调用 ${row.use_count || 0} 次${row.enabled?'':' · 已停用'}`; card.append(meta);
+            if(row.provenance==='external_unverified') meta.textContent+=' · 外部导入，未验证';
+            if(row.source_valid===false) meta.textContent+=' · 来源不可用，不参与召回';
             if (row.source_quote) { const quote=document.createElement('blockquote'); quote.textContent=`来源陈述：${row.source_quote}`; card.append(quote); }
             const actions=document.createElement('div'); actions.className='memory-card-actions';
             const add=(label,fn)=>{const button=document.createElement('button');button.type='button';button.className='btn btn-secondary btn-sm';button.textContent=label;button.onclick=()=>run(fn);actions.append(button);};
             add('编辑',async()=>{editing=row;advanced?.fillEditor(row);el('memory-content').value=row.content;el('memory-category').value=row.category;el('memory-editor-title').textContent='编辑记忆';el('memory-edit-cancel').classList.remove('hidden');el('memory-content').focus();});
+            add('全部来源',async()=>{const result=await call('fact_sources',{id:row.id});const area=document.createElement('div');
+                for(const source of result.sources){const p=document.createElement('blockquote');p.textContent=`${source.conv_id}：${source.quote}`;area.append(p);}
+                if(!result.sources.length)area.textContent='没有经过验证的本地用户来源；手动保存及外部笔记仍可单独管理。';
+                card.append(area);});
             add(row.pinned?'取消置顶':'置顶',async()=>{await call('save',{...row,pinned:!row.pinned,enabled:!!row.enabled});await refresh();});
             add(row.enabled?'停用':'启用',async()=>{await call('save',{...row,pinned:!!row.pinned,enabled:!row.enabled});await refresh();});
             add('修改记录',async()=>{const result=await call('revisions',{id:row.id});notice(result.revisions.length?result.revisions.map(r=>`${r.changed_at.slice(0,10)}：${r.content}`).join('；'):'暂无修改记录');});
@@ -94,6 +102,7 @@
         el('memory-provider').value=options.extraction_platform || '';el('memory-model').value=options.extraction_model || '';
         el('memory-enabled').checked=options.enabled;el('memory-history').checked=options.history_enabled;el('memory-auto').checked=options.auto_extract;render();await updateContext();
         advanced?.fill(options);await advanced?.loadPanels(rows);
+        await discussions?.fill(options);
     }
     async function updateContext() {
         el('memory-context-list').replaceChildren();
@@ -107,11 +116,22 @@
         el('memory-session-toggle').disabled=!!privacy.temporary;el('memory-history-toggle').disabled=!!privacy.temporary;
         el('memory-history-toggle').textContent=`当前会话：${privacy.exclude_history?'不供历史参考':'可供历史参考'}`;
         const context=result.context;
+        if(Number.isInteger(result.saved_count)){
+            const p=document.createElement('p');
+            p.textContent=`已保存记忆共 ${result.saved_count} 条；下面显示本轮召回的记忆和历史片段，并非全部聊天记录。`;
+            el('memory-context-list').append(p);
+        }
         for(const item of context.memories||[]){const p=document.createElement('p');p.textContent=item.content;el('memory-context-list').append(p);}
         for(const item of context.history||[]){const p=document.createElement('p');p.textContent=`历史「${item.title}」：${item.excerpt}`;el('memory-context-list').append(p);}
-        if(!el('memory-context-list').childElementCount)el('memory-context-list').textContent='本轮没有调用记忆或历史参考。';
+        if(!(context.memories||[]).length && !(context.history||[]).length){const p=document.createElement('p');p.textContent='本轮没有调用记忆或历史参考。';el('memory-context-list').append(p);}
         if(result.learning?.error){const p=document.createElement('p');p.textContent=`上次整理：${result.learning.error}`;el('memory-context-list').append(p);}
+        if(result.learning && Number.isInteger(result.learning.pending_messages)){
+            const p=document.createElement('p');
+            p.textContent=`当前会话已整理 ${result.learning.last_count} 个用户消息片段，待整理 ${result.learning.pending_messages} 个。长消息分片处理；整理成功也可能未发现需要长期保存的事实。`;
+            el('memory-context-list').append(p);
+        }
         advanced?.contextInfo(context);
+        discussions?.context(context);
         el('memory-status-btn').textContent=privacy.temporary?'临时对话':privacy.memory_off?'记忆关闭':`记忆 ${(context.memories||[]).length} · 历史 ${(context.history||[]).length}`;
     }
     async function open(content) { closeDrawer();showModal(overlay);notice('');await run(async()=>{await refresh();if(typeof content==='string'){reset();manualSource={source_conv_id:currentConvId,source_quote:content.slice(0,1000)};el('memory-content').value=content.slice(0,1000);el('memory-content').focus();}}); }
@@ -128,8 +148,36 @@
     el('memory-history-toggle').onclick=()=>run(async()=>{await call('privacy',{conv_id:currentConvId,changes:{exclude_history:!privacy.exclude_history}});await updateContext();});
     el('memory-model-save').onclick=()=>run(async()=>{await call('options',{extraction_platform:el('memory-provider').value,extraction_model:el('memory-model').value.trim()});await refresh();notice('记忆提取模型已保存');});
     el('temporary-chat').onclick=()=>run(async()=>{if(isStreaming||isSending)throw new Error('请先停止生成');const result=await call('new_temporary');await loadConversations();await selectConversation(result.conversation.id);hideModal(overlay);statusLabel.textContent='临时对话：不读写记忆，离开后删除';});
-    el('memory-learn').onclick=()=>run(async()=>{await call('extract',{conv_id:currentConvId});notice('已开始后台整理，稍后刷新查看结果');});
+    el('memory-learn').onclick=()=>run(async()=>{await call('extract',{conv_id:currentConvId});notice('已开始后台整理，稍后刷新查看结果；长会话分批处理，可查看待整理消息数并继续整理');});
     el('memory-clear').onclick=()=>run(async()=>{if(!await confirmation('清空全部记忆？','此操作无法撤销，现有会话也会从历史参考中排除。建议先导出。'))return;await call('clear');reset();await refresh();notice('已清空，已有历史不再参与参考');});
     el('memory-export').onclick=()=>run(async()=>{const result=await call('export');const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='chatudex-memories.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
-    el('memory-import').onclick=()=>el('memory-import-file').click();el('memory-import-file').onchange=event=>run(async()=>{const file=event.target.files[0];if(!file)return;if(file.size>32*1024*1024)throw new Error('导入文件不能超过 32 MB');const data=JSON.parse(await file.text());const result=await call('import',data);event.target.value='';await refresh();notice(`已导入 ${result.count} 条记忆`);});
+    el('memory-import').onclick=()=>el('memory-import-file').click();el('memory-import-file').onchange=event=>run(async()=>{
+        const file=event.target.files[0];if(!file)return;
+        if(file.size>32*1024*1024)throw new Error('导入文件不能超过 32 MB');
+        const data=JSON.parse(await file.text());event.target.value='';
+        const {preview}=await call('import_preview',data);
+        async function commit(decisions={}) {
+            const result=await call('import',{...data,_import_decisions:decisions});
+            await refresh();notice(`已导入 ${result.count} 条事实；冲突按你的选择处理，话题保持外部未验证来源`);
+        }
+        if(!preview.conflicts.length){await commit();return;}
+        const area=el('memory-list');area.replaceChildren();
+        const summary=document.createElement('p');summary.textContent=`导入 ${preview.total} 条事实，其中 ${preview.conflicts.length} 条与现有记忆冲突。默认跳过，不会覆盖已有内容。`;area.append(summary);
+        const selections=[];
+        for(const conflict of preview.conflicts) {
+            const row=document.createElement('div');row.className='memory-card';
+            const current=document.createElement('p');current.textContent=`现有：${conflict.existing_content}`;
+            const incoming=document.createElement('p');incoming.textContent=`导入：${conflict.incoming_content}`;
+            const label=document.createElement('label');label.textContent='处理方式 ';
+            const select=document.createElement('select');select.className='form-select';
+            for(const [value,text] of [['skip','跳过（保留现有）'],['replace','替换（解除旧来源，标记外部未验证）'],['independent','独立保存（保留两条）']]) {
+                const option=document.createElement('option');option.value=value;option.textContent=text;select.append(option);
+            }
+            label.append(select);row.append(current,incoming,label);area.append(row);selections.push({conflict,select});
+        }
+        const apply=document.createElement('button');apply.type='button';apply.className='btn btn-primary';apply.textContent='按选择导入';
+        apply.onclick=()=>run(()=>commit(Object.fromEntries(selections.map(({conflict,select})=>[String(conflict.index),{action:select.value,memory_id:conflict.memory_id,expected_version:conflict.expected_version}]))));
+        const cancel=document.createElement('button');cancel.type='button';cancel.className='btn btn-secondary';cancel.textContent='取消导入';cancel.onclick=()=>run(refresh);
+        area.append(apply,cancel);notice('请核对冲突；预览尚未修改任何记忆');
+    });
 })();

@@ -27,7 +27,7 @@ PlatformSettings.register("deepseek", {
                 updateDeepSeekProtocolUI();
             };
         }
-        if (deepseekSearchEngineSelect) deepseekSearchEngineSelect.onchange = toggleDeepSeekSearchKeys;
+        if (deepseekSearchEngineSelect) deepseekSearchEngineSelect.onchange = updateDeepSeekProtocolUI;
         if (deepseekWebPageParserSelect) deepseekWebPageParserSelect.onchange = toggleDeepSeekSearchKeys;
     },
 
@@ -62,11 +62,13 @@ PlatformSettings.register("deepseek", {
 });
 
 function updateDeepSeekProtocolUI() {
-    const enabled = !!document.getElementById("deepseek-use-responses-input")?.checked;
     if (deepseekEnableSearchInput) deepseekEnableSearchInput.disabled = false;
     const label = document.getElementById("deepseek-search-label");
-    if (label) label.textContent = enabled ? "启用 DeepSeek 官方联网搜索" : "启用网页检索服务";
-    if (deepseekSearchGroup) deepseekSearchGroup.classList.toggle("hidden", enabled || !deepseekEnableSearchInput?.checked);
+    if (label) label.textContent = "启用联网搜索";
+    if (deepseekSearchGroup) deepseekSearchGroup.classList.toggle("hidden", !deepseekEnableSearchInput?.checked);
+    const help = document.getElementById("deepseek-native-search-help");
+    if (help) help.classList.toggle("hidden", deepseekSearchEngineSelect?.value !== "deepseek_native");
+    toggleDeepSeekSearchKeys();
 }
 
 function toggleDeepSeekSearchKeys() {

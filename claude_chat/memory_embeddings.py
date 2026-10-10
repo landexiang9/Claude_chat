@@ -141,12 +141,21 @@ def fetch_embedding_models(platform, config):
 def normalize(values):
     if not isinstance(values, (list, tuple)) or not 1 <= len(values) <= 8192:
         raise ValueError("Embedding 向量维度无效")
-    if any(type(x) not in (int, float) or not math.isfinite(x) for x in values):
+    try:
+        valid = all(type(x) in (int, float) and math.isfinite(x) for x in values)
+    except OverflowError:
+        valid = False
+    if not valid:
         raise ValueError("Embedding 向量包含无效数值")
-    length = math.sqrt(sum(x * x for x in values))
-    if length <= 1e-12:
+    scale = max(abs(x) for x in values)
+    if scale == 0:
         raise ValueError("Embedding 返回了零向量")
-    return [x / length for x in values]
+    scaled = [x / scale for x in values]
+    length = math.hypot(*scaled)
+    result = [x / length for x in scaled]
+    if not all(math.isfinite(x) for x in result) or not any(result):
+        raise ValueError("Embedding 向量归一化失败")
+    return result
 
 
 def pack(vector):

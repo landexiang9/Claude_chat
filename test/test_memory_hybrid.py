@@ -92,6 +92,75 @@ def test_semantic_synonyms_top_k_and_query_cache(memory):
     assert len(provider.calls) == before + 1
 
 
+@pytest.mark.parametrize(
+    "query", ["你记得什么", "你好，你还记得我吗？", "我们之前聊过什么？", "What do you remember about me?"]
+)
+def test_memory_overview_covers_real_topics_without_matching_inventory_questions(memory, query):
+    db, store = memory
+    sources = []
+    for topic in (
+        "PHP 反序列化与对象生命周期",
+        "Python 聊天软件开发与记忆检索",
+        "Docker 沙盒部署与网络隔离",
+        "JavaScript 页面配色和移动适配",
+    ):
+        cid = conversation(db, topic + "：我正在研究相关实现，希望分析具体流程和解决方案。")
+        conv = db.load_conversation(cid)
+        conv["messages"].append({"role": "user", "content": "你好，你记得什么？"})
+        db.save_conversation(conv)
+        sources.append(cid)
+    private = conversation(db, "私密工作，不能供历史参考。")
+    store.set_privacy(private, {"exclude_history": True})
+    outside = conversation(db, "家庭项目：厨房改造与收纳空间设计。")
+    store.set_privacy(outside, {"scope": "home"})
+    row = store.put({"content": "用户长期研究 Rust 编译器", "category": "project"})
+    target = conversation(db, query)
+    store.engine.index.search = Mock(side_effect=AssertionError("An inventory is not an embedding query"))
+    prompt, context = store.retrieve(target, query)
+    assert context["router"]["overview"]
+    assert {h["conversation_id"] for h in context["history"]} == set(sources)
+    assert row["id"] in {m["id"] for m in context["memories"]}
+    assert all("你记得什么" not in h["excerpt"] for h in context["history"])
+    assert context["inventory"] == {"saved_memories_available": 1, "history_conversations_in_search_window": 4}
+    assert "子集" in prompt and "memory_overview" in prompt
+    assert context["chars"] == len(prompt) <= store.options()["budget_chars"]
+    store.engine.index.search.assert_not_called()
+
+
+def test_overview_budget_empty_inventory_and_history_switch(memory):
+    db, store = memory
+    target = conversation(db, "你记得什么")
+    prompt, context = store.retrieve(target, "你记得什么")
+    assert "saved_memories_available" in prompt and not context["history"]
+    for n in range(8):
+        conversation(db, f"历史项目 {n}：" + "我正在学习计算机系统和算法设计。" * 60)
+        store.put({"content": f"用户长期研究主题 {n}", "category": "project"})
+    store.set_options({"budget_chars": 1000, "top_k": 4})
+    prompt, context = store.retrieve(target, "你记得什么")
+    assert len(prompt) == context["chars"] <= 1000
+    assert len(context["memories"]) + len(context["history"]) <= 4
+    store.set_options({"history_enabled": False})
+    _, context = store.retrieve(target, "你记得什么")
+    assert not context["history"] and context["inventory"]["history_conversations_in_search_window"] == 0
+    store.set_privacy(target, {"temporary": True})
+    assert store.retrieve(target, "你记得什么")[0] == ""
+
+
+def test_history_uses_topic_title_but_not_empty_memory_questions(memory):
+    db, store = memory
+    source = conversation(db, "我遇到属性值变为空的情况，请帮助分析对象转换的实现细节。")
+    conv = db.load_conversation(source)
+    conv["title"] = "PHP 反序列化 null 字节"
+    conv["messages"].append({"role": "user", "content": "你好，你记得什么？"})
+    db.save_conversation(conv)
+    db.update_conversation_title(source, "PHP 反序列化 null 字节", "manual")
+    target = conversation(db, "新会话")
+    _, context = store.retrieve(target, "PHP 反序列化")
+    assert context["history"][0]["conversation_id"] == source
+    assert "对象转换" in context["history"][0]["excerpt"]
+    assert not any(d[1] == "history" and "你记得什么" in d[4] for d in store.engine.index.sync_documents())
+
+
 def test_incremental_index_unchanged_edit_and_model_migration(memory):
     _, store = memory
     row = store.put({"content": "用户使用 macOS"})
@@ -216,7 +285,14 @@ def test_privacy_purges_all_derived_data_and_sources(memory, action):
     db, store = memory
     cid = conversation(db, "我长期研究 PHP 反序列化")
     target = conversation(db, "另一个会话")
-    row = store.put({"content": "用户研究 PHP 反序列化", "source_conv_id": cid, "subject": "user.study"})
+    row = store.put(
+        {
+            "content": "用户研究 PHP 反序列化",
+            "source_conv_id": cid,
+            "subject": "user.study",
+            "source_quote": "我长期研究 PHP 反序列化",
+        }
+    )
     provider = configure(store)
     store.engine.index.build()
     store.retrieve(target, "object hydration")
@@ -527,7 +603,7 @@ def test_export_import_includes_versions_without_forged_provenance(memory):
     row = store.put({"content": "用户使用 Windows 10", "key": "os", "source_quote": "old evidence"})
     store.put({"id": row["id"], "content": "用户使用 Windows 11"})
     exported = store.export_data()
-    assert exported["version"] == 2 and exported["memories"][0]["history_versions"]
+    assert exported["version"] == 3 and exported["memories"][0]["history_versions"]
     store.forget()
     assert store.import_data(exported) == 1
     imported = store.list()[0]
@@ -535,7 +611,7 @@ def test_export_import_includes_versions_without_forged_provenance(memory):
     with store.connect() as conn:
         versions = conn.execute("SELECT * FROM memory_versions").fetchall()
         assert len(versions) == 1 and not versions[0]["source_conv_id"] and not versions[0]["source_quote"]
-    assert store.import_data(exported) == 1
+    assert store.import_data(exported) == 0  # Re-import skips an existing field unless explicitly selected.
     with store.connect() as conn:
         assert conn.execute("SELECT count(*) FROM memory_versions").fetchone()[0] == 1
 
@@ -661,6 +737,63 @@ def test_failed_learning_does_not_advance_processed_message_count(memory):
     with store.connect() as conn:
         run = conn.execute("SELECT * FROM memory_runs").fetchone()
         assert run["error"] and run["last_count"] == 0
+
+
+def test_extraction_batches_do_not_skip_earlier_statements_or_overstate_progress(memory):
+    db, store = memory
+    samples = [
+        "我长期使用 PowerShell。" + "开发背景。" * 950,
+        "我长期研究 PHP 反序列化。" + "研究背景。" * 950,
+        "我偏好中文回答。",
+    ]
+    cid = conversation(db, samples[0])
+    conv = db.load_conversation(cid)
+    conv["messages"] = [{"role": "user", "content": s} for s in samples]
+    db.save_conversation(conv)
+    cfg = {"api_key": "offline-key", "active_platform": "claude", "model": "offline-model"}
+    api = WebAPI(
+        SimpleNamespace(lock=threading.RLock(), conv_manager=db, _memory_store=store, config=SimpleNamespace(data=cfg))
+    )
+    evidence = []
+
+    def stream(*args, **kwargs):
+        evidence.append(json.loads(args[3][0]["content"])["user_statements"])
+        args[8].put(("text", '{"memories":[]}'))
+
+    with patch("claude_chat.clients.stream_claude_response", side_effect=stream):
+        for batch in (samples, samples[1:]):
+            gate = threading.Lock()
+            gate.acquire()
+            api._learn_memories(store, conv, batch, 3, store.options()["epoch"], cfg, gate)
+            assert not gate.locked()
+            with store.connect() as conn:
+                run = conn.execute("SELECT * FROM memory_runs").fetchone()
+                assert run["last_count"] == (1 if len(batch) == 3 else 3)
+                assert not run["error"]
+    assert evidence == [samples[0], "\n".join(samples[1:])]
+    assert all(len(text) <= 8000 for text in evidence)
+    result = api.memory_operation("context", {"conv_id": cid})
+    assert result["learning"]["pending_messages"] == 0 and result["saved_count"] == 0
+
+
+def test_manual_learning_rescans_completed_history_and_resumes_partial_batches(memory):
+    db, store = memory
+    statements = [f"我维护第 {n} 个长期项目" for n in range(6)]
+    cid = conversation(db, statements[0])
+    conv = db.load_conversation(cid)
+    conv["messages"] = [{"role": "user", "content": s} for s in statements]
+    db.save_conversation(conv)
+    cfg = {"api_key": "offline-key", "active_platform": "claude", "model": "offline-model"}
+    api = WebAPI(
+        SimpleNamespace(lock=threading.RLock(), conv_manager=db, _memory_store=store, config=SimpleNamespace(data=cfg))
+    )
+    for processed, expected in [(6, statements), (2, statements[2:])]:
+        with store.connect() as conn:
+            conn.execute("INSERT OR REPLACE INTO memory_runs VALUES (?,?,?,?)", (cid, processed, "", ""))
+        with patch("claude_chat.services.memory_service.threading.Thread") as thread:
+            thread.return_value.start.side_effect = lambda: api._app._memory_learning_lock.release()
+            assert api.schedule_memory_learning(cid, force=True)
+            assert thread.call_args.kwargs["args"][2] == expected
 
 
 def test_source_edit_invalidates_old_extraction_quote(memory):

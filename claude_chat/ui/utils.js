@@ -166,12 +166,12 @@ function getExtensionFromLang(lang) {
 // 仅在用户停留于最新消息附近时自动跟随流式输出；向上阅读时不再抢夺滚动位置。
 let chatShouldFollowLatest = true;
 let chatScrollFrame = null;
-let chatProgrammaticScrollTimer = null;
+let chatProgrammaticScrollTop = null;
 
 function updateChatFollowState() {
     if (!chatViewport) return;
     const distanceFromBottom = chatViewport.scrollHeight - chatViewport.scrollTop - chatViewport.clientHeight;
-    chatShouldFollowLatest = distanceFromBottom <= 120;
+    chatShouldFollowLatest = distanceFromBottom <= 4;
     if (scrollToBottomBtn) {
         scrollToBottomBtn.classList.toggle("hidden", chatShouldFollowLatest);
     }
@@ -182,22 +182,52 @@ function scrollChatBottom(force = false, smooth = false) {
     if (force) chatShouldFollowLatest = true;
     if (chatScrollFrame !== null) cancelAnimationFrame(chatScrollFrame);
     chatScrollFrame = requestAnimationFrame(() => {
-        const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-        const useSmoothScroll = smooth && !reduceMotion;
-        if (chatProgrammaticScrollTimer !== null) window.clearTimeout(chatProgrammaticScrollTimer);
-        chatProgrammaticScrollTimer = window.setTimeout(() => {
-            chatProgrammaticScrollTimer = null;
-            updateChatFollowState();
-        }, useSmoothScroll ? 420 : 0);
-        scrollAnchor.scrollIntoView({ behavior: useSmoothScroll ? "smooth" : "auto" });
         chatScrollFrame = null;
+        if (!chatShouldFollowLatest) return;
+        const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+        // A moving stream needs an immediate jump to establish a stable follow position.
+        const useSmoothScroll = smooth && !reduceMotion && !isStreaming;
+        // Scroll only the message viewport, so output cannot move the whole page.
+        const top = chatViewport.scrollHeight - chatViewport.clientHeight;
+        chatViewport.scrollTo({ top, behavior: useSmoothScroll ? "smooth" : "instant" });
+        chatProgrammaticScrollTop = useSmoothScroll ? null : chatViewport.scrollTop;
         if (scrollToBottomBtn) scrollToBottomBtn.classList.add("hidden");
     });
 }
 
 chatViewport?.addEventListener("scroll", () => {
-    if (chatProgrammaticScrollTimer === null) updateChatFollowState();
+    if (chatProgrammaticScrollTop !== null && Math.abs(chatViewport.scrollTop - chatProgrammaticScrollTop) < 1) {
+        chatProgrammaticScrollTop = null;
+        return;
+    }
+    chatProgrammaticScrollTop = null;
+    updateChatFollowState();
 }, { passive: true });
+function pauseChatFollow() {
+    chatShouldFollowLatest = false;
+    chatProgrammaticScrollTop = null;
+    if (chatScrollFrame !== null) cancelAnimationFrame(chatScrollFrame);
+    chatScrollFrame = null;
+    // Also interrupt a smooth scroll started by the jump-to-latest button.
+    chatViewport.scrollTo({ top: chatViewport.scrollTop, behavior: "instant" });
+    scrollToBottomBtn?.classList.remove("hidden");
+}
+chatViewport?.addEventListener("wheel", event => {
+    if (event.deltaY < 0) pauseChatFollow();
+}, { passive: true });
+let chatTouchY = null;
+chatViewport?.addEventListener("touchstart", event => {
+    chatTouchY = event.touches[0]?.clientY ?? null;
+}, { passive: true });
+chatViewport?.addEventListener("touchmove", event => {
+    const y = event.touches[0]?.clientY;
+    if (chatTouchY !== null && y > chatTouchY) pauseChatFollow();
+    chatTouchY = y ?? null;
+}, { passive: true });
+chatViewport?.addEventListener("keydown", event => {
+    if (["ArrowUp", "PageUp", "Home"].includes(event.key)
+            && !event.target.closest("input, textarea, [contenteditable]")) pauseChatFollow();
+});
 scrollToBottomBtn?.addEventListener("click", () => scrollChatBottom(true, true));
 
 // 复制文本工具函数

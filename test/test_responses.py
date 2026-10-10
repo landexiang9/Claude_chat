@@ -42,7 +42,7 @@ def completed(output=None):
 
 
 class ResponsesTests(unittest.TestCase):
-    def test_deepseek_native_search_reasoning_and_stateless_replay(self):
+    def test_deepseek_legacy_search_reasoning_and_stateless_replay(self):
         reasoning = {
             "type": "reasoning",
             "id": "rs_1",
@@ -80,7 +80,8 @@ class ResponsesTests(unittest.TestCase):
             [*wire, completed(output)], deepseek_native=True, enable_search=True, model="deepseek-v4-flash"
         )
         body = captured[0][1]
-        self.assertEqual(body["tools"], [{"type": "web_search"}])
+        self.assertTrue(all(tool["type"] == "function" for tool in body["tools"]))
+        self.assertEqual(body["tools"][0]["name"], "search_web")
         self.assertNotIn("include", body)
         self.assertNotIn("store", body)
         self.assertEqual("".join(data for kind, data in events if kind == "thinking"), "Check sources")

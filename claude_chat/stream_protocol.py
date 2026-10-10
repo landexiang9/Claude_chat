@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Mapping, TypeAlias, TypedDict
 
-
 STREAM_PROTOCOL_VERSION = 1
 STREAM_ERROR_MARKER = "_stream_error"
 
@@ -139,9 +138,12 @@ class StreamEventQueue:
         self._queue: queue.Queue[StreamEvent] = queue.Queue()
         self._sequence = 0
         self._lock = threading.Lock()
+        self._terminal = False
 
     def put(self, item: StreamEvent | LegacyStreamEvent, block: bool = True, timeout: float | None = None):
         with self._lock:
+            if self._terminal:
+                return
             if isinstance(item, StreamEvent):
                 event = item
             else:
@@ -162,6 +164,24 @@ class StreamEventQueue:
                     data=_normalize_payload(event_type, payload),
                 )
             self._queue.put(event, block=block, timeout=timeout)
+            if event.type in {StreamEventType.DONE, StreamEventType.ABORTED, StreamEventType.ERROR}:
+                self._terminal = True
+
+    def abort(self) -> bool:
+        """Wake the consumer once, independently of a stalled model transport."""
+        with self._lock:
+            if self._terminal:
+                return False
+            self._sequence += 1
+            self._queue.put(StreamEvent(
+                task_id=self.task_id,
+                conversation_id=self.conversation_id,
+                sequence=self._sequence,
+                type=StreamEventType.ABORTED,
+                data={},
+            ))
+            self._terminal = True
+            return True
 
     def get_event(self, block: bool = True, timeout: float | None = None) -> StreamEvent:
         return self._queue.get(block=block, timeout=timeout)
@@ -199,6 +219,7 @@ class StreamTask:
     state: StreamTaskState = StreamTaskState.STARTING
     abort_event: threading.Event = field(default_factory=threading.Event)
     active_stream: Any = None
+    title_target: tuple[str, str] | None = None
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     def __post_init__(self):
@@ -220,16 +241,22 @@ class StreamTask:
 
     def request_abort(self):
         with self._lock:
-            if self.state in {StreamTaskState.STARTING, StreamTaskState.RUNNING}:
-                self.state = StreamTaskState.CANCELLING
+            if not self.is_active or not self.events.abort():
+                return
+            self.state = StreamTaskState.CANCELLING
             self.abort_event.set()
             stream = self.active_stream
             self.active_stream = None
         if stream:
-            try:
-                stream.close()
-            except Exception:
-                pass
+            # SDK close() can itself wait on a blocked read. Never hold up Stop.
+            threading.Thread(target=self._close_stream, args=(stream,), daemon=True).start()
+
+    @staticmethod
+    def _close_stream(stream):
+        try:
+            stream.close()
+        except Exception:
+            pass
 
     def bind_stream(self, stream):
         """Attach a transport, closing it immediately if cancellation already won the race."""

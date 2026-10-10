@@ -2,13 +2,13 @@
 
 import json
 import logging
-import queue
 import re
 import threading
 from copy import deepcopy
 from datetime import datetime, timezone
 
-from claude_chat.memory_store import MemoryStore, now, user_text
+from claude_chat.memory_queries import low_information
+from claude_chat.memory_store import MemoryStore, learning_statements, now
 from claude_chat.services.base import AppService
 
 logger = logging.getLogger("claude_chat")
@@ -36,6 +36,73 @@ def extraction_target(options, config, conv=None):
 
 
 class MemoryService(AppService):
+    def discussion_jobs(self):
+        from claude_chat.memory_jobs import MemoryJobs, request_json
+
+        store = self.memory_store()
+        with self._app.lock:
+            if not hasattr(self._app, "_discussion_jobs"):
+                self._app._discussion_jobs = MemoryJobs(
+                    store,
+                    lambda system, payload, abort, stage="episode": request_json(
+                        self._app, store, system, payload, abort, stage
+                    ),
+                )
+            return self._app._discussion_jobs
+
+    def schedule_discussion_memory(self, conv_id):
+        store = self.memory_store()
+        options = store.options()
+        if (
+            not options["episodes_enabled"]
+            or options["discussion_paused"]
+            or not options["episode_auto_extract"]
+            or not store.episodes.allowed(conv_id)
+        ):
+            return False
+        with self._app.lock:
+            timers = getattr(self._app, "_discussion_timers", {})
+            self._app._discussion_timers = timers
+            starts = getattr(self._app, "_discussion_auto_starts", {})
+            self._app._discussion_auto_starts = starts
+            if conv_id not in starts:
+                rows = store.episodes.sources(store.episodes.conversation(conv_id))
+                starts[conv_id] = max((r["position"] for r in rows if r["evidence_role"] == "user"), default=0)
+            if conv_id in timers:
+                timers[conv_id].cancel()
+
+            def idle():
+                with self._app.lock:
+                    timers.pop(conv_id, None)
+                if getattr(self._app, "is_streaming", False):
+                    self.schedule_discussion_memory(conv_id)
+                    return
+                if (
+                    store.options()["discussion_paused"]
+                    or not store.options()["episode_auto_extract"]
+                    or not store.episodes.allowed(conv_id)
+                ):
+                    return
+                jobs = self.discussion_jobs()
+                jobs.enqueue([conv_id], automatic_from=starts.get(conv_id, 0))
+                starts.pop(conv_id, None)
+                jobs.start()
+
+            # At most one automatic request window per conversation every five minutes.
+            with store.connect() as conn:
+                stamp = conn.execute("SELECT max(updated_at) FROM memory_jobs WHERE conv_id=?", (conv_id,)).fetchone()[
+                    0
+                ]
+            delay = 120
+            if stamp:
+                age = (datetime.now(timezone.utc) - datetime.fromisoformat(stamp)).total_seconds()
+                delay = max(delay, 300 - age)
+            timer = threading.Timer(delay, idle)
+            timer.daemon = True
+            timers[conv_id] = timer
+            timer.start()
+        return True
+
     def memory_store(self):
         # App lock protects initialization against simultaneous HTTP requests.
         with self._app.lock:
@@ -61,6 +128,99 @@ class MemoryService(AppService):
                 models = fetch_embedding_models(platform, config)
                 return {"success": True, "platform": platform, "models": models}
             store = self.memory_store()
+            if action == "usage":
+                return {"success": True, "usage": store.usage.summary()}
+            if action in {
+                "episodes",
+                "episode",
+                "episode_edit",
+                "episode_versions",
+                "episode_sources",
+                "episode_forget",
+                "job_preview",
+                "job_start",
+                "job_pause",
+                "job_resume",
+                "jobs",
+                "overview",
+            }:
+                cid = data.get("conv_id")
+                scope = "global"
+                if cid:
+                    if not isinstance(cid, str) or not self._app.conv_manager.load_conversation(cid):
+                        raise ValueError("会话不存在")
+                    private = store.privacy(cid)
+                    if private["temporary"] or private["memory_off"]:
+                        raise ValueError("当前会话禁止使用记忆")
+                    scope = private["scope"]
+                jobs = self.discussion_jobs()
+                if action == "overview":
+                    return {"success": True, "overview": store.overviews.get(scope)}
+                if action == "episodes":
+                    return {"success": True, "episodes": store.episodes.list(scope)}
+                if action == "episode":
+                    result = store.episodes.read(str(data.get("id", "")), scope)
+                    if not result:
+                        raise ValueError("话题不存在或不可访问")
+                    return {"success": True, "episode": result}
+                if action == "episode_edit":
+                    return {
+                        "success": True,
+                        "episode": store.episodes.edit(
+                            str(data.get("id", "")), scope, data.get("changes"), data.get("expected_version")
+                        ),
+                    }
+                if action == "episode_versions":
+                    return {"success": True, "versions": store.episodes.versions(str(data.get("id", "")), scope)}
+                if action == "episode_sources":
+                    from claude_chat.memory_tools import MemoryToolSession
+
+                    session = MemoryToolSession(store, cid or "", threading.Event())
+                    # User management reads use validated scope and source access, independent of chat-tool toggle.
+                    episode = store.episodes.read(str(data.get("id", "")), scope)
+                    if not episode:
+                        raise ValueError("话题不存在或不可访问")
+                    with store.connect() as conn:
+                        refs = (
+                            []
+                            if episode["origin"] == "external"
+                            else [
+                                ref
+                                for ref in store.episodes.sources(
+                                    store.episodes.conversation(episode["conv_id"], conn), conn
+                                )
+                                if ref["source_id"] in store.episodes.required_sources(episode)
+                            ]
+                        )
+                    sources = []
+                    for ref in refs:
+                        session.refs[ref["source_id"]] = (ref["conv_id"], ref["position"])
+                        sources.append(
+                            session._query(
+                                "read_history_excerpt", {"source_id": ref["source_id"], "radius": 0}, threading.Event()
+                            )
+                        )
+                    return {"success": True, "sources": sources}
+                if action == "episode_forget":
+                    return {"success": store.episodes.forget(str(data.get("id", "")), scope)}
+                if action == "job_preview":
+                    return {"success": True, "preview": jobs.preview(data.get("conv_ids"))}
+                if action == "job_start":
+                    ids = data.get("conv_ids")
+                    if not isinstance(ids, list) or not ids or len(ids) > 200:
+                        raise ValueError("请明确选择最多200个会话；不默认补整理全部历史")
+                    store.set_options({"discussion_paused": False})
+                    preview = jobs.enqueue(ids, data.get("expected"))
+                    return {"success": True, "preview": preview, "started": jobs.start()}
+                if action == "job_pause":
+                    jobs.pause()
+                    return {"success": True}
+                if action == "job_resume":
+                    job_id = data.get("id")
+                    if job_id is not None and not isinstance(job_id, str):
+                        raise ValueError("任务 ID 应为文本")
+                    return {"success": True, "started": jobs.resume(job_id)}
+                return {"success": True, "jobs": jobs.list(), "running": jobs.gate.locked()}
             if action == "index_status":
                 return {"success": True, "index": store.engine.index.status()}
             if action in {"index_start", "index_rebuild", "index_pause"}:
@@ -93,7 +253,7 @@ class MemoryService(AppService):
                     if action == "profile":
                         rows = conn.execute(
                             "SELECT f.*,m.content,m.importance,m.version FROM memory_facts f "
-                            "JOIN memories m ON m.id=f.memory_id ORDER BY f.subject,f.scope"
+                            "JOIN memories m ON m.id=f.memory_id WHERE m.enabled=1 ORDER BY f.subject,f.scope"
                         ).fetchall()
                     elif action == "versions":
                         rows = conn.execute(
@@ -102,6 +262,9 @@ class MemoryService(AppService):
                         ).fetchall()
                     else:
                         rows = conn.execute("SELECT * FROM memory_audit ORDER BY id DESC LIMIT 100").fetchall()
+                if action == "profile":
+                    eligible = {m["id"] for m in store.list() if m["source_valid"] and m["enabled"]}
+                    rows = [r for r in rows if r["memory_id"] in eligible]
                 return {"success": True, action: [dict(row) for row in rows]}
             if action == "list":
                 return {
@@ -117,6 +280,12 @@ class MemoryService(AppService):
                     if not find_custom_provider(self._app.config.data, embedding):
                         raise ValueError("Embedding 请选择 Gemini、本地模型或已配置的兼容供应商")
                 platform = data.get("extraction_platform", "")
+                merge = data.get("merge_platform", "")
+                if merge and merge not in {"claude", "deepseek", "gemini"}:
+                    from claude_chat.config import find_custom_provider
+
+                    if not find_custom_provider(self._app.config.data, merge):
+                        raise ValueError("请选择已配置的合并供应商")
                 if platform and platform not in {"claude", "deepseek", "gemini"}:
                     from claude_chat.config import find_custom_provider
 
@@ -129,6 +298,10 @@ class MemoryService(AppService):
                         "SELECT * FROM memory_revisions WHERE memory_id=? ORDER BY id DESC", (str(data.get("id", "")),)
                     ).fetchall()
                 return {"success": True, "revisions": [dict(row) for row in rows]}
+            if action == "fact_sources":
+                with store.connect() as conn:
+                    sources = store.fact_sources.live(str(data.get("id", "")), conn)
+                return {"success": True, "sources": sources}
             if action == "save":
                 source = data.get("source_conv_id")
                 if source and store.privacy(str(source))["temporary"]:
@@ -146,6 +319,8 @@ class MemoryService(AppService):
                 return {"success": True, **store.export_data()}
             if action == "import":
                 return {"success": True, "count": store.import_data(data)}
+            if action == "import_preview":
+                return {"success": True, "preview": store.import_preview(data)}
             if action == "new_temporary":
                 with self._app.lock:
                     if self._app.is_streaming:
@@ -155,7 +330,8 @@ class MemoryService(AppService):
                 return {"success": True, "conversation": conv}
             if action in {"privacy", "context", "extract"}:
                 cid = data.get("conv_id")
-                if not isinstance(cid, str) or not self._app.conv_manager.load_conversation(cid):
+                conv = self._app.conv_manager.load_conversation(cid) if isinstance(cid, str) else None
+                if not conv:
                     raise ValueError("会话不存在")
                 if action == "privacy":
                     return {"success": True, "privacy": store.set_privacy(cid, data.get("changes", {}))}
@@ -163,11 +339,22 @@ class MemoryService(AppService):
                     with store.connect() as conn:
                         row = conn.execute("SELECT data FROM memory_context WHERE conv_id=?", (cid,)).fetchone()
                         run = conn.execute("SELECT * FROM memory_runs WHERE conv_id=?", (cid,)).fetchone()
+                    private = store.privacy(cid)
+                    saved_count = (
+                        0
+                        if private["temporary"] or private["memory_off"]
+                        else store.overviews.get(private["scope"])["coverage"]["saved_fact_count"]
+                    )
+                    total = len(learning_statements(conv["messages"]))
+                    learning = dict(run) if run else None
+                    if learning:
+                        learning["pending_messages"] = max(0, total - learning["last_count"])
                     return {
                         "success": True,
                         "context": json.loads(row[0]) if row else {"memories": [], "history": []},
                         "privacy": store.privacy(cid),
-                        "learning": dict(run) if run else None,
+                        "learning": learning,
+                        "saved_count": saved_count,
                         "index": store.engine.index.status(),
                     }
                 started = self.schedule_memory_learning(cid, force=True)
@@ -206,18 +393,18 @@ class MemoryService(AppService):
                     pass
             store.engine.index.start()
 
-    def _route_memory(self, query, fallback):
+    def _route_memory(self, query, fallback, abort=None, conv_id=None):
         with self._app.lock:
             if not hasattr(self._app, "_memory_router_lock"):
                 self._app._memory_router_lock = threading.Lock()
             gate = self._app._memory_router_lock
         if not gate.acquire(blocking=False):
             return fallback
-        result = []
+        result, stop = [], threading.Event()
 
         def work():
             try:
-                result.append(self._route_memory_request(query, fallback))
+                result.append(self._route_memory_request(query, fallback, stop, conv_id))
             except Exception:
                 pass
             finally:
@@ -229,21 +416,32 @@ class MemoryService(AppService):
         except Exception:
             gate.release()
             return fallback
-        thread.join(timeout=5.2)
+        import time
+
+        deadline = time.monotonic() + 5.2
+        while thread.is_alive() and time.monotonic() < deadline and not (abort and abort.is_set()):
+            thread.join(timeout=0.05)
+        if thread.is_alive():
+            stop.set()
         return result[0] if result else fallback
 
-    def _route_memory_request(self, query, fallback):
+    def _route_memory_request(self, query, fallback, stop=None, conv_id=None):
         """Optional economical model routing; failures never prevent the main answer."""
         from claude_chat.clients import stream_claude_response
+        from claude_chat.memory_jobs import MemoryRequestQueue
         from claude_chat.platform_params import PlatformParamMapper
+        from claude_chat.services.conversation_titles import title_request_params
 
-        options = self.memory_store().options()
+        store = self.memory_store()
+        options = store.options()
         config = deepcopy(self._app.config.data)
         platform, model = extraction_target(options, config)
         mapped = PlatformParamMapper.map_params(platform, config, model_id=model)
         if not mapped["api_key"] or not model:
             return fallback
-        events, abort, active = queue.Queue(), threading.Event(), []
+        request_params = title_request_params(platform, model, mapped)
+        events, abort, active = MemoryRequestQueue(), stop or threading.Event(), []
+        finished, timed_out = threading.Event(), threading.Event()
 
         def cancel():
             abort.set()
@@ -258,9 +456,29 @@ class MemoryService(AppService):
             if abort.is_set():
                 cancel()
 
-        timer = threading.Timer(5, cancel)
+        def watch():
+            while not finished.wait(0.05):
+                if abort.is_set():
+                    cancel()
+                    return
+
+        threading.Thread(target=watch, daemon=True, name="memory-router-cancel").start()
+
+        def timeout():
+            timed_out.set()
+            cancel()
+
+        timer = threading.Timer(5, timeout)
         timer.daemon = True
         timer.start()
+        identity = store.usage.begin(
+            "router",
+            platform,
+            model,
+            conv_id=conv_id or "",
+            scope=store.privacy(conv_id)["scope"] if conv_id else "global",
+        )
+        status = "error"
         try:
             stream_claude_response(
                 mapped["api_key"],
@@ -289,6 +507,7 @@ class MemoryService(AppService):
                 custom_api_url=mapped["api_url"],
                 provider_adapter=mapped["provider_adapter"],
                 gemini_enable_code_sandbox=False,
+                request_params=request_params,
             )
             chunks = []
             while not events.empty():
@@ -296,11 +515,19 @@ class MemoryService(AppService):
                 kind, payload = event.to_legacy() if hasattr(event, "to_legacy") else event
                 if kind == "text":
                     chunks.append(str(payload))
+                elif kind in {"error", "aborted"}:
+                    raise ValueError("记忆路由请求失败")
             if abort.is_set():
                 raise ValueError("路由超时")
-            return json.loads("".join(chunks))
+            result = json.loads("".join(chunks))
+            status = "success"
+            return result
         finally:
+            finished.set()
             timer.cancel()
+            store.usage.finish(
+                identity, events.request_status(status, timed_out.is_set(), abort.is_set()), events.usage
+            )
 
     def schedule_memory_learning(self, conv_id, force=False):
         store = self.memory_store()
@@ -317,8 +544,7 @@ class MemoryService(AppService):
         conv = self._app.conv_manager.load_conversation(conv_id)
         if not conv:
             return False
-        statements = [user_text(m) for m in conv["messages"]]
-        statements = [s for s in statements if s]
+        statements = learning_statements(conv["messages"])
         if not statements:
             return False
         with self._app.lock:
@@ -333,8 +559,17 @@ class MemoryService(AppService):
                         "SELECT last_count,last_attempt FROM memory_runs WHERE conv_id=?", (conv_id,)
                     ).fetchone()
                     last = row[0] if row else 0
+                    from claude_chat.memory_episodes import digest
+
+                    prior = conn.execute(
+                        "SELECT unit_hashes FROM memory_run_inputs WHERE conv_id=?", (conv_id,)
+                    ).fetchone()
+                    if prior and json.loads(prior[0])[:last] != [digest(s) for s in statements[:last]]:
+                        last = 0
                     if last > len(statements):
                         last = 0  # Editing/resending can truncate the previously learned history.
+                    if force and last == len(statements):
+                        last = 0  # A manual re-scan must include old statements, not just the last three.
                 recent = (
                     row
                     and row[1]
@@ -344,7 +579,7 @@ class MemoryService(AppService):
                     gate.release()
                     return False
                 config = deepcopy(self._app.config.data)
-                samples = statements[last:] if last < len(statements) else statements[-3:]
+                samples = statements[last:]
                 thread = threading.Thread(
                     target=self._learn_memories,
                     args=(store, conv, samples, len(statements), options.get("epoch", 0), config, gate),
@@ -377,6 +612,8 @@ class MemoryService(AppService):
         timer.daemon = True
         timer.start()
         error = ""
+        identity, events = None, None
+        completed_count = max(0, count - len(samples))
         try:
             from claude_chat.clients import stream_claude_response
             from claude_chat.platform_params import PlatformParamMapper
@@ -390,12 +627,21 @@ class MemoryService(AppService):
             mapped = PlatformParamMapper.map_params(platform, config, model_id=model)
             if not mapped["api_key"]:
                 raise ValueError("未配置用于记忆提取的 API Key")
-            safe_samples = [
-                s
-                for s in samples
-                if not re.search(r"sk-[\w-]{10,}|AIza[\w-]+|(?:password|密码|密钥|api[_ -]?key)\s*[:：=]", s, re.I)
-            ]
-            evidence = "\n".join(safe_samples)[-8000:]
+            safe_samples, evidence_chars = [], 0
+            for sample in samples:
+                if low_information(sample) or re.search(
+                    r"sk-[\w-]{10,}|AIza[\w-]+|(?:password|密码|密钥|api[_ -]?key)\s*[:：=]", sample, re.I
+                ):
+                    completed_count += 1
+                    continue
+                # Process a chronological batch, keeping whole statements and an honest progress cursor.
+                # Taking the last 8000 characters and advancing to `count` silently lost earlier statements.
+                if evidence_chars + len(sample) + bool(safe_samples) > 8000:
+                    break
+                safe_samples.append(sample)
+                evidence_chars += len(sample) + (1 if len(safe_samples) > 1 else 0)
+                completed_count += 1
+            evidence = "\n".join(safe_samples)
             if not evidence:
                 return
             existing, existing_chars = [], 0
@@ -403,6 +649,8 @@ class MemoryService(AppService):
             from claude_chat.memory_vectors import safe_text
 
             for memory in store.list():
+                if not memory["enabled"] or not memory["source_valid"]:
+                    continue
                 if memory["scope"] not in {"global", source_scope}:
                     continue
                 if not safe_text(memory["content"] + memory["value_json"]):
@@ -432,7 +680,11 @@ class MemoryService(AppService):
                 "同一事实更新沿用已有 key；每项必须有输入中的逐字证据，最多 5 项，没有可靠事实输出空数组。"
                 "明确换用新版本标为 REPLACE；同义重复标 SAME；补充为 EXTEND；只有用户明确要求忘记才标 DELETE。"
             )
-            events = queue.Queue()
+            from claude_chat.memory_jobs import MemoryRequestQueue, background_request_params
+
+            events = MemoryRequestQueue()
+
+            extraction_params = background_request_params(platform, model, mapped, "facts")
             assistant_context = [
                 m["content"][:1000]
                 for m in conv.get("messages", [])[-4:]
@@ -443,6 +695,7 @@ class MemoryService(AppService):
                 store.privacy(conv["id"])[key] for key in ("temporary", "memory_off", "exclude_history")
             ):
                 return
+            identity = store.usage.begin("facts", platform, model, conv_id=conv["id"], scope=source_scope)
             stream_claude_response(
                 mapped["api_key"],
                 config.get("proxy_mode", "system"),
@@ -462,7 +715,7 @@ class MemoryService(AppService):
                     }
                 ],
                 model,
-                1000,
+                4096,
                 0.2,
                 None,
                 events,
@@ -482,6 +735,7 @@ class MemoryService(AppService):
                 custom_api_url=mapped["api_url"],
                 provider_adapter=mapped["provider_adapter"],
                 gemini_enable_code_sandbox=False,
+                request_params=extraction_params,
             )
             chunks = []
             while not events.empty():
@@ -559,23 +813,37 @@ class MemoryService(AppService):
         finally:
             timer.cancel()
             try:
+                if identity:
+                    store.usage.finish(
+                        identity, events.request_status("error" if error else "success", abort.is_set()), events.usage
+                    )
                 with store.connect() as conn:
                     conn.execute("BEGIN IMMEDIATE")
                     private = conn.execute(
                         "SELECT * FROM conversation_privacy WHERE conv_id=?", (conv["id"],)
                     ).fetchone()
+                    from claude_chat.memory_episodes import digest
+
+                    current = store.episodes.conversation(conv["id"], conn)
+                    initial_hashes = [digest(s) for s in learning_statements(conv["messages"])]
+                    current_hashes = [digest(s) for s in learning_statements(current["messages"])] if current else []
                     if (
                         conn.execute("SELECT 1 FROM conversations WHERE id=?", (conv["id"],)).fetchone()
                         and store.options(conn).get("epoch", 0) == epoch
                         and not (private and any(private[k] for k in ("temporary", "memory_off", "exclude_history")))
+                        and current_hashes[:count] == initial_hashes[:count]
                     ):
                         previous = conn.execute(
                             "SELECT last_count FROM memory_runs WHERE conv_id=?", (conv["id"],)
                         ).fetchone()
-                        completed_count = count if not error else previous[0] if previous else 0
+                        completed_count = completed_count if not error else previous[0] if previous else 0
                         conn.execute(
                             "INSERT OR REPLACE INTO memory_runs VALUES (?,?,?,?)",
                             (conv["id"], completed_count, now(), error),
+                        )
+                        conn.execute(
+                            "INSERT OR REPLACE INTO memory_run_inputs VALUES (?,?)",
+                            (conv["id"], json.dumps(initial_hashes[:completed_count])),
                         )
             finally:
                 gate.release()

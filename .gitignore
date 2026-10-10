@@ -82,3 +82,15 @@ test.pptx
 !test/test_memory_benchmark.py
 !test/test_embedding_model_discovery.py
 !test/test_settings_navigation_browser.js
+!test/test_deepseek_native_search.py
+!test/test_conversation_titles.py
+!test/test_conversation_titles_browser.js
+!test/test_stream_navigation.py
+!test/test_stream_navigation_browser.js
+!test/test_memory_discussions.py
+!test/test_memory_protocols.py
+!test/test_memory_lifecycle.py
+!test/test_memory_request_failures.py
+!test/test_memory_edge_regressions.py
+!test/test_memory_remediation.py
+!test/test_memory_usage.py
